@@ -2,6 +2,7 @@
 package worktree
 
 import (
+	"context"
 	"fmt"
 	"github.com/kazuph/ikesu/internal/childenv"
 	"os"
@@ -27,12 +28,19 @@ func git(cwd string, args ...string) (string, error) {
 }
 
 func gitWithEnv(cwd string, environment []string, args ...string) (string, error) {
-	cmd := childenv.Command("git", append([]string{"-C", cwd}, args...)...)
+	return gitWithEnvContext(context.Background(), cwd, environment, args...)
+}
+
+func gitWithEnvContext(ctx context.Context, cwd string, environment []string, args ...string) (string, error) {
+	cmd := childenv.CommandContextGroup(ctx, "git", append([]string{"-C", cwd}, args...)...)
 	if len(environment) > 0 {
 		cmd.Env = append(childenv.Scrub(os.Environ()), environment...)
 	}
 	b, err := cmd.CombinedOutput()
 	if err != nil {
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
 		return "", &GitError{Args: args, Output: strings.TrimSpace(string(b))}
 	}
 	return strings.TrimSpace(string(b)), nil
@@ -41,22 +49,26 @@ func gitWithEnv(cwd string, environment []string, args ...string) (string, error
 // List retains NUL-delimited porcelain on supported Git versions. Only an
 // explicit unsupported -z usage error selects the older porcelain format.
 func List(cwd string) ([]api.WorktreeInfo, error) {
+	return ListContext(context.Background(), cwd)
+}
+
+func ListContext(ctx context.Context, cwd string) ([]api.WorktreeInfo, error) {
 	// This error is parsed for feature detection; keep only this probe in
 	// the C locale, including gettext's LANGUAGE override.
-	raw, err := gitWithEnv(cwd, []string{"LC_ALL=C", "LANGUAGE=C"}, "worktree", "list", "--porcelain", "-z")
+	raw, err := gitWithEnvContext(ctx, cwd, []string{"LC_ALL=C", "LANGUAGE=C"}, "worktree", "list", "--porcelain", "-z")
 	if err == nil {
 		return parseWorktreeList(raw, "\x00", nil)
 	}
 	if !strings.Contains(err.Error(), "unknown switch `z'") || !strings.Contains(err.Error(), "usage: git worktree") {
 		return nil, err
 	}
-	raw, err = git(cwd, "-c", "core.quotePath=true", "worktree", "list", "--porcelain")
+	raw, err = gitWithEnvContext(ctx, cwd, nil, "-c", "core.quotePath=true", "worktree", "list", "--porcelain")
 	if err != nil {
 		return nil, err
 	}
 	// Git before 2.36 emits literal newlines in paths even with quotePath.
 	// Match registered full paths before interpreting porcelain field lines.
-	common, err := git(cwd, "rev-parse", "--git-common-dir")
+	common, err := gitWithEnvContext(ctx, cwd, nil, "rev-parse", "--git-common-dir")
 	if err != nil {
 		return nil, err
 	}
@@ -135,39 +147,51 @@ func parseWorktreeList(raw, separator string, paths []string) ([]api.WorktreeInf
 }
 
 func Create(cwd, path, branch, base string) error {
+	return CreateContext(context.Background(), cwd, path, branch, base)
+}
+
+func CreateContext(ctx context.Context, cwd, path, branch, base string) error {
 	if branch == "" {
 		return fmt.Errorf("a new branch name is required")
 	}
-	if _, err := git(cwd, "check-ref-format", "--branch", branch); err != nil {
+	if _, err := gitWithEnvContext(ctx, cwd, nil, "check-ref-format", "--branch", branch); err != nil {
 		return err
 	}
-	if _, err := git(cwd, "show-ref", "--verify", "refs/heads/"+branch); err == nil {
+	if _, err := gitWithEnvContext(ctx, cwd, nil, "show-ref", "--verify", "refs/heads/"+branch); err == nil {
 		if base != "" {
 			return fmt.Errorf("base cannot be specified for an existing branch")
 		}
-		return Checkout(cwd, path, branch)
+		return CheckoutContext(ctx, cwd, path, branch)
 	}
 	args := []string{"worktree", "add", "-b", branch, "--", path}
 	if base != "" {
 		args = append(args, base)
 	}
-	_, err := git(cwd, args...)
+	_, err := gitWithEnvContext(ctx, cwd, nil, args...)
 	return err
 }
 
 func Checkout(cwd, path, branch string) error {
+	return CheckoutContext(context.Background(), cwd, path, branch)
+}
+
+func CheckoutContext(ctx context.Context, cwd, path, branch string) error {
 	if branch == "" {
 		return fmt.Errorf("an existing branch name is required")
 	}
-	if _, err := git(cwd, "show-ref", "--verify", "refs/heads/"+branch); err != nil {
+	if _, err := gitWithEnvContext(ctx, cwd, nil, "show-ref", "--verify", "refs/heads/"+branch); err != nil {
 		return err
 	}
-	_, err := git(cwd, "worktree", "add", "--", path, branch)
+	_, err := gitWithEnvContext(ctx, cwd, nil, "worktree", "add", "--", path, branch)
 	return err
 }
 
 func Remove(cwd, path string, force bool) error {
-	items, err := List(cwd)
+	return RemoveContext(context.Background(), cwd, path, force)
+}
+
+func RemoveContext(ctx context.Context, cwd, path string, force bool) error {
+	items, err := ListContext(ctx, cwd)
 	if err != nil {
 		return err
 	}
@@ -188,7 +212,7 @@ func Remove(cwd, path string, force bool) error {
 		args = append(args, "--force")
 	}
 	args = append(args, "--", path)
-	_, err = git(cwd, args...)
+	_, err = gitWithEnvContext(ctx, cwd, nil, args...)
 	return err
 }
 

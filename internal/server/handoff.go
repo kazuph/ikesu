@@ -40,6 +40,7 @@ type handoffState struct {
 	LastAttention         time.Time
 	Journal               []api.EventEnvelope
 	AgentLaunches         map[int]launchTransfer
+	PendingClipboard      []clipboardTransfer
 }
 type launchTransfer struct{ Started, ReadySince time.Time }
 type handoffImport struct {
@@ -182,6 +183,8 @@ func (s *Server) liveHandoff(ctx context.Context, req *api.Request) api.Response
 	if err != nil {
 		return api.Failure(req.ID, "handoff_failed", err.Error())
 	}
+	transferCtx, cancelTransfer := context.WithTimeout(context.Background(), handoffWait)
+	defer cancelTransfer()
 	for {
 		var handoffErr error
 		var ledgerIdle <-chan struct{}
@@ -191,9 +194,15 @@ func (s *Server) liveHandoff(ctx context.Context, req *api.Request) api.Response
 				ledgerIdle = s.ledgerIdle
 			}
 			s.ledgerMu.Unlock()
-			if ledgerIdle == nil {
-				handoffErr = s.transferHandoff(exe, p)
+			if ledgerIdle != nil {
+				return
 			}
+			handoffErr = s.app.BeginHandoff()
+			if handoffErr != nil {
+				return
+			}
+			defer s.app.EndHandoff()
+			handoffErr = s.transferHandoff(transferCtx, exe, p)
 		}) {
 			return api.Failure(req.ID, "handoff_failed", "request canceled before handoff")
 		}
@@ -211,7 +220,7 @@ func (s *Server) liveHandoff(ctx context.Context, req *api.Request) api.Response
 	}
 }
 
-func (s *Server) transferHandoff(exe string, p api.ServerLiveHandoffParams) (err error) {
+func (s *Server) transferHandoff(ctx context.Context, exe string, p api.ServerLiveHandoffParams) (err error) {
 	// Drain old disk writes before the importer can publish state. Rollback
 	// reopens normal writing; success retires every captured old generation.
 	s.saveWriteMu.Lock()
@@ -223,7 +232,7 @@ func (s *Server) transferHandoff(exe string, p api.ServerLiveHandoffParams) (err
 	if err := s.retryMailAcknowledgementsLocked(); err != nil {
 		return fmt.Errorf("mail acknowledgement pending: %w", err)
 	}
-	panes, files, err := s.sup.PauseHandoff()
+	panes, files, err := s.sup.PauseHandoffContext(ctx)
 	if err != nil {
 		return err
 	}
@@ -262,7 +271,8 @@ func (s *Server) transferHandoff(exe string, p api.ServerLiveHandoffParams) (err
 		return err
 	}
 	defer control.Close()
-	_ = control.SetDeadline(time.Now().Add(handoffWait))
+	deadline, _ := ctx.Deadline()
+	_ = control.SetDeadline(deadline)
 	enc, dec := gob.NewEncoder(control), gob.NewDecoder(control)
 	apiFile, err := exportListener(s.apiLn)
 	if err != nil {
@@ -305,6 +315,7 @@ func (s *Server) transferHandoff(exe string, p api.ServerLiveHandoffParams) (err
 		return fmt.Errorf("handoff stream closed while reading line")
 	}
 	state := handoffState{App: s.app.HandoffState(), Panes: panes, PaneMetadata: s.paneMetadata, WorkspaceMetadata: s.workspaceMetadata, ReportSources: s.reportSources, PluginPanes: s.pluginPanes, ObservedStart: s.observedStart, LastStatus: s.lastStatus, LastAgent: s.lastAgent, NotifyLast: s.notifyLast, LastAttention: s.lastAttention, Journal: s.journal}
+	state.PendingClipboard = s.pendingClipboard
 	state.AgentLaunches = map[int]launchTransfer{}
 	for id, l := range s.agentLaunches {
 		state.AgentLaunches[id] = launchTransfer{l.started, l.readySince}
@@ -391,6 +402,7 @@ func (s *Server) restoreLive(in *handoffImport, socket string) error {
 	s.pluginPanes, s.observedStart = in.State.PluginPanes, in.State.ObservedStart
 	s.lastStatus, s.lastAgent, s.notifyLast, s.lastAttention = in.State.LastStatus, in.State.LastAgent, in.State.NotifyLast, in.State.LastAttention
 	s.journal = in.State.Journal
+	s.pendingClipboard = in.State.PendingClipboard
 	s.agentLaunches = map[int]*agentLaunch{}
 	for id, l := range in.State.AgentLaunches {
 		s.agentLaunches[id] = &agentLaunch{l.Started, l.ReadySince}

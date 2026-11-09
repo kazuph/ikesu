@@ -87,20 +87,23 @@ func TestPendingMailAndJobWaitWhileBlocked(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if string(data) == "regular\rjob\r" {
-			break
-		}
-		if len(data) > len("regular\rjob\r") || time.Now().After(deadline) {
+		if len(data) > len("regular\rjob\r") {
 			t.Fatalf("wrong order or count: %q", data)
 		}
+		regularPending, err := store.PendingForAgentCreationOrder("p1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		jobs, err := store.PendingJobMessages()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(data) == "regular\rjob\r" && len(regularPending) == 0 && len(jobs) == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("data=%q regular pending=%v jobs pending=%v", data, regularPending, jobs)
+		}
 		time.Sleep(10 * time.Millisecond)
-	}
-	regularPending, err := store.PendingForAgentCreationOrder("p1")
-	if err != nil || len(regularPending) != 0 {
-		t.Fatalf("regular pending=%v err=%v", regularPending, err)
-	}
-	jobs, err := store.PendingJobMessages()
-	if err != nil || len(jobs) != 0 {
-		t.Fatalf("jobs pending=%v err=%v", jobs, err)
 	}
 }

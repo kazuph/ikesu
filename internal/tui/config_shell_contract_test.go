@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/teststate"
@@ -61,7 +60,7 @@ func TestConfigWorktreeDirectoryCreatesCheckoutInConfiguredRoot(t *testing.T) {
 	a.SetSidebarConfig(c, false)
 	branch := "config-directory"
 	ws := fmt.Sprintf("s%d", a.st.ActiveWorkspace().ID)
-	_, err = a.CreateWorktree(api.WorktreeCreateParams{WorkspaceID: &ws, Branch: &branch, Focus: true})
+	_, err = executeTestWorktree(t, a, WorktreeRequest{Operation: "create", WorkspaceID: &ws, Branch: &branch, Focus: true})
 	if err != nil {
 		t.Fatal(err)
 	}

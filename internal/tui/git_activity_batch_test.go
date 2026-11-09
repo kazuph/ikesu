@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,7 +24,7 @@ func TestGitActivityDoesNotProbeEveryTrackedFileEachRefresh(t *testing.T) {
 		}
 	}
 	sidebarGit(t, repo, "add", ".")
-	entry := readGitActivity(repo, gitCwdActivity{watch: filewatch.New(nil)})
+	entry := readGitActivity(context.Background(), repo, gitCwdActivity{watch: filewatch.New(nil)})
 	defer entry.watch.Close()
 	if !entry.ready {
 		t.Fatal("watch unavailable")

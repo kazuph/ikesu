@@ -280,6 +280,8 @@ func (s *Server) dispatchContext(ctx context.Context, req *api.Request) (respons
 		// reconnect to.
 		go s.app.Do(s.requestRestart)
 		return api.Success(req.ID, api.OkResult{Type: "ok"})
+	case api.MethodWorktreeList, api.MethodWorktreeCreate, api.MethodWorktreeOpen, api.MethodWorktreeRemove:
+		return s.worktreeRequest(req)
 	default:
 		var resp api.Response
 		s.app.DoContext(ctx, func() {

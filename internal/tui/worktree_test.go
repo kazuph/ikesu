@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
-	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/render"
 	"github.com/kazuph/ikesu/internal/runtime"
@@ -40,6 +40,17 @@ func worktreeApp(t *testing.T) (*App, string) {
 }
 func activateLabel(t *testing.T, a *App, label string) {
 	t.Helper()
+	waitWorktreeUI(t, a, func() bool {
+		if a.menu == nil {
+			return false
+		}
+		for _, item := range a.menu.m.Items {
+			if item.Label == label {
+				return true
+			}
+		}
+		return false
+	})
 	for i, item := range a.menu.m.Items {
 		if item.Label == label {
 			a.activateMenu(i)
@@ -48,15 +59,56 @@ func activateLabel(t *testing.T, a *App, label string) {
 	}
 	t.Fatalf("menu missing %q", label)
 }
+
+func waitWorktreeUI(t *testing.T, a *App, ready func() bool) {
+	t.Helper()
+	timer := time.NewTimer(3 * time.Second)
+	defer timer.Stop()
+	for !ready() {
+		select {
+		case job := <-a.jobs:
+			job.fn()
+			close(job.done)
+		case <-timer.C:
+			t.Fatal("worktree operation did not complete")
+		}
+	}
+}
+
+func executeTestWorktree(t *testing.T, a *App, req WorktreeRequest) (WorktreeResult, error) {
+	t.Helper()
+	type response struct {
+		result WorktreeResult
+		err    error
+	}
+	done := make(chan response, 1)
+	go func() { result, err := a.ExecuteWorktree(req); done <- response{result, err} }()
+	timer := time.NewTimer(3 * time.Second)
+	defer timer.Stop()
+	for {
+		select {
+		case result := <-done:
+			return result.result, result.err
+		case job := <-a.jobs:
+			job.fn()
+			close(job.done)
+		case <-timer.C:
+			t.Fatal("worktree operation did not complete")
+			return WorktreeResult{}, nil
+		}
+	}
+}
 func TestSidebarWorktreeNewExistingOpenDelete(t *testing.T) {
 	teststate.Lock(t)
 	a, r := worktreeApp(t)
 	a.openWorkspaceMenu(2, 3, 0)
 	activateLabel(t, a, "New worktree")
+	waitWorktreeUI(t, a, func() bool { return a.dialog != nil })
 	*a.dialog.input = "feat/sidebar"
 	d := a.dialog
 	a.dialog = nil
 	d.run(a)
+	waitWorktreeUI(t, a, func() bool { return len(a.st.Workspaces) == 2 })
 	if len(a.st.Workspaces) != 2 || a.st.Active != 1 {
 		t.Fatalf("create: %d active=%d", len(a.st.Workspaces), a.st.Active)
 	}
@@ -69,16 +121,19 @@ func TestSidebarWorktreeNewExistingOpenDelete(t *testing.T) {
 	}
 	a.openWorkspaceMenu(2, 3, 0)
 	activateLabel(t, a, "New worktree")
+	waitWorktreeUI(t, a, func() bool { return a.dialog != nil })
 	*a.dialog.input = "existing"
 	d = a.dialog
 	a.dialog = nil
 	d.run(a)
+	waitWorktreeUI(t, a, func() bool { return len(a.st.Workspaces) == 3 })
 	if len(a.st.Workspaces) != 3 {
 		t.Fatal("existing checkout missing")
 	}
 	a.openWorkspaceMenu(2, 3, 0)
 	activateLabel(t, a, "Open worktree...")
 	activateLabel(t, a, "feat/sidebar")
+	waitWorktreeUI(t, a, func() bool { return a.st.Active == 1 })
 	if a.st.Active != 1 || len(a.st.Workspaces) != 3 {
 		t.Fatal("open existing duplicated checkout")
 	}
@@ -105,19 +160,16 @@ func TestSidebarWorktreeNewExistingOpenDelete(t *testing.T) {
 	d = a.dialog
 	a.dialog = nil
 	d.run(a)
+	waitWorktreeUI(t, a, func() bool { return len(a.st.Workspaces) == 2 })
 	if len(a.st.Workspaces) != 2 || a.st.ActiveWorkspace() == nil {
 		t.Fatal("delete focus invalid")
 	}
 	if _, e := os.Stat(path); !os.IsNotExist(e) {
 		t.Fatal("delete did not remove checkout")
 	}
-	src, e := a.WorktreeSource(r, nil)
-	if e != nil {
-		t.Fatal(e)
-	}
-	list, e := a.WorktreeList(src)
-	if e != nil || len(list) != 2 {
-		t.Fatalf("%+v %v", list, e)
+	listed, e := executeTestWorktree(t, a, WorktreeRequest{Operation: "list", Cwd: r})
+	if e != nil || len(listed.Items) != 2 {
+		t.Fatalf("%+v %v", listed.Items, e)
 	}
 }
 func TestWorktreeDirtyFailureKeepsFocusAndPersistedGroup(t *testing.T) {
@@ -125,7 +177,8 @@ func TestWorktreeDirtyFailureKeepsFocusAndPersistedGroup(t *testing.T) {
 	a, _ := worktreeApp(t)
 	branch := "dirty"
 	id := "s1"
-	out, e := a.CreateWorktree(api.WorktreeCreateParams{WorkspaceID: &id, Branch: &branch, Focus: true})
+	created, e := executeTestWorktree(t, a, WorktreeRequest{Operation: "create", WorkspaceID: &id, Branch: &branch, Focus: true})
+	out := created.Outcome
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -137,6 +190,7 @@ func TestWorktreeDirtyFailureKeepsFocusAndPersistedGroup(t *testing.T) {
 	d := a.dialog
 	a.dialog = nil
 	d.run(a)
+	waitWorktreeUI(t, a, func() bool { return a.dialog != nil })
 	if a.dialog == nil || a.dialog.d.Title != "Worktree operation failed" || len(a.st.Workspaces) != 2 || a.st.Active != out.Index {
 		t.Fatal("dirty failure mutated workspace/focus")
 	}
@@ -144,7 +198,9 @@ func TestWorktreeDirtyFailureKeepsFocusAndPersistedGroup(t *testing.T) {
 	if restored.Workspaces[1].Worktree == nil || restored.Workspaces[1].Worktree.CheckoutPath != path {
 		t.Fatal("restore lost group metadata")
 	}
-	if _, e := a.RemoveWorktree(out.Index, true); e != nil {
+	remove, _ := a.workspaceWorktreeRequest(out.Index, "remove")
+	remove.Force = true
+	if _, e := executeTestWorktree(t, a, remove); e != nil {
 		t.Fatal(e)
 	}
 	if a.st.ActiveWorkspace() == nil || a.st.Active != 0 {
@@ -156,7 +212,8 @@ func TestWorktreeMoveBackToGroupAndFailureWithoutMutation(t *testing.T) {
 	teststate.Lock(t)
 	a, r := worktreeApp(t)
 	branch := "move"
-	out, e := a.CreateWorktree(api.WorktreeCreateParams{Cwd: &r, Branch: &branch, Focus: true})
+	created, e := executeTestWorktree(t, a, WorktreeRequest{Operation: "create", Cwd: r, Branch: &branch, Focus: true})
+	out := created.Outcome
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -170,14 +227,14 @@ func TestWorktreeMoveBackToGroupAndFailureWithoutMutation(t *testing.T) {
 	}
 	before := len(a.st.Workspaces)
 	invalid := "not a branch"
-	if _, e := a.CreateWorktree(api.WorktreeCreateParams{Cwd: &r, Branch: &invalid}); e == nil {
+	if _, e := executeTestWorktree(t, a, WorktreeRequest{Operation: "create", Cwd: r, Branch: &invalid}); e == nil {
 		t.Fatal("invalid branch accepted")
 	}
 	if len(a.st.Workspaces) != before || a.st.Active != 1 {
 		t.Fatal("create failure mutated app")
 	}
 	unknown := "unregistered"
-	if _, e := a.OpenWorktree(api.WorktreeOpenParams{Cwd: &r, Branch: &unknown}); e == nil {
+	if _, e := executeTestWorktree(t, a, WorktreeRequest{Operation: "open", Cwd: r, Branch: &unknown}); e == nil {
 		t.Fatal("unknown checkout silently substituted")
 	}
 }
@@ -190,6 +247,7 @@ func TestStage6aWorktreeFailureKeepsEditableForm(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.newWorktreeDialog(0)
+	waitWorktreeUI(t, a, func() bool { return a.dialog != nil })
 	d := a.dialog
 	a.dialog = nil
 	d.run(a)
@@ -199,6 +257,7 @@ func TestStage6aWorktreeFailureKeepsEditableForm(t *testing.T) {
 	*d.input = strings.TrimSpace(string(branch))
 	a.dialog = nil
 	d.run(a)
+	waitWorktreeUI(t, a, func() bool { return a.dialog != nil })
 	// Git 2.42+ says "already used by worktree"; older Git says "already checked out".
 	gitErr := strings.Contains(a.dialog.d.Detail, "already used") || strings.Contains(a.dialog.d.Detail, "already checked out")
 	if a.dialog != d || a.dialog.input == nil || !gitErr || !strings.Contains(a.dialog.d.Checkout, "worktrees") {
@@ -210,10 +269,11 @@ func TestStage6aWorktreePickerFiltersRealCheckouts(t *testing.T) {
 	teststate.Lock(t)
 	a, _ := worktreeApp(t)
 	branch := "existing"
-	if _, err := a.CreateWorktree(api.WorktreeCreateParams{Branch: &branch, Focus: false}); err != nil {
+	if _, err := executeTestWorktree(t, a, WorktreeRequest{Operation: "create", Branch: &branch}); err != nil {
 		t.Fatal(err)
 	}
 	a.openWorktreeMenu(0)
+	waitWorktreeUI(t, a, func() bool { return a.menu != nil && a.menu.kind == menuWorktree })
 	if !a.menu.m.Worktree || len(a.menu.m.Items) != 2 {
 		t.Fatal(a.menu)
 	}
@@ -228,7 +288,7 @@ func TestStage6aWorktreeGroupConfirmationCountsAndClosesTargets(t *testing.T) {
 	teststate.Lock(t)
 	a, _ := worktreeApp(t)
 	branch := "existing"
-	if _, err := a.CreateWorktree(api.WorktreeCreateParams{Branch: &branch, Focus: false}); err != nil {
+	if _, err := executeTestWorktree(t, a, WorktreeRequest{Operation: "create", Branch: &branch}); err != nil {
 		t.Fatal(err)
 	}
 	child := a.st.Workspaces[1]
@@ -256,7 +316,7 @@ func TestStage6aWorktreeDeletionExplainsRetainedBranch(t *testing.T) {
 	teststate.Lock(t)
 	a, _ := worktreeApp(t)
 	branch := "existing"
-	if _, err := a.CreateWorktree(api.WorktreeCreateParams{Branch: &branch, Focus: false}); err != nil {
+	if _, err := executeTestWorktree(t, a, WorktreeRequest{Operation: "create", Branch: &branch}); err != nil {
 		t.Fatal(err)
 	}
 	a.deleteWorktreeDialog(1, false)

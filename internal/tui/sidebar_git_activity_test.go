@@ -3,12 +3,101 @@ package tui
 import (
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/teststate"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
+
+func TestWorkspaceGitSlowRepositoryDoesNotBlockOtherUpdates(t *testing.T) {
+	teststate.Lock(t)
+	root := t.TempDir()
+	slow, fast := filepath.Join(root, "slow"), filepath.Join(root, "fast")
+	for _, dir := range []string{slow, fast} {
+		if err := os.Mkdir(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		sidebarGit(t, dir, "init", "-qb", "initial")
+		if err := os.WriteFile(filepath.Join(dir, "tracked"), []byte("one\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		sidebarGit(t, dir, "add", "tracked")
+		sidebarGit(t, dir, "-c", "user.name=Test", "-c", "user.email=t@t", "commit", "-qm", "initial")
+	}
+	fifo, ready := filepath.Join(root, "fifo"), filepath.Join(root, "ready")
+	if err := syscall.Mkfifo(fifo, 0600); err != nil {
+		t.Fatal(err)
+	}
+	gate, err := os.OpenFile(fifo, os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gate.Close()
+	defer func() { _, _ = gate.WriteString("go\n") }()
+	hook := filepath.Join(root, "fsmonitor")
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\nprintf '%s' $$ > '"+ready+"'\nread x < '"+fifo+"'\nprintf '\\0'\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	sidebarGit(t, slow, "config", "core.fsmonitor", hook)
+	a := specRuntimeApp(t)
+	a.st.Workspaces[0].Cwd = slow
+	a.st.Apply(model.CmdNewWorkspace{Cwd: fast, Name: "fast"})
+	a.refreshWorkspaceGit(time.Now())
+	deadline := time.After(3 * time.Second)
+	for {
+		if _, err := os.Stat(ready); err == nil && a.workspaceGit[1].Branch == "initial" {
+			break
+		}
+		select {
+		case job := <-a.jobs:
+			job.fn()
+			close(job.done)
+		case <-time.After(10 * time.Millisecond):
+		case <-deadline:
+			t.Fatal("slow Git blocked the other workspace's initial result")
+		}
+	}
+	sidebarGit(t, fast, "symbolic-ref", "HEAD", "refs/heads/updated")
+	a.refreshWorkspaceGit(a.gitAt.Add(1500 * time.Millisecond))
+	deadline = time.After(3 * time.Second)
+	for a.workspaceGit[1].Branch != "updated" {
+		select {
+		case job := <-a.jobs:
+			job.fn()
+			close(job.done)
+		case <-deadline:
+			t.Fatal("slow Git blocked the other workspace's subsequent update")
+		}
+	}
+	pidText, err := os.ReadFile(ready)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(pidText)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.st.Apply(model.CmdCloseWorkspace{Index: 0})
+	a.refreshWorkspaceGit(a.gitAt.Add(1500 * time.Millisecond))
+	deadline = time.After(3 * time.Second)
+	for a.gitActivity.running[slow] != nil {
+		select {
+		case job := <-a.jobs:
+			job.fn()
+			close(job.done)
+		case <-deadline:
+			t.Fatal("closing the workspace did not cancel its Git process")
+		}
+	}
+	if err := syscall.Kill(pid, 0); err == nil {
+		t.Fatal("cancelled Git helper is still running")
+	}
+}
 
 func trackGitCalls(t *testing.T) string {
 	t.Helper()
@@ -321,4 +410,179 @@ func TestWorkspaceGitCommitAndCheckoutRefreshPromptly(t *testing.T) {
 	waitWorkspaceGitActivity(t, a, func() bool { return a.workspaceGit[0].Added == 0 })
 	sidebarGit(t, repo, "checkout", "-q", "next")
 	waitWorkspaceGitActivity(t, a, func() bool { return a.workspaceGit[0].Branch == "next" })
+}
+
+func TestSlowGitResultPreservesMovedWorkspaceStatus(t *testing.T) {
+	teststate.Lock(t)
+	root := t.TempDir()
+	dirs := []string{filepath.Join(root, "slow"), filepath.Join(root, "old"), filepath.Join(root, "new")}
+	for i, dir := range dirs {
+		if err := os.Mkdir(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		sidebarGit(t, dir, "init", "-qb", []string{"slowbranch", "oldbranch", "newbranch"}[i])
+		if err := os.WriteFile(filepath.Join(dir, "tracked"), []byte("one\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		sidebarGit(t, dir, "add", "tracked")
+		sidebarGit(t, dir, "-c", "user.name=Test", "-c", "user.email=t@t", "commit", "-qm", "initial")
+	}
+	gatePath, readyPath := filepath.Join(root, "gate"), filepath.Join(root, "ready")
+	if err := syscall.Mkfifo(gatePath, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(readyPath, 0600); err != nil {
+		t.Fatal(err)
+	}
+	gate, err := os.OpenFile(gatePath, os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gate.Close()
+	defer func() { _, _ = gate.WriteString("go\n") }()
+	hook, released := filepath.Join(root, "hook"), filepath.Join(root, "released")
+	script := "#!/bin/sh\nif [ ! -f '" + released + "' ]; then\nprintf x > '" + readyPath + "'\nread x < '" + gatePath + "'\n: > '" + released + "'\nfi\nprintf '\\0'\n"
+	if err := os.WriteFile(hook, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	sidebarGit(t, dirs[0], "config", "core.fsmonitor", hook)
+	ready := make(chan error, 1)
+	go func() {
+		f, err := os.Open(readyPath)
+		if err == nil {
+			var b [1]byte
+			_, err = f.Read(b[:])
+			f.Close()
+		}
+		ready <- err
+	}()
+	a := specRuntimeApp(t)
+	defer a.closeGitActivity()
+	a.st.Workspaces[0].Cwd = dirs[0]
+	a.st.Apply(model.CmdNewWorkspace{Cwd: dirs[1], Name: "moving", NoFocus: true})
+	a.refreshWorkspaceGit(time.Now())
+	signaled := false
+	for !signaled || a.workspaceGit[1].Branch != "oldbranch" {
+		select {
+		case err := <-ready:
+			if err != nil {
+				t.Fatal(err)
+			}
+			signaled = true
+		case job := <-a.jobs:
+			job.fn()
+			close(job.done)
+		}
+	}
+	a.st.Workspaces[1].Cwd = dirs[2]
+	a.refreshWorkspaceGit(a.gitAt.Add(1500 * time.Millisecond))
+	for a.workspaceGit[1].Branch != "newbranch" {
+		job := <-a.jobs
+		job.fn()
+		close(job.done)
+	}
+	_, _ = gate.WriteString("go\n")
+	for a.gitActivity.running[dirs[0]] != nil {
+		job := <-a.jobs
+		job.fn()
+		close(job.done)
+	}
+	if got := a.workspaceGit[1].Branch; got != "newbranch" {
+		t.Fatalf("slow result erased moved workspace status: %q", got)
+	}
+}
+
+func TestWorkspaceGitApplyWorkPerRepository(t *testing.T) {
+	teststate.Lock(t)
+	for _, count := range []int{4, 8} {
+		t.Run(strconv.Itoa(count), func(t *testing.T) {
+			root := t.TempDir()
+			a := specRuntimeApp(t)
+			defer a.closeGitActivity()
+			for i := 0; i < count; i++ {
+				dir := filepath.Join(root, strconv.Itoa(i))
+				if err := os.Mkdir(dir, 0700); err != nil {
+					t.Fatal(err)
+				}
+				sidebarGit(t, dir, "init", "-qb", "measured")
+				if i == 0 {
+					a.st.Workspaces[0].Cwd = dir
+				} else {
+					a.st.Apply(model.CmdNewWorkspace{Cwd: dir, NoFocus: true})
+				}
+			}
+			started := time.Now()
+			a.refreshWorkspaceGit(started)
+			for len(a.gitActivity.running) != 0 {
+				job := <-a.jobs
+				job.fn()
+				close(job.done)
+			}
+			for i := 0; i < count; i++ {
+				if a.workspaceGit[i].Branch != "measured" {
+					t.Fatalf("workspace %d branch = %q", i, a.workspaceGit[i].Branch)
+				}
+			}
+			t.Logf("repositories=%d elapsed=%s", count, time.Since(started))
+		})
+	}
+}
+
+func TestWorkspaceGitStatusFollowsIdentityAfterClose(t *testing.T) {
+	teststate.Lock(t)
+	root := t.TempDir()
+	dirs := []string{filepath.Join(root, "first"), filepath.Join(root, "second")}
+	for i, dir := range dirs {
+		if err := os.Mkdir(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		sidebarGit(t, dir, "init", "-qb", []string{"firstbranch", "secondbranch"}[i])
+	}
+	a := specRuntimeApp(t)
+	defer a.closeGitActivity()
+	a.st.Workspaces[0].Cwd = dirs[0]
+	a.st.Apply(model.CmdNewWorkspace{Cwd: dirs[1], NoFocus: true})
+	a.refreshWorkspaceGit(time.Now())
+	for len(a.gitActivity.running) != 0 {
+		job := <-a.jobs
+		job.fn()
+		close(job.done)
+	}
+	if a.workspaceGit[0].Branch != "firstbranch" || a.workspaceGit[1].Branch != "secondbranch" {
+		t.Fatalf("initial status: %+v", a.workspaceGit)
+	}
+	a.exec(model.CmdCloseWorkspace{Index: 0})
+	if got := a.workspaceGit[0].Branch; got != "secondbranch" {
+		t.Fatalf("remaining workspace inherited removed workspace status: %q", got)
+	}
+}
+
+func TestViewerWorkspaceGitStatusFollowsIdentityAfterClose(t *testing.T) {
+	teststate.Lock(t)
+	root := t.TempDir()
+	dirs := []string{filepath.Join(root, "first"), filepath.Join(root, "second")}
+	for i, dir := range dirs {
+		if err := os.Mkdir(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		sidebarGit(t, dir, "init", "-qb", []string{"firstbranch", "secondbranch"}[i])
+	}
+	a := specRuntimeApp(t)
+	defer a.closeGitActivity()
+	a.st.Workspaces[0].Cwd = dirs[0]
+	a.st.Apply(model.CmdNewWorkspace{Cwd: dirs[1], NoFocus: true})
+	a.refreshWorkspaceGit(time.Now())
+	for len(a.gitActivity.running) != 0 {
+		job := <-a.jobs
+		job.fn()
+		close(job.done)
+	}
+	if a.workspaceGit[0].Branch != "firstbranch" || a.workspaceGit[1].Branch != "secondbranch" {
+		t.Fatalf("initial status: %+v", a.workspaceGit)
+	}
+	viewer := a.NewViewer(io.Discard, a.st.Cols, a.st.Rows, nil)
+	viewer.with(a, func(ui *App) { ui.exec(model.CmdCloseWorkspace{Index: 0}) })
+	if got := a.workspaceGit[0].Branch; got != "secondbranch" {
+		t.Fatalf("remaining workspace inherited removed workspace status: %q", got)
+	}
 }

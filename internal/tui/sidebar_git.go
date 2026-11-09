@@ -1,12 +1,14 @@
 package tui
 
 import (
+	"context"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/childenv"
 	"github.com/kazuph/ikesu/internal/filewatch"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/platform"
 	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/runtime"
 	"github.com/kazuph/ikesu/internal/worktree"
 	"path/filepath"
 	"reflect"
@@ -16,8 +18,45 @@ import (
 )
 
 type workspaceGitTarget struct {
-	id           int
-	cwd, nameCwd string
+	id             int
+	cwd, nameCwd   string
+	generation     string
+	paneID         int
+	paneGeneration string
+	pane           *runtime.Pane
+}
+
+func (a *App) captureWorkspaceGitTarget(w *model.Workspace) workspaceGitTarget {
+	t := workspaceGitTarget{id: w.ID, cwd: w.Cwd, nameCwd: a.workspaceNameCwd(w), generation: w.Generation}
+	if len(w.Tabs) > 0 {
+		ids := w.Tabs[0].Layout.PaneIDs()
+		if len(ids) > 0 {
+			t.paneID = ids[0]
+			t.paneGeneration = a.st.PaneGeneration(t.paneID)
+			t.pane = a.sup.Get(t.paneID)
+		}
+	}
+	return t
+}
+
+func (a *App) currentWorkspaceGitTarget(w *model.Workspace, t workspaceGitTarget) bool {
+	if w.ID != t.id || w.Generation != t.generation || w.Cwd != t.cwd {
+		return false
+	}
+	var paneID int
+	if len(w.Tabs) > 0 {
+		ids := w.Tabs[0].Layout.PaneIDs()
+		if len(ids) > 0 {
+			paneID = ids[0]
+		}
+	}
+	if paneID != t.paneID || a.st.PaneGeneration(paneID) != t.paneGeneration || a.sup.Get(paneID) != t.pane {
+		return false
+	}
+	if t.pane != nil {
+		return a.workspaceNameCwd(w) == t.nameCwd
+	}
+	return true
 }
 
 // refreshStaleWorktrees re-anchors a space whose first pane's shell has left
@@ -30,25 +69,31 @@ func (a *App) refreshStaleWorktrees(targets []workspaceGitTarget, entries map[st
 		index[w.ID] = i
 	}
 	for _, t := range targets {
-		if t.nameCwd == t.cwd {
-			continue // no live shell directory beyond the space's directory
-		}
 		i, ok := index[t.id]
-		if !ok {
-			continue
+		if ok && a.currentWorkspaceGitTarget(a.st.Workspaces[i], t) {
+			a.refreshStaleWorktreeAt(i, t, entries)
 		}
-		info := a.st.Workspaces[i].Worktree
-		entry, ok := entries[t.nameCwd]
-		if info == nil || !ok || !entry.loaded || worktree.Within(t.nameCwd, info.CheckoutPath) {
-			continue
-		}
-		var next *api.WorkspaceWorktreeInfo
-		if entry.sourceErr == nil {
-			next = worktree.Metadata(entry.source, entry.source.SourceCheckoutPath)
-		}
-		a.exec(model.CmdSetWorktree{Index: i, Info: next, Cwd: t.nameCwd})
-		a.dirty = true
 	}
+}
+
+func (a *App) refreshStaleWorktreeAt(i int, t workspaceGitTarget, entries map[string]gitCwdActivity) {
+	if t.nameCwd == t.cwd {
+		return // no live shell directory beyond the space's directory
+	}
+	if a.worktreePending[workspaceIdentity{id: t.id, generation: t.generation}] > 0 {
+		return
+	}
+	info := a.st.Workspaces[i].Worktree
+	entry, ok := entries[t.nameCwd]
+	if info == nil || !ok || !entry.loaded || worktree.Within(t.nameCwd, info.CheckoutPath) {
+		return
+	}
+	var next *api.WorkspaceWorktreeInfo
+	if entry.sourceErr == nil {
+		next = worktree.Metadata(entry.source, entry.source.SourceCheckoutPath)
+	}
+	a.exec(model.CmdSetWorktree{Index: i, Info: next, Cwd: t.nameCwd})
+	a.dirty = true
 }
 
 type workspacePreview struct {
@@ -112,27 +157,38 @@ func (a *App) reindexWorkspaceMetadata(previousIDs []int) {
 	}
 	a.workspaceNames = map[int]string{}
 	a.workspaceGit = map[int]render.GitStatus{}
+	labels := make(map[int]workspaceDirectoryLabel, len(a.st.Workspaces))
 	for i, ws := range a.st.Workspaces {
 		a.workspaceNames[i] = names[ws.ID]
 		a.workspaceGit[i] = git[ws.ID]
+		if label, ok := a.workspaceLabels[ws.ID]; ok {
+			labels[ws.ID] = label
+		}
+	}
+	a.workspaceLabels = labels
+	if a.viewerOwner != nil {
+		a.viewerOwner.workspaceNames = a.workspaceNames
+		a.viewerOwner.workspaceGit = a.workspaceGit
+		a.viewerOwner.workspaceLabels = a.workspaceLabels
 	}
 }
 
 // Git metadata follows the observed 1.5-second sidebar refresh cadence;
 // never launch git from frame composition or block pane input on it.
 func (a *App) refreshWorkspaceGit(now time.Time) {
-	if a.gitPending || now.Sub(a.gitAt) < 1500*time.Millisecond {
+	if now.Sub(a.gitAt) < 1500*time.Millisecond {
 		return
 	}
 	a.gitAt = now
 	if a.gitActivity == nil {
-		a.gitActivity = &gitActivityState{entries: map[string]gitCwdActivity{}}
+		a.gitActivity = &gitActivityState{entries: map[string]gitCwdActivity{}, running: map[string]context.CancelFunc{}}
 	}
 	var targets []workspaceGitTarget
 	wanted := map[string]bool{}
 	for _, w := range a.st.Workspaces {
-		nameCwd := a.workspaceNameCwd(w)
-		targets = append(targets, workspaceGitTarget{w.ID, w.Cwd, nameCwd})
+		target := a.captureWorkspaceGitTarget(w)
+		nameCwd := target.nameCwd
+		targets = append(targets, target)
 		wanted[w.Cwd], wanted[nameCwd] = true, true
 	}
 	state := a.gitActivity
@@ -144,31 +200,65 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 			entry.watch = filewatch.New(nil)
 			state.entries[cwd] = entry
 		}
-		pending[cwd] = entry
+		if state.running[cwd] == nil {
+			pending[cwd] = entry
+		}
 	}
 	for cwd, entry := range state.entries {
 		if !wanted[cwd] {
-			removed[cwd] = entry
+			if cancel := state.running[cwd]; cancel != nil {
+				cancel()
+			} else {
+				removed[cwd] = entry
+			}
 			delete(state.entries, cwd)
 		}
+	}
+	positions := make(map[int]int, len(a.st.Workspaces))
+	byCwd := make(map[string][]workspaceGitTarget)
+	for i, target := range targets {
+		positions[target.id] = i
+		byCwd[target.cwd] = append(byCwd[target.cwd], target)
+		if target.nameCwd != target.cwd {
+			byCwd[target.nameCwd] = append(byCwd[target.nameCwd], target)
+		}
+	}
+	if a.workspaceGit == nil {
+		a.workspaceGit = map[int]render.GitStatus{}
+	}
+	if a.workspaceNames == nil {
+		a.workspaceNames = map[int]string{}
+	}
+	if a.workspaceLabels == nil {
+		a.workspaceLabels = map[int]workspaceDirectoryLabel{}
 	}
 	apply := func(updated map[string]gitCwdActivity) {
 		for cwd, entry := range updated {
 			state.entries[cwd] = entry
 		}
-		gs := map[int]render.GitStatus{}
-		names := map[int]workspaceDirectoryLabel{}
-		for _, w := range targets {
-			gs[w.id] = state.entries[w.cwd].git
-			names[w.id] = workspaceDirectoryLabel{w.nameCwd, state.entries[w.nameCwd].name}
+		var selected []workspaceGitTarget
+		if updated == nil {
+			selected = targets
+		} else {
+			for cwd := range updated {
+				selected = append(selected, byCwd[cwd]...)
+			}
 		}
-		previousLabels, previousGit, previousNames := a.workspaceLabels, a.workspaceGit, a.workspaceNames
-		a.workspaceLabels = names
-		a.workspaceGit = map[int]render.GitStatus{}
-		a.workspaceNames = map[int]string{}
-		for i, w := range a.st.Workspaces {
-			a.workspaceGit[i] = gs[w.ID]
-			name := names[w.ID].name
+		for _, t := range selected {
+			i, ok := positions[t.id]
+			if !ok || i >= len(a.st.Workspaces) {
+				continue
+			}
+			w := a.st.Workspaces[i]
+			if !a.currentWorkspaceGitTarget(w, t) {
+				continue
+			}
+			git := state.entries[t.cwd].git
+			label := workspaceDirectoryLabel{t.nameCwd, state.entries[t.nameCwd].name}
+			name := label.name
+			if name == "" {
+				name = filepath.Base(w.Cwd)
+			}
 			if w.CustomName {
 				name = w.Name
 			}
@@ -196,53 +286,60 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 					}
 				}
 			}
-			a.workspaceNames[i] = name
+			if a.workspaceGit[i] != git || a.workspaceLabels[w.ID] != label || a.workspaceNames[i] != name {
+				a.dirty = true
+			}
+			a.workspaceGit[i], a.workspaceLabels[w.ID], a.workspaceNames[i] = git, label, name
+			a.refreshStaleWorktreeAt(i, t, state.entries)
 		}
-		a.gitPending = false
-		a.refreshStaleWorktrees(targets, state.entries)
-		previews := a.workspacePreviewLines()
-		if !reflect.DeepEqual(previews, a.workspacePreviews) {
-			a.workspacePreviews = previews
-			a.dirty = true
-		}
-		if !reflect.DeepEqual(previousLabels, a.workspaceLabels) || !reflect.DeepEqual(previousGit, a.workspaceGit) || !reflect.DeepEqual(previousNames, a.workspaceNames) {
-			a.dirty = true
-		}
+		a.gitPending = len(state.running) > 0
 	}
+	previews := a.workspacePreviewLines()
+	if !reflect.DeepEqual(previews, a.workspacePreviews) {
+		a.workspacePreviews = previews
+		a.dirty = true
+	}
+
 	if len(pending) == 0 && len(removed) == 0 {
 		apply(nil)
 		return
 	}
-	a.gitPending = true
-	go func() {
-		for _, entry := range removed {
-			entry.watch.Close()
-		}
-		type result struct {
-			cwd   string
-			entry gitCwdActivity
-		}
-		results := make(chan result, len(pending))
-		for cwd, entry := range pending {
-			go func(cwd string, entry gitCwdActivity) {
-				if entry.loaded && entry.ready {
-					var ok bool
-					entry, ok = unchangedGitActivity(entry)
-					if ok {
-						results <- result{cwd, entry}
-						return
-					}
+	a.gitPending = len(state.running) > 0 || len(pending) > 0
+	for _, entry := range removed {
+		entry.watch.Close()
+	}
+	for cwd, entry := range pending {
+		ctx, cancel := context.WithCancel(context.Background())
+		state.running[cwd] = cancel
+		go func(ctx context.Context, cancel context.CancelFunc, cwd string, entry gitCwdActivity) {
+			defer cancel()
+			if entry.loaded && entry.ready {
+				var ok bool
+				entry, ok = unchangedGitActivity(entry)
+				if !ok {
+					entry = readGitActivity(ctx, cwd, entry)
 				}
-				results <- result{cwd, readGitActivity(cwd, entry)}
-			}(cwd, entry)
-		}
-		updated := map[string]gitCwdActivity{}
-		for range pending {
-			r := <-results
-			updated[r.cwd] = r.entry
-		}
-		a.Do(func() { apply(updated) })
-	}()
+			} else {
+				entry = readGitActivity(ctx, cwd, entry)
+			}
+			if ctx.Err() != nil {
+				entry.watch.Close()
+			}
+			a.Do(func() {
+				delete(state.running, cwd)
+				if a.gitActivity != state {
+					entry.watch.Close()
+					return
+				}
+				if current, ok := state.entries[cwd]; !ok || current.watch != entry.watch || ctx.Err() != nil {
+					entry.watch.Close()
+					apply(nil)
+					return
+				}
+				apply(map[string]gitCwdActivity{cwd: entry})
+			})
+		}(ctx, cancel, cwd, entry)
+	}
 }
 
 func (a *App) workspaceNameCwd(w *model.Workspace) string {
@@ -279,10 +376,10 @@ func (a *App) WorkspaceLabel(index int) string {
 	}
 	return filepath.Base(cwd)
 }
-func readWorkspaceGit(cwd string) render.GitStatus {
+func readWorkspaceGit(ctx context.Context, cwd string) render.GitStatus {
 	var g render.GitStatus
 	run := func(args ...string) string {
-		cmd := childenv.Command("git", append([]string{"-C", cwd}, args...)...)
+		cmd := childenv.CommandContextGroup(ctx, "git", append([]string{"-C", cwd}, args...)...)
 		b, err := cmd.Output()
 		if err != nil {
 			return ""
@@ -295,12 +392,12 @@ func readWorkspaceGit(cwd string) render.GitStatus {
 		g.Ahead, _ = strconv.Atoi(counts[0])
 		g.Behind, _ = strconv.Atoi(counts[1])
 	}
-	g.Added, g.Deleted = readWorkspaceGitDiff(cwd)
+	g.Added, g.Deleted = readWorkspaceGitDiff(ctx, cwd)
 	return g
 }
 
-func readWorkspaceGitDiff(cwd string) (added, deleted int) {
-	output, err := gitActivityOutput(cwd, "diff", "--numstat", "HEAD", "--")
+func readWorkspaceGitDiff(ctx context.Context, cwd string) (added, deleted int) {
+	output, err := gitActivityOutput(ctx, cwd, "diff", "--numstat", "HEAD", "--")
 	if err != nil {
 		return 0, 0
 	}

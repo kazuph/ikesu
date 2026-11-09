@@ -58,6 +58,7 @@ func TestG2GitLeftRightMenuOrderAndSectionAction(t *testing.T) {
 	a.draw()
 	y := sidebarCardY(a, 0)
 	a.openWorkspaceMenu(3, y, 0)
+	waitWorktreeUI(t, a, func() bool { return a.menu != nil && menuIndex(a, "New worktree") >= 0 })
 	labels := func() []string {
 		var out []string
 		for _, it := range a.menu.m.Items {
@@ -73,6 +74,7 @@ func TestG2GitLeftRightMenuOrderAndSectionAction(t *testing.T) {
 	a.menu = nil
 	sidebarEvent(a, input.KindMouseClick, 3, y)
 	sidebarEvent(a, input.KindMouseRelease, 3, y)
+	waitWorktreeUI(t, a, func() bool { return a.menu != nil && menuIndex(a, "New worktree") >= 0 })
 	if a.menu == nil || a.menu.kind != menuWorkspace || !reflect.DeepEqual(labels(), right) {
 		t.Fatal("Git left/right contract", a.menu)
 	}
@@ -102,16 +104,20 @@ func TestG2GitLeftRightMenuOrderAndSectionAction(t *testing.T) {
 	y = sidebarCardY(a, 0)
 	sidebarEvent(a, input.KindMouseClick, 3, y+1)
 	sidebarEvent(a, input.KindMouseRelease, 3, y+1)
+	waitWorktreeUI(t, a, func() bool { return a.menu != nil && menuIndex(a, "New worktree") >= 0 })
 	if a.menu == nil || a.menu.kind != menuWorkspace || !reflect.DeepEqual(labels(), right) || a.sidebarGesture != nil {
 		t.Fatal("slim Git row must open the observed workspace menu", a.menu)
 	}
 	a.openWorkspaceMenu(3, y, 0)
 	activateLabel(t, a, "New worktree")
+	waitWorktreeUI(t, a, func() bool { return a.dialog != nil })
 	*a.dialog.input = "feat/g2-matrix"
 	d := a.dialog
 	a.dialog = nil
 	d.run(a)
+	waitWorktreeUI(t, a, func() bool { return len(a.st.Workspaces) == 2 })
 	a.openWorkspaceMenu(3, y, 1)
+	waitWorktreeUI(t, a, func() bool { return idx("Delete worktree checkout...") >= 0 })
 	if idx("Delete worktree checkout...") < 0 || idx("Delete worktree checkout...") >= idx("Duplicate") {
 		t.Fatal(labels())
 	}

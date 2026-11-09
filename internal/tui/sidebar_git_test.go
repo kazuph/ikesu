@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/render"
@@ -46,7 +47,7 @@ func TestG2GitNumstatBinaryAndLinkedName(t *testing.T) {
 	if e := os.WriteFile(filepath.Join(repo, "binary"), []byte{0, 2, 3}, 0600); e != nil {
 		t.Fatal(e)
 	}
-	got := readWorkspaceGit(repo)
+	got := readWorkspaceGit(context.Background(), repo)
 	if got.Branch != "main" || got.Added != 3 || got.Deleted != 2 {
 		t.Fatal(got)
 	}
@@ -75,7 +76,7 @@ func TestG2GitAheadBehindActualRepository(t *testing.T) {
 		sidebarGit(t, repo, "commit", "--allow-empty", "-qm", msg)
 	}
 	sidebarGit(t, repo, "branch", "--set-upstream-to=upstream", "main")
-	g := readWorkspaceGit(repo)
+	g := readWorkspaceGit(context.Background(), repo)
 	if g.Ahead != 2 || g.Behind != 1 {
 		t.Fatal(g)
 	}
@@ -100,7 +101,7 @@ func TestG2WorktreeChildCompactParentGitDetailsActualRepository(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(child, "file"), []byte("base\nchild1\nchild2\nchild3\nchild4\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	parentGit, childGit := readWorkspaceGit(repo), readWorkspaceGit(child)
+	parentGit, childGit := readWorkspaceGit(context.Background(), repo), readWorkspaceGit(context.Background(), child)
 	if parentGit.Added != 2 || childGit.Added != 4 {
 		t.Fatal(parentGit, childGit)
 	}
