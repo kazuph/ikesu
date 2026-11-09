@@ -75,6 +75,7 @@ type Pane struct {
 	wakeFD              int
 	ptyFD               int // captured before publishing the pane; Close may race with readers
 	done                chan struct{}
+	exitOnce            sync.Once
 	pumpDone            chan struct{}
 	importedPID         int
 	shellStart          string
@@ -452,7 +453,7 @@ func (p *Pane) pumpEmuToPTY() {
 }
 func (p *Pane) waitExit() {
 	defer p.endProcessWatch()
-	defer close(p.done)
+	defer p.closeExited()
 	_ = p.cmd.Wait()
 	if p.retired.Load() {
 		return
@@ -465,6 +466,8 @@ func (p *Pane) waitExit() {
 	}
 	p.notify(EventExited)
 }
+
+func (p *Pane) closeExited() { p.exitOnce.Do(func() { close(p.done) }) }
 
 func (p *Pane) notify(k EventKind) {
 	select {

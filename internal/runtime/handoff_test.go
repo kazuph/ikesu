@@ -13,6 +13,51 @@ import (
 	"time"
 )
 
+func TestHandoffImportedPaneExitClosesExited(t *testing.T) {
+	teststate.Lock(t)
+	old, next := NewSupervisor(), NewSupervisor()
+	defer old.KillAll()
+	defer next.KillAll()
+	_, err := old.SpawnWith(1, t.TempDir(), 80, 24, nil, []string{"/bin/sh", "-c", "read line"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	states, files, err := old.PauseHandoff()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := next.ImportHandoff(states, files); err != nil {
+		t.Fatal(err)
+	}
+	old.ReleaseHandoff()
+	next.StartImported()
+	p := next.Get(1)
+	select {
+	case <-p.Exited():
+		t.Fatal("pause closed Exited")
+	default:
+	}
+	next.Input(1, []byte("exit\n"))
+	select {
+	case <-p.Exited():
+	case <-time.After(2 * time.Second):
+		t.Fatal("imported pane exit did not close Exited")
+	}
+	if !p.Snapshot().Dead {
+		t.Fatal("exited pane is not dead")
+	}
+	for {
+		select {
+		case event := <-next.Events():
+			if event.Kind == EventExited && event.Pane == p.ID {
+				return
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("imported pane exit event missing")
+		}
+	}
+}
+
 func TestHandoffActualPTYMouseAndExit(t *testing.T) {
 	for _, tc := range []struct {
 		name, modes string

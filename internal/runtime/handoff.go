@@ -54,6 +54,7 @@ func (p *Pane) startPumpWithTiming(batchWait, streamGap time.Duration) {
 				_ = p.guard.Close()
 			}
 			p.notify(EventExited)
+			p.closeExited()
 		}
 	}()
 }
@@ -162,6 +163,9 @@ func (s *Supervisor) ImportHandoff(states []PaneTransfer, files []*os.File) erro
 		p.mouseTracking, p.mouseMotion, p.appCursorKeys = q.MouseTracking, q.MouseMotion, q.AppCursorKeys
 		p.cursor, p.scrollbarVisible, p.dead = q.Cursor, q.ScrollbarVisible, q.Dead
 		p.importedExited.Store(q.Dead)
+		if q.Dead {
+			p.closeExited()
+		}
 		p.revision.Store(q.Revision)
 		if v.Guard != nil {
 			p.guard = guard.Import(*v.Guard)
