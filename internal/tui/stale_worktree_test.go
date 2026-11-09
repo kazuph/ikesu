@@ -13,6 +13,37 @@ import (
 	"github.com/kazuph/ikesu/internal/worktree"
 )
 
+func TestStaleGitResultDoesNotRestorePreviousCheckout(t *testing.T) {
+	teststate.Lock(t)
+	root := t.TempDir()
+	oldDir, newDir := filepath.Join(root, "old"), filepath.Join(root, "new")
+	for _, dir := range []string{oldDir, newDir} {
+		if err := os.Mkdir(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		sidebarGit(t, dir, "init", "-q")
+	}
+	oldSource, err := worktree.Source(oldDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newSource, err := worktree.Source(newDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := specRuntimeApp(t)
+	w := a.st.Workspaces[0]
+	w.Cwd = oldDir
+	target := a.captureWorkspaceGitTarget(w)
+	target.nameCwd = oldDir + "/sub"
+	w.Cwd = newDir
+	w.Worktree = worktree.Metadata(newSource, newDir)
+	a.refreshStaleWorktrees([]workspaceGitTarget{target}, map[string]gitCwdActivity{target.nameCwd: {loaded: true, source: oldSource}})
+	if w.Cwd != newDir || w.Worktree.RepoKey != newSource.RepoKey {
+		t.Fatalf("old result replaced the new checkout: cwd=%q metadata=%+v", w.Cwd, w.Worktree)
+	}
+}
+
 // A reused space keeps the worktree metadata of where it was created; once its
 // first pane's shell lives in another checkout the space must follow it.
 func TestStaleWorktreeMetadataFollowsTheFirstPaneShell(t *testing.T) {
@@ -35,8 +66,10 @@ func TestStaleWorktreeMetadataFollowsTheFirstPaneShell(t *testing.T) {
 			a := specRuntimeApp(t)
 			copied := *old
 			a.st.Workspaces[0].Worktree = &copied
-			id := a.st.Workspaces[0].ID
-			a.refreshStaleWorktrees([]workspaceGitTarget{{id, old.CheckoutPath, c.nameCwd}}, map[string]gitCwdActivity{c.nameCwd: c.entry})
+			a.st.Workspaces[0].Cwd = old.CheckoutPath
+			target := a.captureWorkspaceGitTarget(a.st.Workspaces[0])
+			target.nameCwd = c.nameCwd
+			a.refreshStaleWorktrees([]workspaceGitTarget{target}, map[string]gitCwdActivity{c.nameCwd: c.entry})
 			got := a.st.Workspaces[0].Worktree
 			if (got == nil) != (c.want == nil) || got != nil && *got != *c.want {
 				t.Fatalf("worktree=%+v want %+v", got, c.want)
@@ -59,9 +92,10 @@ func TestStaleWorktreeRoundTripMovesTheSpaceDirectory(t *testing.T) {
 	srcB := api.WorktreeSourceInfo{RepoKey: filepath.Join(root, "b/.git"), RepoName: "b", RepoRoot: filepath.Join(root, "b"), SourceCheckoutPath: filepath.Join(root, "b")}
 	a.st.Workspaces[0].Cwd = srcA.SourceCheckoutPath
 	a.st.Workspaces[0].Worktree = worktree.Metadata(srcA, srcA.SourceCheckoutPath)
-	id := a.st.Workspaces[0].ID
 	for _, step := range []api.WorktreeSourceInfo{srcB, srcA} {
-		a.refreshStaleWorktrees([]workspaceGitTarget{{id, a.st.Workspaces[0].Cwd, step.SourceCheckoutPath}}, map[string]gitCwdActivity{step.SourceCheckoutPath: {loaded: true, source: step}})
+		target := a.captureWorkspaceGitTarget(a.st.Workspaces[0])
+		target.nameCwd = step.SourceCheckoutPath
+		a.refreshStaleWorktrees([]workspaceGitTarget{target}, map[string]gitCwdActivity{step.SourceCheckoutPath: {loaded: true, source: step}})
 		ws := a.st.Workspaces[0]
 		if ws.Cwd != step.SourceCheckoutPath || ws.Worktree == nil || ws.Worktree.RepoKey != step.RepoKey || ws.Worktree.CheckoutPath != step.SourceCheckoutPath {
 			t.Fatalf("after moving to %s: cwd=%q worktree=%+v", step.RepoName, ws.Cwd, ws.Worktree)

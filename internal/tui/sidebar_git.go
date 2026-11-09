@@ -7,6 +7,7 @@ import (
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/platform"
 	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/runtime"
 	"github.com/kazuph/ikesu/internal/worktree"
 	"path/filepath"
 	"reflect"
@@ -16,8 +17,45 @@ import (
 )
 
 type workspaceGitTarget struct {
-	id           int
-	cwd, nameCwd string
+	id             int
+	cwd, nameCwd   string
+	generation     string
+	paneID         int
+	paneGeneration string
+	pane           *runtime.Pane
+}
+
+func (a *App) captureWorkspaceGitTarget(w *model.Workspace) workspaceGitTarget {
+	t := workspaceGitTarget{id: w.ID, cwd: w.Cwd, nameCwd: a.workspaceNameCwd(w), generation: w.Generation}
+	if len(w.Tabs) > 0 {
+		ids := w.Tabs[0].Layout.PaneIDs()
+		if len(ids) > 0 {
+			t.paneID = ids[0]
+			t.paneGeneration = a.st.PaneGeneration(t.paneID)
+			t.pane = a.sup.Get(t.paneID)
+		}
+	}
+	return t
+}
+
+func (a *App) currentWorkspaceGitTarget(w *model.Workspace, t workspaceGitTarget) bool {
+	if w.ID != t.id || w.Generation != t.generation || w.Cwd != t.cwd {
+		return false
+	}
+	var paneID int
+	if len(w.Tabs) > 0 {
+		ids := w.Tabs[0].Layout.PaneIDs()
+		if len(ids) > 0 {
+			paneID = ids[0]
+		}
+	}
+	if paneID != t.paneID || a.st.PaneGeneration(paneID) != t.paneGeneration || a.sup.Get(paneID) != t.pane {
+		return false
+	}
+	if t.pane != nil {
+		return a.workspaceNameCwd(w) == t.nameCwd
+	}
+	return true
 }
 
 // refreshStaleWorktrees re-anchors a space whose first pane's shell has left
@@ -34,7 +72,7 @@ func (a *App) refreshStaleWorktrees(targets []workspaceGitTarget, entries map[st
 			continue // no live shell directory beyond the space's directory
 		}
 		i, ok := index[t.id]
-		if !ok {
+		if !ok || !a.currentWorkspaceGitTarget(a.st.Workspaces[i], t) {
 			continue
 		}
 		info := a.st.Workspaces[i].Worktree
@@ -131,8 +169,9 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 	var targets []workspaceGitTarget
 	wanted := map[string]bool{}
 	for _, w := range a.st.Workspaces {
-		nameCwd := a.workspaceNameCwd(w)
-		targets = append(targets, workspaceGitTarget{w.ID, w.Cwd, nameCwd})
+		target := a.captureWorkspaceGitTarget(w)
+		nameCwd := target.nameCwd
+		targets = append(targets, target)
 		wanted[w.Cwd], wanted[nameCwd] = true, true
 	}
 	state := a.gitActivity
@@ -158,17 +197,33 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 		}
 		gs := map[int]render.GitStatus{}
 		names := map[int]workspaceDirectoryLabel{}
-		for _, w := range targets {
-			gs[w.id] = state.entries[w.cwd].git
-			names[w.id] = workspaceDirectoryLabel{w.nameCwd, state.entries[w.nameCwd].name}
+		valid := make([]workspaceGitTarget, 0, len(targets))
+		for _, t := range targets {
+			for _, w := range a.st.Workspaces {
+				if a.currentWorkspaceGitTarget(w, t) {
+					gs[t.id] = state.entries[t.cwd].git
+					names[t.id] = workspaceDirectoryLabel{t.nameCwd, state.entries[t.nameCwd].name}
+					valid = append(valid, t)
+					break
+				}
+			}
 		}
 		previousLabels, previousGit, previousNames := a.workspaceLabels, a.workspaceGit, a.workspaceNames
 		a.workspaceLabels = names
 		a.workspaceGit = map[int]render.GitStatus{}
 		a.workspaceNames = map[int]string{}
 		for i, w := range a.st.Workspaces {
-			a.workspaceGit[i] = gs[w.ID]
+			git, ok := gs[w.ID]
+			if !ok {
+				if label, exists := previousLabels[w.ID]; exists {
+					names[w.ID] = label
+				}
+			}
+			a.workspaceGit[i] = git
 			name := names[w.ID].name
+			if !ok && name == "" {
+				name = filepath.Base(w.Cwd)
+			}
 			if w.CustomName {
 				name = w.Name
 			}
@@ -199,7 +254,7 @@ func (a *App) refreshWorkspaceGit(now time.Time) {
 			a.workspaceNames[i] = name
 		}
 		a.gitPending = false
-		a.refreshStaleWorktrees(targets, state.entries)
+		a.refreshStaleWorktrees(valid, state.entries)
 		previews := a.workspacePreviewLines()
 		if !reflect.DeepEqual(previews, a.workspacePreviews) {
 			a.workspacePreviews = previews
