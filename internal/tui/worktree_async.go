@@ -67,6 +67,7 @@ func (a *App) ExecuteWorktree(req WorktreeRequest) (result WorktreeResult, err e
 			return
 		}
 		var w *model.Workspace
+		explicitCwd := req.Cwd != ""
 		if req.WorkspaceID != nil {
 			ref, ok := api.ParseWorkspaceRef(*req.WorkspaceID)
 			if !ok {
@@ -85,6 +86,13 @@ func (a *App) ExecuteWorktree(req WorktreeRequest) (result WorktreeResult, err e
 			}
 		} else if req.Cwd == "" {
 			w = a.st.ActiveWorkspace()
+		} else {
+			for _, candidate := range a.st.Workspaces {
+				if worktree.SamePath(candidate.Cwd, req.Cwd) || candidate.Worktree != nil && worktree.Within(candidate.Cwd, candidate.Worktree.CheckoutPath) && worktree.Within(req.Cwd, candidate.Worktree.CheckoutPath) {
+					w = candidate
+					break
+				}
+			}
 		}
 		if w != nil {
 			if req.ExpectedGeneration != "" && (w.Generation != req.ExpectedGeneration || w.Cwd != req.ExpectedCwd) {
@@ -93,7 +101,9 @@ func (a *App) ExecuteWorktree(req WorktreeRequest) (result WorktreeResult, err e
 			}
 			t := a.captureWorkspaceGitTarget(w)
 			target = &t
-			req.Cwd = w.Cwd
+			if !explicitCwd {
+				req.Cwd = w.Cwd
+			}
 			if req.Operation == "create" || req.Operation == "remove" {
 				key := workspaceIdentity{id: w.ID, generation: w.Generation}
 				if a.worktreePending == nil {

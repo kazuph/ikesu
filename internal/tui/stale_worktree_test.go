@@ -110,6 +110,17 @@ func TestWorktreeDeleteDefersReanchorUntilGitFinishes(t *testing.T) {
 
 func TestWorktreeCreateDefersReanchorUntilGitFinishes(t *testing.T) {
 	teststate.Lock(t)
+	for _, explicit := range []bool{false, true} {
+		name := "workspace_id"
+		if explicit {
+			name = "explicit_cwd"
+		}
+		t.Run(name, func(t *testing.T) { testWorktreeCreateDefersReanchor(t, explicit) })
+	}
+}
+
+func testWorktreeCreateDefersReanchor(t *testing.T, explicit bool) {
+	t.Helper()
 	a, repo := worktreeApp(t)
 	if err := a.StartInitialPane(); err != nil {
 		t.Fatal(err)
@@ -148,6 +159,11 @@ func TestWorktreeCreateDefersReanchorUntilGitFinishes(t *testing.T) {
 	req, ok := a.workspaceWorktreeRequest(0, "create")
 	if !ok {
 		t.Fatal("workspace missing")
+	}
+	if explicit {
+		req.WorkspaceID = nil
+		req.Cwd = original
+		req.ExpectedGeneration, req.ExpectedCwd = "", ""
 	}
 	branch := "create-during-move"
 	req.Branch = &branch
