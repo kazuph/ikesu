@@ -112,7 +112,7 @@ class MainActivity : Activity() {
         render()
     }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); receiveIntent(intent); render() }
-    override fun onDestroy() { unregisterReceiver(receiver); super.onDestroy() }
+    override fun onDestroy() { viewer?.dismiss(); unregisterReceiver(receiver); super.onDestroy() }
     private fun receiveIntent(intent: Intent) {
         if (intent.hasExtra("text_scale")) { textScale = TextScale.clamp(intent.getFloatExtra("text_scale", 1f)); appliedScale = textScale; getSharedPreferences("ui", MODE_PRIVATE).edit().putFloat("textScale", textScale).apply() }
         val url = intent.getStringExtra("url")
@@ -337,6 +337,11 @@ class MainActivity : Activity() {
             setOnClickListener { action() }
         }
     }
+    private var viewer: ImageViewerDialog? = null
+    private fun showViewer(bitmap: android.graphics.Bitmap) {
+        viewer?.dismiss()
+        viewer = ImageViewerDialog(this, bitmap).also { it.setOnDismissListener { viewer = null }; it.show() }
+    }
     private fun addImage(encoded: String) {
         if (encoded.isEmpty()) return
         try {
@@ -346,7 +351,7 @@ class MainActivity : Activity() {
             var sample = 1
             while (bounds.outWidth / sample > 1600 || bounds.outHeight / sample > 1600) sample *= 2
             val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }) ?: return
-            layout.addView(ImageView(this).apply { setImageBitmap(bitmap); adjustViewBounds = true })
+            layout.addView(ImageView(this).apply { setImageBitmap(bitmap); adjustViewBounds = true; setOnClickListener { showViewer(bitmap) } })
         } catch (_: Exception) { /* Display failures do not prevent answering. */ }
     }
     private fun renderSettings() {

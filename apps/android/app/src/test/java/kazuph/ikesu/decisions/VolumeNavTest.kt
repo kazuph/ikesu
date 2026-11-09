@@ -82,3 +82,38 @@ class UrlFinderTest {
     @Test fun twoUrls() = assertEquals(listOf("http://a.example/x", "https://b.example/y"), urls("見て http://a.example/x と、https://b.example/y。"))
     @Test fun noScheme() = assertEquals(emptyList<String>(), urls("example.com と https:// だけ"))
 }
+
+class ImageViewerMathTest {
+    @Test fun scaleRange() {
+        assertEquals(1f, ZoomMath.clampScale(0.2f), 0f)
+        assertEquals(6f, ZoomMath.clampScale(10f), 0f)
+        assertEquals(3f, ZoomMath.clampScale(3f), 0f)
+        assertEquals(1f, ZoomMath.clampScale(Float.NaN), 0f)
+    }
+    @Test fun panLimits() {
+        assertEquals(0f, ZoomMath.maxOffset(1000f, 1f, 1000f), 0f)
+        assertEquals(500f, ZoomMath.maxOffset(1000f, 2f, 1000f), 0f)
+        assertEquals(0f, ZoomMath.maxOffset(400f, 2f, 1000f), 0f)
+        assertEquals(500f, ZoomMath.clampOffset(900f, 1000f, 2f, 1000f), 0f)
+        assertEquals(-500f, ZoomMath.clampOffset(-900f, 1000f, 2f, 1000f), 0f)
+        assertEquals(120f, ZoomMath.clampOffset(120f, 1000f, 2f, 1000f), 0f)
+        assertEquals(0f, ZoomMath.clampOffset(50f, 1000f, 1f, 1000f), 0f)
+    }
+    @Test fun doubleTapToggle() {
+        assertEquals(2.5f, ZoomMath.toggle(1f), 0f)
+        assertEquals(1f, ZoomMath.toggle(2.5f), 0f)
+        assertEquals(1f, ZoomMath.toggle(6f), 0f)
+    }
+    @Test fun zoomAboutKeepsFocusPoint() {
+        // focus at +100 from center with no pan: after 1x->2x the point under the finger stays put.
+        assertEquals(-100f, ZoomMath.zoomAbout(0f, 100f, 1f, 2f), 0f)
+        assertEquals(0f, ZoomMath.zoomAbout(0f, 0f, 1f, 2f), 0f)
+    }
+    @Test fun closeEvents() {
+        assertEquals(true, ViewerState.open(true))
+        assertEquals(false, ViewerState.after(true, ViewerEvent.TAP, false))
+        assertEquals(true, ViewerState.after(true, ViewerEvent.TAP, true))
+        assertEquals(false, ViewerState.after(true, ViewerEvent.BACK, true))
+        assertEquals(false, ViewerState.after(true, ViewerEvent.VOLUME_UP_LONG, false))
+    }
+}
