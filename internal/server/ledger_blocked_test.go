@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/dispatch"
 	"github.com/kazuph/ikesu/internal/teststate"
 	"github.com/kazuph/ikesu/internal/tui"
@@ -137,5 +138,62 @@ func TestLedgerFailedWriteIsNotExposedAsSaved(t *testing.T) {
 	s.ledgerWG.Wait()
 	if row, ok := s.ledgerEntry(1); ok {
 		t.Fatalf("failed write exposed: %+v", row)
+	}
+}
+
+func TestServerShutdownDrainsLockedLedgerWrite(t *testing.T) {
+	teststate.Lock(t)
+	dir, done := startTestServer(t)
+	stopped := false
+	defer func() {
+		if !stopped {
+			stopServer(t, dir, done)
+		}
+	}()
+	st, err := dispatch.Open(dispatch.DBPath("test"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	writer, err := sqlite3.Open(dispatch.DBPath("test"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Close()
+	if err := writer.Exec("BEGIN IMMEDIATE"); err != nil {
+		t.Fatal(err)
+	}
+	locked := true
+	defer func() {
+		if locked {
+			_ = writer.Exec("ROLLBACK")
+		}
+	}()
+	id := "shutdown-session"
+	apiOK(t, dir, api.MethodPaneReportAgent, api.PaneReportAgentParams{PaneID: "p1", Agent: "codex", State: "idle", Source: "test", SessionID: &id}, nil)
+	apiOK(t, dir, api.MethodServerStop, api.EmptyParams{}, nil)
+	if err := writer.Exec("COMMIT"); err != nil {
+		t.Fatal(err)
+	}
+	locked = false
+	select {
+	case code := <-done:
+		stopped = true
+		if code != 0 {
+			t.Fatalf("server exit %d", code)
+		}
+	case <-time.After(4 * time.Second):
+		t.Fatal("server did not drain ledger and exit")
+	}
+	st, err = dispatch.Open(dispatch.DBPath("test"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	rows, err := st.PaneSessions("test")
+	if err != nil || len(rows) != 1 || rows[0].SessionID != id {
+		t.Fatalf("ledger after shutdown: %+v %v", rows, err)
 	}
 }
