@@ -96,6 +96,7 @@ func TestCancelReapedLeaderWithSurvivingChild(t *testing.T) {
 	t.Parallel()
 	for _, handoff := range []bool{false, true} {
 		t.Run(fmt.Sprintf("handoff=%t", handoff), func(t *testing.T) {
+			t.Parallel()
 			childFile := filepath.Join(t.TempDir(), "child-pid")
 			j := startFaultJobScript(t, func(fifo string) string {
 				return fmt.Sprintf("/bin/sh -c 'trap \"\" TERM; printf \"READY\\n\"; read value < \"$1\"' child %q & echo $! > %q; wait", fifo, childFile)

@@ -9,6 +9,7 @@ import (
 	"golang.org/x/sys/unix"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -142,10 +143,38 @@ func TestLiveHandoffDecisionsPluginsAgentAndGuard(t *testing.T) {
 	t.Logf("pending %s retained and answered; %s expired; plugins first+second; guard marker unchanged=%s", pending.Decision.DecisionID, expiry.Decision.DecisionID, after)
 }
 
-// This negative path must wait for the specified 30-second handoff deadline.
+// A test-only build exercises the deadline without waiting 30 seconds.
 func TestLiveHandoffUnresponsiveImporterRetainsPane(t *testing.T) {
 	t.Parallel()
-	s := start(t)
+	buildDir := t.TempDir()
+	sourcePath := filepath.Join(repoRoot(), "internal/server/handoff.go")
+	source, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const original = "const handoffWait = 30 * time.Second"
+	if strings.Count(string(source), original) != 1 {
+		t.Fatal("handoff deadline declaration changed")
+	}
+	shortSource := filepath.Join(buildDir, "handoff.go")
+	if err := os.WriteFile(shortSource, []byte(strings.Replace(string(source), original, "const handoffWait = time.Second", 1)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	overlay, err := json.Marshal(map[string]map[string]string{"Replace": {sourcePath: shortSource}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	overlayPath := filepath.Join(buildDir, "overlay.json")
+	if err := os.WriteFile(overlayPath, overlay, 0600); err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(buildDir, "ikesu")
+	build := exec.Command("go", "build", "-overlay", overlayPath, "-o", binary, "./cmd/ikesu")
+	build.Dir = repoRoot()
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build short-deadline test binary: %v %s", err, out)
+	}
+	s := startVersionMode(t, nil, false, binary, "")
 	s.waitFor("shell", 15*time.Second, func(tx string) bool { return strings.Contains(tx, "❯") })
 	root := t.TempDir()
 	importer := filepath.Join(root, "importer")

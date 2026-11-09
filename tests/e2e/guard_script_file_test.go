@@ -19,6 +19,7 @@ func TestScriptFileDecisionWithRealSession(t *testing.T) {
 	for _, agent := range []string{"codex", "claude"} {
 		for _, choice := range []string{"approve", "reject", "expired"} {
 			t.Run(agent+"/"+choice, func(t *testing.T) {
+				t.Parallel()
 				cfg := filepath.Join(t.TempDir(), "config.toml")
 				timeout := "300"
 				if choice == "expired" {
