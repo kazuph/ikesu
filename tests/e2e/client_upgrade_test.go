@@ -354,11 +354,15 @@ func TestClientUpgradeWithLoadedServer(t *testing.T) {
 	s := startVersionMode(t, nil, false, oldBinary, oldBinary)
 	s.waitFor("old client", 15*time.Second, func(text string) bool { return strings.Contains(text, "ikesu v"+oldVersion) })
 	const paneCount = 12
+	var loadPanes []string
 	for i := 0; i < paneCount; i++ {
 		var workspace api.WorkspaceCreatedResult
 		s.rpc(api.MethodWorkspaceCreate, api.WorkspaceCreateParams{Focus: false}, &workspace)
 		pane := workspace.RootPane.PaneID
+		loadPanes = append(loadPanes, pane)
 		s.rpc(api.MethodPaneSendInput, api.PaneSendInputParams{PaneID: pane, Text: "yes 'handoff-load-output-0123456789' | head -n 2000; printf 'LOAD_%s\\n' COMPLETE", Keys: []string{"enter"}}, nil)
+	}
+	for _, pane := range loadPanes {
 		ms := uint64(15000)
 		s.rpc(api.MethodPaneWaitForOutput, api.PaneWaitForOutputParams{PaneID: pane, Source: "recent", Match: api.OutputMatch{Type: "substring", Value: "LOAD_COMPLETE"}, TimeoutMs: &ms}, nil)
 	}
