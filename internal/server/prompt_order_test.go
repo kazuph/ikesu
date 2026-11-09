@@ -138,7 +138,21 @@ func TestPaneSendInputCapacityPreservesAcceptedOrderAfterPTYDrain(t *testing.T) 
 	_, _ = f.WriteString("go\n")
 	_ = f.Close()
 	want := "first\r" + a + b
-	waitPromptCondition(t, func() bool { info, err := os.Stat(received); return err == nil && info.Size() >= int64(len(want)) })
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		info, statErr := os.Stat(received)
+		if statErr == nil && info.Size() >= int64(len(want)) {
+			break
+		}
+		if time.Now().After(deadline) {
+			size := int64(0)
+			if info != nil {
+				size = info.Size()
+			}
+			t.Fatalf("PTY received %d of %d bytes before the deadline (stat: %v)", size, len(want), statErr)
+		}
+		time.Sleep(time.Millisecond)
+	}
 	data, err := os.ReadFile(received)
 	if err != nil || string(data) != want {
 		t.Fatalf("received %d bytes, want %d ordered bytes: %v", len(data), len(want), err)
