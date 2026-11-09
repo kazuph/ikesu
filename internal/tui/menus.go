@@ -176,8 +176,43 @@ func (a *App) setWorkspaceMenuSection(index int, section model.Section) {
 }
 
 func (a *App) openWorkspaceMenu(x, y, ws int) {
+	if ws < 0 || ws >= len(a.st.Workspaces) {
+		return
+	}
+	req, _ := a.workspaceWorktreeRequest(ws, "source")
+	a.buildWorkspaceMenu(x, y, ws, nil)
+	menu := a.menu
+	a.startWorktree(req, func(result WorktreeResult, err error) {
+		if err != nil || a.menu != menu {
+			return
+		}
+		for i, w := range a.st.Workspaces {
+			if w.ID == menu.wsID && w.Generation == menu.wsGeneration && w.Cwd == req.ExpectedCwd {
+				selected := ""
+				if menu.m.Sel >= 0 && menu.m.Sel < len(menu.m.Items) {
+					selected = menu.m.Items[menu.m.Sel].Label
+				}
+				a.buildWorkspaceMenu(x, y, i, &result.Source)
+				a.menu.justOpened = menu.justOpened
+				for j, item := range a.menu.m.Items {
+					if item.Label == selected && !item.Separator {
+						a.menu.m.Sel = j
+						break
+					}
+				}
+				a.dirty = true
+				return
+			}
+		}
+	})
+}
+
+func (a *App) buildWorkspaceMenu(x, y, ws int, source *api.WorktreeSourceInfo) {
 	items := []render.MenuItem{{Label: "New Claude Code agent"}, {Label: "New Codex agent"}, {Label: "New agy agent"}, {Label: "New grok agent"}, {Label: "New letta agent"}, {Label: "New qwen agent"}, {Separator: true}}
-	wt := a.workspaceWorktreeItems(ws)
+	var wt []render.MenuItem
+	if source != nil {
+		wt = a.workspaceWorktreeItems(ws, *source)
+	}
 	var group []render.MenuItem
 	for _, it := range wt {
 		if it.Label == "Collapse" || it.Label == "Expand" {
@@ -308,16 +343,29 @@ func (a *App) activateMenu(i int) {
 		}
 	case menuWorktree:
 		if i < len(m.worktreePaths) {
-			id := fmt.Sprintf("s%d", a.st.Workspaces[m.ws].ID)
 			path := m.worktreePaths[i]
-			_, err := a.OpenWorktree(api.WorktreeOpenParams{WorkspaceID: &id, Path: &path, Focus: true})
-			if err != nil {
-				a.worktreeError(err)
+			index := -1
+			for j, w := range a.st.Workspaces {
+				if w.ID == m.wsID && w.Generation == m.wsGeneration {
+					index = j
+					break
+				}
 			}
+			if index < 0 {
+				a.worktreeError(fmt.Errorf("workspace no longer exists"))
+				break
+			}
+			req, _ := a.workspaceWorktreeRequest(index, "open")
+			req.Path, req.Focus = &path, true
+			a.startWorktree(req, func(_ WorktreeResult, err error) {
+				if err != nil {
+					a.worktreeError(err)
+				}
+			})
 		}
 	case menuWorkspace:
 		switch m.m.Items[i].Label {
-		case "🎏 HQ", "⭐ favorite", "💼 work", "🏠 personal", "No section":
+		case "🎏 HQ", "⭐ favorite", "💼 work", "🏠 personal", "No section", "New worktree", "Open worktree...", "Delete worktree checkout...", "Move to worktree group", "Collapse", "Expand":
 			index := -1
 			for j, ws := range a.st.Workspaces {
 				if ws.ID == m.wsID && ws.Generation == m.wsGeneration {

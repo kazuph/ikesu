@@ -262,6 +262,8 @@ func (s *Server) dispatch(req *api.Request) (response api.Response) {
 		// reconnect to.
 		go s.app.Do(s.requestRestart)
 		return api.Success(req.ID, api.OkResult{Type: "ok"})
+	case api.MethodWorktreeList, api.MethodWorktreeCreate, api.MethodWorktreeOpen, api.MethodWorktreeRemove:
+		return s.worktreeRequest(req)
 	default:
 		var resp api.Response
 		s.app.Do(func() {

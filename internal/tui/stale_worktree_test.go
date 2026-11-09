@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/model"
@@ -13,15 +14,66 @@ import (
 	"github.com/kazuph/ikesu/internal/worktree"
 )
 
+func TestWorktreeDeleteRechecksWorkspaceAfterGitLookup(t *testing.T) {
+	teststate.Lock(t)
+	a, _ := worktreeApp(t)
+	branch := "delete-check"
+	created, err := executeTestWorktree(t, a, WorktreeRequest{Operation: "create", Branch: &branch})
+	if err != nil {
+		t.Fatal(err)
+	}
+	index, path := created.Outcome.Index, created.Outcome.Worktree.Path
+	req, ok := a.workspaceWorktreeRequest(index, "remove")
+	if !ok {
+		t.Fatal("workspace missing")
+	}
+	result := make(chan error, 1)
+	go func() { _, err := a.ExecuteWorktree(req); result <- err }()
+	readJob := func() appJob {
+		select {
+		case job := <-a.jobs:
+			return job
+		case <-time.After(2 * time.Second):
+			t.Fatal("Git phase did not reach app loop")
+			return appJob{}
+		}
+	}
+	first := readJob()
+	first.fn()
+	close(first.done)
+	beforeDelete := readJob()
+	a.st.Workspaces[index].Cwd = t.TempDir()
+	beforeDelete.fn()
+	close(beforeDelete.done)
+	select {
+	case err := <-result:
+		if err == nil {
+			t.Fatal("stale deletion was accepted")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("stale deletion did not return")
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("checkout was removed after workspace moved: %v", err)
+	}
+}
+
 func TestStaleGitResultDoesNotRestorePreviousCheckout(t *testing.T) {
 	teststate.Lock(t)
-	root := t.TempDir()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	oldDir, newDir := filepath.Join(root, "old"), filepath.Join(root, "new")
 	for _, dir := range []string{oldDir, newDir} {
 		if err := os.Mkdir(dir, 0700); err != nil {
 			t.Fatal(err)
 		}
 		sidebarGit(t, dir, "init", "-q")
+	}
+	oldSub := filepath.Join(oldDir, "sub")
+	if err := os.Mkdir(oldSub, 0700); err != nil {
+		t.Fatal(err)
 	}
 	oldSource, err := worktree.Source(oldDir)
 	if err != nil {
@@ -32,10 +84,24 @@ func TestStaleGitResultDoesNotRestorePreviousCheckout(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := specRuntimeApp(t)
+	if err := a.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	p := a.sup.Get(a.focusedPane())
+	if _, err := p.WriteToPTY([]byte("cd '" + oldSub + "'; printf 'OLD_%s\\n' READY\n")); err != nil {
+		t.Fatal(err)
+	}
+	specWaitText(t, p, "OLD_READY")
 	w := a.st.Workspaces[0]
 	w.Cwd = oldDir
 	target := a.captureWorkspaceGitTarget(w)
-	target.nameCwd = oldDir + "/sub"
+	if target.nameCwd != oldSub {
+		t.Fatalf("first shell cwd=%q, want %q", target.nameCwd, oldSub)
+	}
+	if _, err := p.WriteToPTY([]byte("cd '" + newDir + "'; printf 'NEW_%s\\n' READY\n")); err != nil {
+		t.Fatal(err)
+	}
+	specWaitText(t, p, "NEW_READY")
 	w.Cwd = newDir
 	w.Worktree = worktree.Metadata(newSource, newDir)
 	a.refreshStaleWorktrees([]workspaceGitTarget{target}, map[string]gitCwdActivity{target.nameCwd: {loaded: true, source: oldSource}})
@@ -147,6 +213,7 @@ func TestWorktreeDeleteRefusesAfterTheSpaceMoved(t *testing.T) {
 	app.dialog = nil
 	app.deleteWorktreeDialog(0, false)
 	app.dialog.run(app)
+	waitWorktreeUI(t, app, func() bool { _, err := os.Stat(b1); return os.IsNotExist(err) })
 	if _, err := os.Stat(b1); !os.IsNotExist(err) {
 		t.Fatalf("the checkout the dialog showed must be removed: %v", err)
 	}

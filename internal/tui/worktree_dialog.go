@@ -21,13 +21,21 @@ func (a *App) newWorktreeDialog(index int) {
 	if index < 0 || index >= len(a.st.Workspaces) {
 		return
 	}
-	id := fmt.Sprintf("s%d", a.st.Workspaces[index].ID)
-	src, err := a.WorktreeSource("", &id)
-	if err != nil {
-		a.SetConfigWarning("ikesu worktree actions require a workspace inside a Git work tree.")
-		a.configWarningBanner = true
+	req, ok := a.workspaceWorktreeRequest(index, "source")
+	if !ok {
 		return
 	}
+	a.startWorktree(req, func(result WorktreeResult, err error) {
+		if err != nil {
+			a.SetConfigWarning("ikesu worktree actions require a workspace inside a Git work tree.")
+			a.configWarningBanner = true
+			return
+		}
+		a.showNewWorktreeDialog(req, result.Source)
+	})
+}
+
+func (a *App) showNewWorktreeDialog(req WorktreeRequest, src api.WorktreeSourceInfo) {
 	branch := ""
 	d := &uiDialog{input: &branch, replaceDefault: true, d: render.Dialog{Title: "New worktree", WorktreeCreate: true, Confirm: "create and open", Cancel: "cancel"}}
 	d.changed = func() { d.d.Checkout = filepath.Join(*src.CheckoutPathPrefix, worktree.Slug(branch)) }
@@ -40,35 +48,43 @@ func (a *App) newWorktreeDialog(index int) {
 			a.dialog = d
 			return
 		}
-		_, err := a.CreateWorktree(api.WorktreeCreateParams{WorkspaceID: &id, Branch: &branch, Focus: true})
-		if err != nil {
-			var gitErr *worktree.GitError
-			d.d.Detail = err.Error()
-			if errors.As(err, &gitErr) {
-				d.d.Detail = gitErr.Output
+		create := req
+		chosen := branch
+		create.Operation, create.Branch, create.Focus = "create", &chosen, true
+		a.startWorktree(create, func(_ WorktreeResult, err error) {
+			if err != nil {
+				var gitErr *worktree.GitError
+				d.d.Detail = err.Error()
+				if errors.As(err, &gitErr) {
+					d.d.Detail = gitErr.Output
+				}
+				a.dialog = d
 			}
-			a.dialog = d
-		}
+		})
 	}
 	a.dialog = d
 	a.dirty = true
 }
 
 func (a *App) openWorktreeMenu(index int) {
-	id := fmt.Sprintf("s%d", a.st.Workspaces[index].ID)
-	src, err := a.WorktreeSource("", &id)
-	if err != nil {
-		a.worktreeError(err)
+	req, ok := a.workspaceWorktreeRequest(index, "list")
+	if !ok {
 		return
 	}
-	items, err := a.WorktreeList(src)
-	if err != nil {
-		a.worktreeError(err)
-		return
-	}
-	a.menu = &uiMenu{kind: menuWorktree, ws: index, worktreeItems: items, m: render.Menu{Worktree: true, Total: len(items), Hover: -1, Sel: 0}}
-	a.filterWorktrees()
-	a.dirty = true
+	a.startWorktree(req, func(result WorktreeResult, err error) {
+		if err != nil {
+			a.worktreeError(err)
+			return
+		}
+		for i, w := range a.st.Workspaces {
+			if w.Generation == req.ExpectedGeneration && w.Cwd == req.ExpectedCwd && fmt.Sprintf("s%d", w.ID) == *req.WorkspaceID {
+				a.menu = &uiMenu{kind: menuWorktree, ws: i, wsID: w.ID, wsGeneration: w.Generation, worktreeItems: result.Items, m: render.Menu{Worktree: true, Total: len(result.Items), Hover: -1, Sel: 0}}
+				a.filterWorktrees()
+				a.dirty = true
+				return
+			}
+		}
+	})
 }
 
 func (a *App) deleteWorktreeDialog(index int, force bool) {
@@ -76,7 +92,7 @@ func (a *App) deleteWorktreeDialog(index int, force bool) {
 		return
 	}
 	ws := a.st.Workspaces[index]
-	id, shown := ws.ID, ws.Cwd
+	id, shown, generation := ws.ID, ws.Cwd, ws.Generation
 	title := "Delete worktree checkout?"
 	detail := ws.Cwd
 	if force {
@@ -89,7 +105,7 @@ func (a *App) deleteWorktreeDialog(index int, force bool) {
 	}
 	a.dialog = &uiDialog{d: dialog, run: func(a *App) {
 		for i, w := range a.st.Workspaces {
-			if w.ID != id {
+			if w.ID != id || w.Generation != generation {
 				continue
 			}
 			// The space follows its first pane's shell, so it may point at
@@ -98,10 +114,13 @@ func (a *App) deleteWorktreeDialog(index int, force bool) {
 				a.worktreeError(fmt.Errorf("not deleted: this space moved to %s after the dialog opened; open delete again", w.Cwd))
 				return
 			}
-			_, err := a.RemoveWorktree(i, force)
-			if err != nil {
-				a.worktreeError(err)
-			}
+			req, _ := a.workspaceWorktreeRequest(i, "remove")
+			req.ExpectedCwd, req.Force = shown, force
+			a.startWorktree(req, func(_ WorktreeResult, err error) {
+				if err != nil {
+					a.worktreeError(err)
+				}
+			})
 			return
 		}
 	}}
@@ -128,12 +147,8 @@ func (a *App) groupWorktree(index int) {
 	}
 }
 
-func (a *App) workspaceWorktreeItems(index int) []render.MenuItem {
+func (a *App) workspaceWorktreeItems(index int, src api.WorktreeSourceInfo) []render.MenuItem {
 	ws := a.st.Workspaces[index]
-	src, err := worktree.Source(ws.Cwd)
-	if err != nil {
-		return nil
-	}
 	a.exec(model.CmdSetWorktree{Index: index, Info: worktree.Metadata(src, src.SourceCheckoutPath)})
 	items := []render.MenuItem{{Label: "New worktree"}, {Label: "Open worktree..."}}
 	if ws.Worktree.IsLinkedWorktree {

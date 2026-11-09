@@ -38,6 +38,9 @@ func gitWithEnvContext(ctx context.Context, cwd string, environment []string, ar
 	}
 	b, err := cmd.CombinedOutput()
 	if err != nil {
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
 		return "", &GitError{Args: args, Output: strings.TrimSpace(string(b))}
 	}
 	return strings.TrimSpace(string(b)), nil
@@ -144,39 +147,51 @@ func parseWorktreeList(raw, separator string, paths []string) ([]api.WorktreeInf
 }
 
 func Create(cwd, path, branch, base string) error {
+	return CreateContext(context.Background(), cwd, path, branch, base)
+}
+
+func CreateContext(ctx context.Context, cwd, path, branch, base string) error {
 	if branch == "" {
 		return fmt.Errorf("a new branch name is required")
 	}
-	if _, err := git(cwd, "check-ref-format", "--branch", branch); err != nil {
+	if _, err := gitWithEnvContext(ctx, cwd, nil, "check-ref-format", "--branch", branch); err != nil {
 		return err
 	}
-	if _, err := git(cwd, "show-ref", "--verify", "refs/heads/"+branch); err == nil {
+	if _, err := gitWithEnvContext(ctx, cwd, nil, "show-ref", "--verify", "refs/heads/"+branch); err == nil {
 		if base != "" {
 			return fmt.Errorf("base cannot be specified for an existing branch")
 		}
-		return Checkout(cwd, path, branch)
+		return CheckoutContext(ctx, cwd, path, branch)
 	}
 	args := []string{"worktree", "add", "-b", branch, "--", path}
 	if base != "" {
 		args = append(args, base)
 	}
-	_, err := git(cwd, args...)
+	_, err := gitWithEnvContext(ctx, cwd, nil, args...)
 	return err
 }
 
 func Checkout(cwd, path, branch string) error {
+	return CheckoutContext(context.Background(), cwd, path, branch)
+}
+
+func CheckoutContext(ctx context.Context, cwd, path, branch string) error {
 	if branch == "" {
 		return fmt.Errorf("an existing branch name is required")
 	}
-	if _, err := git(cwd, "show-ref", "--verify", "refs/heads/"+branch); err != nil {
+	if _, err := gitWithEnvContext(ctx, cwd, nil, "show-ref", "--verify", "refs/heads/"+branch); err != nil {
 		return err
 	}
-	_, err := git(cwd, "worktree", "add", "--", path, branch)
+	_, err := gitWithEnvContext(ctx, cwd, nil, "worktree", "add", "--", path, branch)
 	return err
 }
 
 func Remove(cwd, path string, force bool) error {
-	items, err := List(cwd)
+	return RemoveContext(context.Background(), cwd, path, force)
+}
+
+func RemoveContext(ctx context.Context, cwd, path string, force bool) error {
+	items, err := ListContext(ctx, cwd)
 	if err != nil {
 		return err
 	}
@@ -197,7 +212,7 @@ func Remove(cwd, path string, force bool) error {
 		args = append(args, "--force")
 	}
 	args = append(args, "--", path)
-	_, err = git(cwd, args...)
+	_, err = gitWithEnvContext(ctx, cwd, nil, args...)
 	return err
 }
 

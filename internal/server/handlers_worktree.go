@@ -1,10 +1,24 @@
 package server
 
 import (
+	"fmt"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/tui"
 )
+
+func (s *Server) worktreeResultParts(result tui.WorktreeResult) (w api.WorkspaceInfo, t api.TabInfo, root api.PaneInfo, ok bool) {
+	s.app.Do(func() {
+		for i, ws := range s.app.State().Workspaces {
+			if ws.ID == result.WorkspaceID && ws.Generation == result.WorkspaceGeneration && ws.Cwd == result.Outcome.Worktree.Path {
+				w, t, root = s.worktreeParts(i)
+				ok = true
+				return
+			}
+		}
+	})
+	return
+}
 
 func (s *Server) worktreeRequest(req *api.Request) api.Response {
 	fail := func(err error) api.Response { return api.Failure(req.ID, "worktree_failed", err.Error()) }
@@ -14,51 +28,49 @@ func (s *Server) worktreeRequest(req *api.Request) api.Response {
 		if err := req.DecodeParams(&p); err != nil {
 			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
 		}
-		src, err := s.app.WorktreeSource(valueString(p.Cwd), p.WorkspaceID)
+		result, err := s.app.ExecuteWorktree(tui.WorktreeRequest{Operation: "list", Cwd: valueString(p.Cwd), WorkspaceID: p.WorkspaceID})
 		if err != nil {
 			return fail(err)
 		}
-		items, err := s.app.WorktreeList(src)
-		if err != nil {
-			return fail(err)
-		}
-		return api.Success(req.ID, api.WorktreeListResult{Type: "worktree_list", Source: src, Worktrees: items})
+		return api.Success(req.ID, api.WorktreeListResult{Type: "worktree_list", Source: result.Source, Worktrees: result.Items})
 	case api.MethodWorktreeCreate:
 		var p api.WorktreeCreateParams
 		if err := req.DecodeParams(&p); err != nil {
 			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
 		}
-		out, err := s.app.CreateWorktree(p)
+		result, err := s.app.ExecuteWorktree(tui.WorktreeRequest{Operation: "create", Cwd: valueString(p.Cwd), WorkspaceID: p.WorkspaceID, Branch: p.Branch, Path: p.Path, Base: p.Base, Label: p.Label, Focus: p.Focus})
 		if err != nil {
 			return fail(err)
 		}
-		w, t, root := s.worktreeParts(out.Index)
-		return api.Success(req.ID, api.WorktreeCreatedResult{Type: "worktree_created", Workspace: w, Tab: t, RootPane: root, Worktree: out.Worktree})
+		w, t, root, ok := s.worktreeResultParts(result)
+		if !ok {
+			return fail(fmt.Errorf("workspace changed after worktree operation"))
+		}
+		return api.Success(req.ID, api.WorktreeCreatedResult{Type: "worktree_created", Workspace: w, Tab: t, RootPane: root, Worktree: result.Outcome.Worktree})
 	case api.MethodWorktreeOpen:
 		var p api.WorktreeOpenParams
 		if err := req.DecodeParams(&p); err != nil {
 			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
 		}
-		out, err := s.app.OpenWorktree(p)
+		result, err := s.app.ExecuteWorktree(tui.WorktreeRequest{Operation: "open", Cwd: valueString(p.Cwd), WorkspaceID: p.WorkspaceID, Branch: p.Branch, Path: p.Path, Label: p.Label, Focus: p.Focus})
 		if err != nil {
 			return fail(err)
 		}
-		w, t, root := s.worktreeParts(out.Index)
-		return api.Success(req.ID, api.WorktreeOpenedResult{Type: "worktree_opened", Workspace: w, Tab: t, RootPane: root, Worktree: out.Worktree, AlreadyOpen: out.AlreadyOpen})
+		w, t, root, ok := s.worktreeResultParts(result)
+		if !ok {
+			return fail(fmt.Errorf("workspace changed after worktree operation"))
+		}
+		return api.Success(req.ID, api.WorktreeOpenedResult{Type: "worktree_opened", Workspace: w, Tab: t, RootPane: root, Worktree: result.Outcome.Worktree, AlreadyOpen: result.Outcome.AlreadyOpen})
 	case api.MethodWorktreeRemove:
 		var p api.WorktreeRemoveParams
 		if err := req.DecodeParams(&p); err != nil {
 			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
 		}
-		idx := s.findWorkspace(p.WorkspaceID)
-		if idx < 0 {
-			return s.wsNotFound(req.ID, p.WorkspaceID)
-		}
-		info, err := s.app.RemoveWorktree(idx, p.Force)
+		result, err := s.app.ExecuteWorktree(tui.WorktreeRequest{Operation: "remove", WorkspaceID: &p.WorkspaceID, Force: p.Force})
 		if err != nil {
 			return fail(err)
 		}
-		return api.Success(req.ID, api.WorktreeRemovedResult{Type: "worktree_removed", WorkspaceID: p.WorkspaceID, Path: info.Path, Forced: p.Force})
+		return api.Success(req.ID, api.WorktreeRemovedResult{Type: "worktree_removed", WorkspaceID: p.WorkspaceID, Path: result.Removed.Path, Forced: p.Force})
 	}
 	return api.Failure(req.ID, api.ErrUnknownMethod, "unknown worktree method")
 }
