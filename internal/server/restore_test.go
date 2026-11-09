@@ -52,6 +52,36 @@ func TestAgentRestoreRejectsDuplicateSavedCodexIDs(t *testing.T) {
 	}
 }
 
+func TestAgentRestoreRejectsDuplicateLedgerCodexIDs(t *testing.T) {
+	teststate.Lock(t)
+	s := newTestServer(t, "duplicate-ledger")
+	s.app.State().Apply(model.CmdSplitFocused{Dir: layout.Vertical})
+	store, err := s.db()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ids := s.app.State().Workspaces[0].Tabs[0].Layout.Order()
+	if len(ids) != 2 {
+		t.Fatalf("panes: %v", ids)
+	}
+	for _, pid := range ids {
+		if err := store.PutPaneSession(dispatch.PaneSession{Session: s.session, PaneID: pid, Agent: "codex", SessionKind: "id", SessionID: "duplicate-session"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.loadLedger()
+	result := s.runAgentRestore(true)
+	if len(result.Actions) != 2 {
+		t.Fatalf("actions: %+v", result.Actions)
+	}
+	for _, action := range result.Actions {
+		if action.Status != "skipped" || action.Command != nil || action.Reason == nil || *action.Reason != "duplicate session id" {
+			t.Fatalf("duplicate ledger restore: %+v", action)
+		}
+	}
+}
+
 // waitAPISocketGone polls until the api socket disappears.
 func waitAPISocketGone(t *testing.T, dir string) {
 	t.Helper()

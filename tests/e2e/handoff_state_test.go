@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/layout"
+	"github.com/kazuph/ikesu/internal/model"
+	sessionfile "github.com/kazuph/ikesu/internal/session"
 	"golang.org/x/sys/unix"
 	"net"
 	"os"
@@ -16,6 +19,54 @@ import (
 	"testing"
 	"time"
 )
+
+func TestLiveHandoffRejectsDuplicateSavedCodexSessions(t *testing.T) {
+	t.Parallel()
+	cwd := t.TempDir()
+	prepare := func(cmd *exec.Cmd) {
+		var root string
+		for _, entry := range cmd.Env {
+			if strings.HasPrefix(entry, "IKESU_STATE_DIR=") {
+				root = strings.TrimPrefix(entry, "IKESU_STATE_DIR=")
+			}
+		}
+		if root == "" {
+			t.Fatal("missing isolated state directory")
+		}
+		st := model.New(cwd, 80, 24)
+		st.Apply(model.CmdSplitFocused{Dir: layout.Vertical})
+		saved := st.Snapshot()
+		saved.EachPane(func(_ *sessionfile.Workspace, _ *sessionfile.Tab, p *sessionfile.Pane) {
+			p.Agent, p.SessionKind, p.SessionID = "codex", "id", "duplicate-session"
+		})
+		path := sessionfile.Path(filepath.Join(root, "e2e"))
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := sessionfile.Save(path, saved); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := startVersionModePrepared(t, nil, false, binPath, "", prepare)
+	s.waitFor("restored shell", 15*time.Second, func(screen string) bool { return strings.Contains(screen, "❯") })
+	check := func() {
+		t.Helper()
+		var result api.AgentRestoreResult
+		s.rpc(api.MethodAgentRestore, api.AgentRestoreParams{DryRun: true}, &result)
+		if len(result.Actions) != 2 {
+			t.Fatalf("restore actions: %+v", result.Actions)
+		}
+		for _, a := range result.Actions {
+			if a.Status != "skipped" || a.Command != nil || a.Reason == nil || *a.Reason != "duplicate session id" {
+				t.Fatalf("duplicate restore: %+v", a)
+			}
+		}
+	}
+	if out, err := s.cli("server", "live-handoff"); err != nil {
+		t.Fatalf("handoff: %v %s", err, out)
+	}
+	check()
+}
 
 func TestLiveHandoffDrainsAcceptedInputOperations(t *testing.T) {
 	t.Parallel()

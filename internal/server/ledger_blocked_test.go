@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	goruntime "runtime"
@@ -63,22 +64,59 @@ func TestLedgerSQLiteLockDoesNotBlockDecisionOrPaneInput(t *testing.T) {
 		}
 		goruntime.Gosched()
 	}
+	s.dir, err = os.MkdirTemp("/tmp", "ikesu-ledger-api-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(s.dir)
+	listener, err := net.Listen("unix", api.APISocketPath(s.dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	go func() {
+		conn, err := listener.Accept()
+		if err == nil {
+			s.apiWG.Add(1)
+			s.serveAPI(conn)
+		}
+	}()
 	decisionDone := make(chan api.Response, 1)
 	go func() {
-		var response api.Response
-		s.app.Do(func() {
-			response = s.decisionRequest(&api.Request{ID: "test", Method: api.MethodDecisionGet, Params: api.MarshalParams(api.DecisionTargetParams{DecisionID: "missing"})})
-		})
-		decisionDone <- response
+		decisionDone <- apiReq(t, s.dir, api.MethodDecisionGet, api.DecisionTargetParams{DecisionID: "missing"})
 	}()
+	decisionReady := false
+	deadline = time.Now().Add(time.Second)
+	for {
+		select {
+		case response := <-decisionDone:
+			decisionReady = true
+			if response.Err == nil || response.Err.Code != api.ErrDecisionNotFound {
+				t.Errorf("unexpected decision.get response: %+v", response.Err)
+			}
+		default:
+		}
+		buf := make([]byte, 1<<20)
+		n := goruntime.Stack(buf, true)
+		if decisionReady || bytes.Contains(buf[:n], []byte("(*Store).Decisions")) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("decision.get did not reach the store")
+		}
+		goruntime.Gosched()
+	}
 	path := filepath.Join(t.TempDir(), "input-seen")
 	go s.app.Do(func() { s.sup.Input(pid, []byte(fmt.Sprintf("printf ready > %q\n", path))) })
-	decisionReady, inputReady := false, false
+	inputReady := false
 	until := time.After(time.Second)
 	for !decisionReady || !inputReady {
 		select {
-		case <-decisionDone:
+		case response := <-decisionDone:
 			decisionReady = true
+			if response.Err == nil || response.Err.Code != api.ErrDecisionNotFound {
+				t.Errorf("unexpected decision.get response: %+v", response.Err)
+			}
 		default:
 		}
 		if _, err := os.Stat(path); err == nil {
