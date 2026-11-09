@@ -52,12 +52,22 @@ func TestCLIStartupDuringServerWrites(t *testing.T) {
 			return
 		}
 		defer st.Close()
-		rows, err := st.PaneSessions(s.name)
+		// The server saves ledger rows on its own writer goroutine after
+		// report-agent returns, so wait for the last write to land.
+		want := fmt.Sprintf("sqlite-writer-%d", writes.Load())
+		var rows []dispatch.PaneSession
 		found := false
-		for _, row := range rows {
-			if row.PaneID == 1 && row.SessionID == fmt.Sprintf("sqlite-writer-%d", writes.Load()) {
-				found = true
+		for deadline := time.Now().Add(10 * time.Second); ; {
+			rows, err = st.PaneSessions(s.name)
+			for _, row := range rows {
+				if row.PaneID == 1 && row.SessionID == want {
+					found = true
+				}
 			}
+			if found || time.Now().After(deadline) {
+				break
+			}
+			time.Sleep(20 * time.Millisecond)
 		}
 		if err != nil || !found {
 			t.Errorf("server writes were not persisted: rows=%+v err=%v", rows, err)
