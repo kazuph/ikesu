@@ -76,6 +76,9 @@ func (a *App) refreshStaleWorktrees(targets []workspaceGitTarget, entries map[st
 		if !ok || !a.currentWorkspaceGitTarget(a.st.Workspaces[i], t) {
 			continue
 		}
+		if a.worktreePending[workspaceIdentity{id: t.id, generation: t.generation}] > 0 {
+			continue
+		}
 		info := a.st.Workspaces[i].Worktree
 		entry, ok := entries[t.nameCwd]
 		if info == nil || !ok || !entry.loaded || worktree.Within(t.nameCwd, info.CheckoutPath) {

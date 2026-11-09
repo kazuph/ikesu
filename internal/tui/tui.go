@@ -309,6 +309,7 @@ type App struct {
 	previewCache                             map[int]workspacePreview
 	workspaceNames                           map[int]string
 	workspaceLabels                          map[int]workspaceDirectoryLabel
+	worktreePending                          map[workspaceIdentity]int
 	gitActivity                              *gitActivityState
 	branchCache                              map[string]*branchCacheEntry
 	gitAt                                    time.Time

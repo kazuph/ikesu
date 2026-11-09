@@ -32,6 +32,11 @@ type WorktreeResult struct {
 	WorkspaceGeneration string
 }
 
+type workspaceIdentity struct {
+	id         int
+	generation string
+}
+
 func (a *App) workspaceWorktreeRequest(index int, operation string) (WorktreeRequest, bool) {
 	if index < 0 || index >= len(a.st.Workspaces) {
 		return WorktreeRequest{}, false
@@ -53,6 +58,7 @@ func (a *App) startWorktree(req WorktreeRequest, complete func(WorktreeResult, e
 func (a *App) ExecuteWorktree(req WorktreeRequest) (result WorktreeResult, err error) {
 	var target *workspaceGitTarget
 	var directory, appCwd string
+	var reserved *workspaceIdentity
 	prepared := false
 	a.Do(func() {
 		prepared = true
@@ -88,6 +94,14 @@ func (a *App) ExecuteWorktree(req WorktreeRequest) (result WorktreeResult, err e
 			t := a.captureWorkspaceGitTarget(w)
 			target = &t
 			req.Cwd = w.Cwd
+			if req.Operation == "create" || req.Operation == "remove" {
+				key := workspaceIdentity{id: w.ID, generation: w.Generation}
+				if a.worktreePending == nil {
+					a.worktreePending = map[workspaceIdentity]int{}
+				}
+				a.worktreePending[key]++
+				reserved = &key
+			}
 		}
 		if req.Cwd == "" {
 			req.Cwd = a.cwd
@@ -99,6 +113,14 @@ func (a *App) ExecuteWorktree(req WorktreeRequest) (result WorktreeResult, err e
 	}
 	if err != nil {
 		return result, err
+	}
+	if reserved != nil {
+		defer a.Do(func() {
+			a.worktreePending[*reserved]--
+			if a.worktreePending[*reserved] == 0 {
+				delete(a.worktreePending, *reserved)
+			}
+		})
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -165,9 +187,20 @@ func (a *App) ExecuteWorktree(req WorktreeRequest) (result WorktreeResult, err e
 		}
 		return false
 	}
+	sameWorkspace := func(checkCwd bool) bool {
+		if target == nil {
+			return true
+		}
+		for _, w := range a.st.Workspaces {
+			if w.ID == target.id && w.Generation == target.generation && (!checkCwd || w.Cwd == target.cwd) {
+				return true
+			}
+		}
+		return false
+	}
 	if req.Operation == "create" || req.Operation == "remove" {
 		ok := false
-		a.Do(func() { ok = valid() })
+		a.Do(func() { ok = sameWorkspace(true) })
 		if !ok {
 			return result, fmt.Errorf("workspace changed during worktree operation")
 		}
@@ -197,7 +230,14 @@ func (a *App) ExecuteWorktree(req WorktreeRequest) (result WorktreeResult, err e
 	applied := false
 	a.Do(func() {
 		applied = true
-		if !valid() {
+		matches := valid()
+		if req.Operation == "remove" {
+			matches = sameWorkspace(false)
+		}
+		if req.Operation == "create" {
+			matches = sameWorkspace(true)
+		}
+		if !matches {
 			if req.Operation == "create" || req.Operation == "remove" {
 				err = fmt.Errorf("Git completed, but workspace changed; checkout operation was not applied to the workspace: %s", path)
 			} else {

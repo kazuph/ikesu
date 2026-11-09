@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -13,6 +14,188 @@ import (
 	"github.com/kazuph/ikesu/internal/teststate"
 	"github.com/kazuph/ikesu/internal/worktree"
 )
+
+func TestWorktreeDeleteDoesNotRemoveAfterCwdChangesDuringGit(t *testing.T) {
+	teststate.Lock(t)
+	a, repo := worktreeApp(t)
+	if err := os.WriteFile(filepath.Join(repo, "tracked"), []byte("data\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sidebarGit(t, repo, "add", "tracked")
+	sidebarGit(t, repo, "-c", "user.name=Test", "-c", "user.email=t@t", "commit", "-qm", "tracked")
+	branch := "delete-during-git"
+	created, err := executeTestWorktree(t, a, WorktreeRequest{Operation: "create", Branch: &branch})
+	if err != nil {
+		t.Fatal(err)
+	}
+	index, path := created.Outcome.Index, created.Outcome.Worktree.Path
+	root := t.TempDir()
+	destination := filepath.Join(root, "destination")
+	if err := os.Mkdir(destination, 0700); err != nil {
+		t.Fatal(err)
+	}
+	sidebarGit(t, destination, "init", "-q")
+	destinationSource, err := worktree.Source(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fifo, ready := filepath.Join(root, "gate"), filepath.Join(root, "ready")
+	if err := syscall.Mkfifo(fifo, 0600); err != nil {
+		t.Fatal(err)
+	}
+	gate, err := os.OpenFile(fifo, os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gate.Close()
+	defer func() { _, _ = gate.WriteString("go\n") }()
+	hook := filepath.Join(root, "fsmonitor")
+	released := filepath.Join(root, "released")
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\nif [ ! -f '"+released+"' ]; then\nprintf ready > '"+ready+"'\nread x < '"+fifo+"'\n: > '"+released+"'\nfi\nprintf '\\0'\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	sidebarGit(t, repo, "config", "core.fsmonitor", hook)
+	req, ok := a.workspaceWorktreeRequest(index, "remove")
+	if !ok {
+		t.Fatal("workspace missing")
+	}
+	result := make(chan error, 1)
+	go func() { _, err := a.ExecuteWorktree(req); result <- err }()
+	deadline := time.After(3 * time.Second)
+	for {
+		if _, err := os.Stat(ready); err == nil {
+			break
+		}
+		select {
+		case job := <-a.jobs:
+			job.fn()
+			close(job.done)
+		case <-time.After(10 * time.Millisecond):
+		case <-deadline:
+			t.Fatal("Git did not enter fsmonitor")
+		}
+	}
+	w := a.st.Workspaces[index]
+	pane := a.sup.Get(w.Tabs[0].Layout.PaneIDs()[0])
+	if _, err := pane.WriteToPTY([]byte("cd '" + destination + "'; printf 'MOVE_%s\\n' READY\n")); err != nil {
+		t.Fatal(err)
+	}
+	specWaitText(t, pane, "MOVE_READY")
+	target := a.captureWorkspaceGitTarget(w)
+	a.refreshStaleWorktrees([]workspaceGitTarget{target}, map[string]gitCwdActivity{target.nameCwd: {loaded: true, source: destinationSource}})
+	movedDuringDelete := w.Cwd != path
+	_, _ = gate.WriteString("go\n")
+	deadline = time.After(3 * time.Second)
+	for {
+		select {
+		case err := <-result:
+			if movedDuringDelete {
+				t.Fatal("workspace was re-anchored while checkout deletion was running")
+			}
+			if err != nil {
+				t.Fatalf("removing the confirmed checkout failed: %v", err)
+			}
+			if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+				t.Fatalf("confirmed checkout was not removed: %v", statErr)
+			}
+			return
+		case job := <-a.jobs:
+			job.fn()
+			close(job.done)
+		case <-deadline:
+			t.Fatal("Git removal did not finish")
+		}
+	}
+}
+
+func TestWorktreeCreateDefersReanchorUntilGitFinishes(t *testing.T) {
+	teststate.Lock(t)
+	a, repo := worktreeApp(t)
+	if err := a.StartInitialPane(); err != nil {
+		t.Fatal(err)
+	}
+	w := a.st.Workspaces[0]
+	original := w.Cwd
+	root := t.TempDir()
+	destination := filepath.Join(root, "destination")
+	if err := os.Mkdir(destination, 0700); err != nil {
+		t.Fatal(err)
+	}
+	sidebarGit(t, destination, "init", "-q")
+	destinationSource, err := worktree.Source(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fifo, ready := filepath.Join(root, "gate"), filepath.Join(root, "ready")
+	if err := syscall.Mkfifo(fifo, 0600); err != nil {
+		t.Fatal(err)
+	}
+	gate, err := os.OpenFile(fifo, os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gate.Close()
+	defer func() { _, _ = gate.WriteString("go\n") }()
+	hook := filepath.Join(repo, ".git", "hooks", "post-checkout")
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\nprintf ready > '"+ready+"'\nread x < '"+fifo+"'\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	req, ok := a.workspaceWorktreeRequest(0, "create")
+	if !ok {
+		t.Fatal("workspace missing")
+	}
+	branch := "create-during-move"
+	req.Branch = &branch
+	result := make(chan error, 1)
+	go func() { _, err := a.ExecuteWorktree(req); result <- err }()
+	deadline := time.After(3 * time.Second)
+	for {
+		if _, err := os.Stat(ready); err == nil {
+			break
+		}
+		select {
+		case job := <-a.jobs:
+			job.fn()
+			close(job.done)
+		case <-time.After(10 * time.Millisecond):
+		case <-deadline:
+			t.Fatal("post-checkout hook did not start")
+		}
+	}
+	pane := a.sup.Get(w.Tabs[0].Layout.PaneIDs()[0])
+	if _, err := pane.WriteToPTY([]byte("cd '" + destination + "'; printf 'MOVE_%s\\n' READY\n")); err != nil {
+		t.Fatal(err)
+	}
+	specWaitText(t, pane, "MOVE_READY")
+	target := a.captureWorkspaceGitTarget(w)
+	entries := map[string]gitCwdActivity{target.nameCwd: {loaded: true, source: destinationSource}}
+	a.refreshStaleWorktrees([]workspaceGitTarget{target}, entries)
+	movedDuringCreate := w.Cwd != original
+	_, _ = gate.WriteString("go\n")
+	deadline = time.After(3 * time.Second)
+	for {
+		select {
+		case err := <-result:
+			if movedDuringCreate {
+				t.Fatal("workspace was re-anchored while checkout creation was running")
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			target = a.captureWorkspaceGitTarget(w)
+			a.refreshStaleWorktrees([]workspaceGitTarget{target}, entries)
+			if w.Cwd != target.nameCwd {
+				t.Fatalf("workspace did not re-anchor after creation: %q", w.Cwd)
+			}
+			return
+		case job := <-a.jobs:
+			job.fn()
+			close(job.done)
+		case <-deadline:
+			t.Fatal("worktree creation did not finish")
+		}
+	}
+}
 
 func TestWorktreeDeleteRechecksWorkspaceAfterGitLookup(t *testing.T) {
 	teststate.Lock(t)
@@ -45,14 +228,22 @@ func TestWorktreeDeleteRechecksWorkspaceAfterGitLookup(t *testing.T) {
 	a.st.Workspaces[index].Cwd = t.TempDir()
 	beforeDelete.fn()
 	close(beforeDelete.done)
-	select {
-	case err := <-result:
-		if err == nil {
-			t.Fatal("stale deletion was accepted")
+	until := time.After(2 * time.Second)
+	for {
+		select {
+		case err := <-result:
+			if err == nil {
+				t.Fatal("stale deletion was accepted")
+			}
+			goto finished
+		case job := <-a.jobs:
+			job.fn()
+			close(job.done)
+		case <-until:
+			t.Fatal("stale deletion did not return")
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("stale deletion did not return")
 	}
+finished:
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("checkout was removed after workspace moved: %v", err)
 	}
