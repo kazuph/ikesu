@@ -136,7 +136,7 @@ func TestClaudeDelayedTranscriptAfterScreenTransition(t *testing.T) {
 					start = at
 					return found
 				})
-				identity, done := restoredUnidentifiedClaudeQuestion(pane, id, start, old)
+				identity, done := restoredUnidentifiedClaudeQuestion(pane, id, start, old, nil)
 				if identity != "" || done {
 					t.Fatalf("ambiguous transcript accepted: %q %v", identity, done)
 				}

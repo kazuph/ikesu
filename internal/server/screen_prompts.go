@@ -13,17 +13,19 @@ import (
 )
 
 type screenPromptHub struct {
-	seen            map[int]map[string]bool
-	rebuilds        map[int][]time.Time
-	flows           map[int]*screenAnswerFlow
-	watches         map[int]*screenPromptWatch
-	transcripts     map[int]*claudeTranscriptScan
-	late            map[string]*lateCodexQuestion
-	verifying       map[string]*lateCodexQuestion
-	claudeRestore   map[string]int
-	claudeRestoring bool
-	claudeCapturing map[string]bool
-	timer           *time.Timer
+	seen          map[int]map[string]bool
+	rebuilds      map[int][]time.Time
+	flows         map[int]*screenAnswerFlow
+	watches       map[int]*screenPromptWatch
+	transcripts   map[int]*claudeTranscriptScan
+	late          map[string]*lateCodexQuestion
+	verifying     map[string]*lateCodexQuestion
+	claudeRestore map[string]int
+	// claudeRestoreCaches: transcript caches per restored decision id.
+	claudeRestoreCaches map[string]*session.ClaudeQuestionCache
+	claudeRestoring     bool
+	claudeCapturing     map[string]bool
+	timer               *time.Timer
 }
 
 // Waiting screens use the review's one-second bound; preview navigation keeps
@@ -204,6 +206,7 @@ func (s *Server) screenPromptConfig(c config.Config) {
 	s.stopScreenPromptTimer()
 	s.screenPrompts.verifying = nil
 	s.screenPrompts.claudeRestore = nil
+	s.screenPrompts.claudeRestoreCaches = nil
 	for id, late := range s.screenPrompts.late {
 		if late.delivery != nil && late.delivery.Status == "pending" {
 			s.setLateDelivery(id, "failed", "画面の質問の検出が無効になりました")

@@ -113,15 +113,26 @@ func (cache *ClaudeQuestionCache) readAll(root, sessionID string) ([]ClaudeQuest
 		return nil, false
 	}
 	var paths []string
-	err := filepath.WalkDir(filepath.Join(root, "projects"), func(path string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return err
+	projects := filepath.Join(root, "projects")
+	if cache.valid && cache.sessionID == sessionID && strings.HasPrefix(cache.path, projects+string(filepath.Separator)) && time.Since(cache.fullAt) < transcriptFullReadInterval {
+		// Between full reads, reuse the found path instead of walking every
+		// project directory (thousands of files) on each scan.
+		if _, err := os.Stat(cache.path); err == nil {
+			paths = []string{cache.path}
 		}
-		if !entry.IsDir() && entry.Name() == sessionID+".jsonl" {
-			paths = append(paths, path)
-		}
-		return nil
-	})
+	}
+	var err error
+	if paths == nil {
+		err = filepath.WalkDir(projects, func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if !entry.IsDir() && entry.Name() == sessionID+".jsonl" {
+				paths = append(paths, path)
+			}
+			return nil
+		})
+	}
 	if err != nil || len(paths) != 1 {
 		return nil, false
 	}
