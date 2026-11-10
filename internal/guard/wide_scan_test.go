@@ -74,7 +74,7 @@ func TestWideScanVerdicts(t *testing.T) {
 		if tc.reason != "" {
 			e["AI_GUARD_REQUEST_REASON"] = tc.reason
 		}
-		v := Evaluate(Config{}, Input{Command: tc.cmd, Args: tc.args, Cwd: tc.cwd, LaunchCwd: launch, Env: e})
+		v := Evaluate(Config{}, Input{Command: tc.cmd, Args: tc.args, Cwd: tc.cwd, LaunchCwd: launch, Env: e, wideScanLine: true})
 		if v.Decision != tc.want {
 			t.Errorf("%s %v: got %s (%s), want %s", tc.cmd, tc.args, v.Decision, v.Rule, tc.want)
 		}
@@ -106,5 +106,38 @@ func TestWideScanLineAndLog(t *testing.T) {
 	_, v, err = lineVerdict(Config{}, i, "find . -name x | rg foo")
 	if err != nil || v.Decision != "allow" {
 		t.Fatalf("line allow: %v %+v", err, v)
+	}
+}
+
+func TestWideScanOnlyOnTopLevelLine(t *testing.T) {
+	t.Parallel()
+	root, _ := filepath.EvalSymlinks(t.TempDir())
+	launch := filepath.Join(root, "home", "proj")
+	if err := os.MkdirAll(launch, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	base := Input{Command: "find", Args: []string{"/", "-name", "x"}, Cwd: launch, LaunchCwd: launch, Env: map[string]string{"HOME": filepath.Join(root, "home"), "PATH": "/usr/bin:/bin"}}
+	// シム経由（guard exec）の入力は最上位の行ではないので発動しない。
+	if v := Evaluate(Config{}, base); v.Decision != "allow" {
+		t.Fatalf("shim path: %+v", v)
+	}
+	// DEBUG トラップの runtime 行は発動しない。
+	runtime := base
+	runtime.runtimeLine = true
+	_, v, _ := lineVerdict(Config{}, runtime, "find / -name x")
+	if v.Decision != "allow" {
+		t.Fatalf("runtime line: %+v", v)
+	}
+	// スクリプトの中身は発動しない。
+	script := base
+	script.wideScanLine, script.scriptBody = true, true
+	if v := Evaluate(Config{}, script); v.Decision != "allow" {
+		t.Fatalf("script body: %+v", v)
+	}
+	// 既定の見張り対象に探索コマンドを足していない。
+	for _, name := range []string{"find", "grep", "ls", "rg", "du", "mdfind"} {
+		if has((Config{}).Commands(), name) {
+			t.Fatalf("%s must not be shimmed", name)
+		}
 	}
 }

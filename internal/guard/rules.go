@@ -40,7 +40,7 @@ func defaults(v, d []string) []string {
 	return v
 }
 func (c Config) Commands() []string {
-	return defaults(c.Targets, strings.Fields("rm rmdir rimraf trash mv dd mkfs fdisk diskutil format parted gparted git gh curl wget http https aws npm npx pnpm pnpx yarn bun bunx deno cargo env arch firebase vercel flyctl fly wrangler sqlite3 psql mysql netlify railway render amplify cdk serverless sls pulumi terraform ikesu herdr touch tee cp ln find fd fdfind rg ag ack du tree locate bfs grep egrep fgrep ls mdfind"))
+	return defaults(c.Targets, strings.Fields("rm rmdir rimraf trash mv dd mkfs fdisk diskutil format parted gparted git gh curl wget http https aws npm npx pnpm pnpx yarn bun bunx deno cargo env arch firebase vercel flyctl fly wrangler sqlite3 psql mysql netlify railway render amplify cdk serverless sls pulumi terraform ikesu herdr touch tee cp ln"))
 }
 
 type Input struct {
@@ -60,6 +60,7 @@ type Input struct {
 	scriptScanner        *scriptScanner
 	scriptResult         *scriptResult
 	scriptBody           bool
+	wideScanLine         bool
 	scriptLabel          string
 	scriptLine           uint
 	scriptKnownArgs      []string

@@ -21,6 +21,9 @@ var wideScanFixed = []string{"/", "/Users", "/Volumes", "/System", "/Library"}
 func blocksRun(decision string) bool { return decision == "block" || decision == "deny" }
 
 func wideScan(i Input) (Verdict, bool) {
+	if !i.wideScanLine || i.runtimeLine || i.scriptBody {
+		return Verdict{}, false
+	}
 	target, ok := wideScanTarget(i)
 	if !ok {
 		return Verdict{}, false

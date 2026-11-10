@@ -355,6 +355,8 @@ func splitPrefix(text string, env map[string]string) ([]string, error) {
 func lineVerdict(c Config, i Input, line string) (Input, Verdict, error) {
 	i.GuardCommands = c.Commands()
 	i.scriptScanner = &scriptScanner{config: c}
+	// wide-scan は AI が打った最上位の行だけで判定する（DEBUG トラップの行・スクリプトの中身・シムは対象外）。
+	i.wideScanLine = !i.runtimeLine
 	commands, err := lineCommands(i, line)
 	i.RawLine = line
 	best := Evaluate(c, Input{Cwd: i.Cwd, LaunchCwd: i.LaunchCwd, Env: i.Env, RawLine: line, runtimeLine: i.runtimeLine})
