@@ -266,7 +266,8 @@ func (s *scriptScanner) body(i Input, data []byte, name string) scriptResult {
 			if cmd.Unresolved && r.kind != scriptBlocked {
 				known := cmd
 				known.Args = cmd.scriptKnownArgs
-				if uv, ok := unresolvedVerdict(s.config, cmd, classify); ok {
+				deleting := has([]string{"rm", "rmdir", "rimraf", "trash"}, filepath.Base(cmd.Command))
+				if uv, ok := unresolvedVerdict(s.config, cmd, classify); ok && !deleting {
 					kind := scriptDanger
 					if uv.Decision == "block" {
 						kind = scriptBlocked
