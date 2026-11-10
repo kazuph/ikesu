@@ -31,7 +31,7 @@ func wideScan(i Input) (Verdict, bool) {
 	if strings.TrimSpace(requestReason(i)) != "" {
 		return result("ask", wideScanRule, "大規模なスキャンを検知: "+target+"。起動した場所（"+i.LaunchCwd+"）より上を丸ごと探しています。"), true
 	}
-	return result("deny", wideScanRule, "【警告】大規模なスキャンを検知: "+target+"。起動した場所（"+i.LaunchCwd+"）より上を丸ごと探しています。本当に必要なら、範囲を絞るか、AI_GUARD_REQUEST_REASON に理由を書いて、もう一度実行してください。"), true
+	return result("deny", wideScanRule, "【警告】大規模なスキャンを検知: "+target+"。起動した場所（"+i.LaunchCwd+"）より上を丸ごと探しています。本当に必要なら、範囲を絞る（mdfind は -onlyin で場所を指定する）か、AI_GUARD_REQUEST_REASON='<なぜ必要かを日本語で1文>' を付けて、もう一度実行してください。"), true
 }
 
 // PrintDeny は、確認なしで失敗させた時の警告を書く。
