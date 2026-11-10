@@ -355,10 +355,12 @@ func splitPrefix(text string, env map[string]string) ([]string, error) {
 func lineVerdict(c Config, i Input, line string) (Input, Verdict, error) {
 	i.GuardCommands = c.Commands()
 	i.scriptScanner = &scriptScanner{config: c}
+	// wide-scan は AI が打った最上位の行だけで判定する（DEBUG トラップの行・スクリプトの中身・シムは対象外）。
+	i.wideScanLine = !i.runtimeLine
 	commands, err := lineCommands(i, line)
 	i.RawLine = line
 	best := Evaluate(c, Input{Cwd: i.Cwd, LaunchCwd: i.LaunchCwd, Env: i.Env, RawLine: line, runtimeLine: i.runtimeLine})
-	if best.Decision == "block" {
+	if blocksRun(best.Decision) {
 		return i, best, nil
 	}
 	if !i.runtimeLine && danger(c, i) && i.Env["AI_GUARD_DANGER_WORD_ACK"] != "1" {
@@ -391,10 +393,10 @@ func lineVerdict(c Config, i Input, line string) (Input, Verdict, error) {
 			// 削除の対象が未確定な間は聞く（サンドボックスを入れるまでの例外）。
 			v = result("ask", "rm-paths", "削除操作は確認が必要です")
 		}
-		if v.Decision == "block" || v.Decision == "ask" && best.Decision == "allow" {
+		if blocksRun(v.Decision) && !blocksRun(best.Decision) || v.Decision == "ask" && best.Decision == "allow" {
 			i, best = command, v
 		}
-		if best.Decision == "block" {
+		if blocksRun(best.Decision) {
 			return i, best, nil
 		}
 	}
@@ -472,7 +474,7 @@ func unresolvedVerdict(c Config, command Input, judge func(Config, Input) Verdic
 		candidate.RawLine = ""
 		candidate.Command, candidate.Args = words[0], words[1:]
 		v := judge(c, candidate)
-		return v, v.Decision == "block" || v.Decision == "ask"
+		return v, blocksRun(v.Decision) || v.Decision == "ask"
 	}
 	if filepath.Base(argv[0]) == "git" {
 		argv = stripGitGlobalOptions(argv)
@@ -480,7 +482,7 @@ func unresolvedVerdict(c Config, command Input, judge func(Config, Input) Verdic
 	var found Verdict
 	have := false
 	take := func(v Verdict, ok bool) {
-		if ok && (!have || v.Decision == "block" && found.Decision != "block") {
+		if ok && (!have || blocksRun(v.Decision) && !blocksRun(found.Decision)) {
 			found, have = v, true
 		}
 	}

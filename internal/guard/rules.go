@@ -60,6 +60,7 @@ type Input struct {
 	scriptScanner        *scriptScanner
 	scriptResult         *scriptResult
 	scriptBody           bool
+	wideScanLine         bool
 	scriptLabel          string
 	scriptLine           uint
 	scriptKnownArgs      []string
@@ -181,6 +182,9 @@ func classify(c Config, i Input) Verdict {
 	}
 	if cmd == "gh" {
 		return github(i)
+	}
+	if v, ok := wideScan(i); ok {
+		return v
 	}
 	allow := result("allow", "default", "")
 	ask := result("ask", "dangerous", "実行前に承認が必要です。")
