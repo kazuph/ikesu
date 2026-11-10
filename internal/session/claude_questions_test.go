@@ -219,3 +219,36 @@ func TestClaudeQuestionCacheRechecksRewrittenAndReplacedFiles(t *testing.T) {
 	cache.fullAt = time.Now().Add(-transcriptFullReadInterval)
 	check(&cache, "other") // The periodic full scan catches changes outside the tail.
 }
+
+// 2回目以降の読み込みは、見つけたファイルを使い回し、projects の下を毎回たどらない。
+func TestClaudeQuestionCacheSkipsProjectWalkBetweenFullReads(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "projects", "project")
+	blocked := filepath.Join(root, "projects", "blocked")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(blocked, 0700); err != nil {
+		t.Fatal(err)
+	}
+	const id = "12345678-1234-1234-1234-123456789abd"
+	row := `{"sessionId":"` + id + `","message":{"content":[{"type":"tool_use","id":"q","name":"AskUserQuestion","input":{"questions":[{"question":"q","options":[{"label":"a"}]}]}}]}}` + "\n"
+	if err := os.WriteFile(filepath.Join(dir, id+".jsonl"), []byte(row), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var cache ClaudeQuestionCache
+	if got, ok := cache.ReadAll(root, id); !ok || len(got) != 1 {
+		t.Fatal("first read", got, ok)
+	}
+	// An unreadable sibling makes a directory walk fail; the cached path must not walk.
+	if err := os.Chmod(blocked, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(blocked, 0700) })
+	if got, ok := cache.ReadAll(root, id); !ok || len(got) != 1 {
+		t.Fatal("cached read walked the projects tree", got, ok)
+	}
+	if _, ok := new(ClaudeQuestionCache).ReadAll(root, id); ok {
+		t.Fatal("a fresh cache must walk (and fail on the unreadable directory)")
+	}
+}

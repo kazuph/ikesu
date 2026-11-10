@@ -84,7 +84,9 @@ func observedClaudeSession(pane *runtime.Pane) (string, time.Time, bool) {
 	return id, start, true
 }
 
-func restoredUnidentifiedClaudeQuestion(pane *runtime.Pane, expected string, processStart time.Time, d api.Decision) (string, bool) {
+// cache may be nil; the restore scanner passes one per decision so a
+// pending decision does not re-read its whole transcript on every scan.
+func restoredUnidentifiedClaudeQuestion(pane *runtime.Pane, expected string, processStart time.Time, d api.Decision, cache *session.ClaudeQuestionCache) (string, bool) {
 	id, start, ok := observedClaudeSession(pane)
 	if !ok || id != expected || start.UnixMilli() != processStart.UnixMilli() || start.UnixMilli() > d.CreatedUnixMS {
 		return "", false
@@ -105,7 +107,10 @@ func restoredUnidentifiedClaudeQuestion(pane *runtime.Pane, expected string, pro
 		}
 		root = filepath.Join(home, ".claude")
 	}
-	questions, ok := new(session.ClaudeQuestionCache).ReadAll(root, id)
+	if cache == nil {
+		cache = new(session.ClaudeQuestionCache)
+	}
+	questions, ok := cache.ReadAll(root, id)
 	if !ok {
 		return "", false
 	}
@@ -155,7 +160,7 @@ func (s *Server) claudeDecisionMatchesIdentity(pid int, decisionID, identity str
 	if err != nil || d.Status != "pending" {
 		return false
 	}
-	identified, done := restoredUnidentifiedClaudeQuestion(pane, sessionID, start, d)
+	identified, done := restoredUnidentifiedClaudeQuestion(pane, sessionID, start, d, nil)
 	return !done && identified == identity
 }
 
@@ -216,6 +221,7 @@ func (s *Server) scanRestoredClaudeQuestions() {
 		decision     api.Decision
 		sessionID    string
 		processStart time.Time
+		cache        *session.ClaudeQuestionCache
 	}
 	var records []record
 	for id, pid := range s.screenPrompts.claudeRestore {
@@ -249,8 +255,26 @@ func (s *Server) scanRestoredClaudeQuestions() {
 			records = append(records, r)
 		}
 	}
+	// Caches live as long as their decision is being restored. Only the one
+	// running scan goroutine (claudeRestoring) touches them.
+	for id := range s.screenPrompts.claudeRestoreCaches {
+		if _, ok := s.screenPrompts.claudeRestore[id]; !ok {
+			delete(s.screenPrompts.claudeRestoreCaches, id)
+		}
+	}
 	if len(records) == 0 {
 		return
+	}
+	if s.screenPrompts.claudeRestoreCaches == nil {
+		s.screenPrompts.claudeRestoreCaches = map[string]*session.ClaudeQuestionCache{}
+	}
+	for i := range records {
+		c := s.screenPrompts.claudeRestoreCaches[records[i].id]
+		if c == nil {
+			c = new(session.ClaudeQuestionCache)
+			s.screenPrompts.claudeRestoreCaches[records[i].id] = c
+		}
+		records[i].cache = c
 	}
 	s.screenPrompts.claudeRestoring = true
 	go func() {
@@ -258,7 +282,7 @@ func (s *Server) scanRestoredClaudeQuestions() {
 		identified := map[string]string{}
 		for _, r := range records {
 			if r.identity == "" {
-				identity, done := restoredUnidentifiedClaudeQuestion(r.pane, r.sessionID, r.processStart, r.decision)
+				identity, done := restoredUnidentifiedClaudeQuestion(r.pane, r.sessionID, r.processStart, r.decision, r.cache)
 				if identity != "" {
 					identified[r.id], answered[r.id] = identity, done
 				}
@@ -272,7 +296,7 @@ func (s *Server) scanRestoredClaudeQuestions() {
 			if json.Unmarshal([]byte(r.identity), &parts) != nil || len(parts) != 3 || json.Unmarshal(parts[0], &identity.session) != nil || json.Unmarshal(parts[1], &identity.tool) != nil || json.Unmarshal(parts[2], &identity.index) != nil {
 				continue
 			}
-			if restoredClaudeAnswered(r.pane, identity.session, identity.tool, identity.index) {
+			if restoredClaudeAnswered(r.pane, identity.session, identity.tool, identity.index, r.cache) {
 				answered[r.id] = true
 			}
 		}
@@ -310,7 +334,7 @@ func (s *Server) scanRestoredClaudeQuestions() {
 	}()
 }
 
-func restoredClaudeAnswered(pane *runtime.Pane, expected, tool string, index int) bool {
+func restoredClaudeAnswered(pane *runtime.Pane, expected, tool string, index int, cache *session.ClaudeQuestionCache) bool {
 	if pane.Snapshot().Dead || foregroundAgent(pane) != "claude" {
 		return false
 	}
@@ -341,7 +365,10 @@ func restoredClaudeAnswered(pane *runtime.Pane, expected, tool string, index int
 		}
 		root = filepath.Join(home, ".claude")
 	}
-	questions, ok := new(session.ClaudeQuestionCache).ReadAll(root, id)
+	if cache == nil {
+		cache = new(session.ClaudeQuestionCache)
+	}
+	questions, ok := cache.ReadAll(root, id)
 	if !ok {
 		return false
 	}
