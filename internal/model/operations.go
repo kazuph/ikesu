@@ -344,6 +344,14 @@ func (s *AppState) movePane(c CmdMovePane) []Effect {
 		if dw < 0 || dw >= len(s.Workspaces) {
 			return nil
 		}
+		if dw == wi && len(s.Workspaces[wi].Tabs) == 1 && src.Layout.PaneCount() == 1 {
+			// The pane already is its space's only tab: moving it would
+			// dissolve the destination space itself.
+			if out != nil {
+				out.Reason = "same_tab"
+			}
+			return nil
+		}
 		s.dropPaneFromTab(wi, ti, c.Pane, out)
 		if out != nil && out.ClosedWsID != 0 && dw > wi {
 			dw--

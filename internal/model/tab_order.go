@@ -61,7 +61,7 @@ func (s *AppState) moveTabToWorkspace(c CmdMoveTabToWorkspace) []Effect {
 		}
 		s.Workspaces = append(s.Workspaces[:c.Workspace], s.Workspaces[c.Workspace+1:]...)
 	} else {
-		src.ActiveTab = 0
+		src.ActiveTab = min(c.Index, len(src.Tabs)-1) // like closing: the neighbour
 		for i, t := range src.Tabs {
 			if t == srcActive {
 				src.ActiveTab = i

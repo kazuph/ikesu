@@ -128,6 +128,15 @@ func (a *App) openPaneTabMenu(x, y, pid, wsID int) {
 			return model.MoveDest{Kind: model.MoveDestTab, TabW: w, TabT: ti, Split: layout.Vertical}, w >= 0
 		}))
 	}
+	if wi == pw && a.st.Workspaces[wi].Tabs[pt].Layout.PaneCount() == 1 {
+		// Alone in its tab: a new tab in the same space changes nothing.
+		if len(labels) == 0 {
+			a.ShowToast("pane move", "there is no other tab in this space", "info", a.focusedPane())
+			return
+		}
+		a.openMoveMenu(x, y, "move pane to", labels, actions)
+		return
+	}
 	labels = append(labels, menuMoveNewTab)
 	actions = append(actions, move(func() (model.MoveDest, bool) {
 		w := a.wsIndexByID(wsID)
@@ -158,4 +167,11 @@ func (a *App) openPaneSpaceMenu(x, y, pid int) {
 		return
 	}
 	a.openMoveMenu(x, y, "move pane to space", labels, actions)
+}
+
+func (a *App) tabIDAt(wi, ti int) int {
+	if wi < 0 || wi >= len(a.st.Workspaces) || ti < 0 || ti >= len(a.st.Workspaces[wi].Tabs) {
+		return -1
+	}
+	return a.st.Workspaces[wi].Tabs[ti].ID
 }

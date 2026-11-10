@@ -240,7 +240,7 @@ func (a *App) buildWorkspaceMenu(x, y, ws int, source *api.WorktreeSourceInfo) {
 func (a *App) openTabMenu(x, y, ws, ti int) {
 	a.menu = &uiMenu{justOpened: true,
 		kind: menuTab,
-		ws:   ws, tab: ti,
+		ws:   ws, tab: ti, tabID: a.tabIDAt(ws, ti),
 		m: render.Menu{
 			// The recorded 0.2.24 tab menu is fourteen columns with New tab selected.
 			X: x, Y: y, Hover: -1, Sel: 0, MinWidth: 14,
@@ -464,12 +464,25 @@ func (a *App) activateMenu(i int) {
 			a.openRenameTabDialog(m.ws, m.tab)
 		case "New tab":
 			a.exec(model.CmdNewTab{Workspace: m.ws})
-		case menuMoveTabLeft:
-			a.exec(model.CmdMoveTab{Workspace: m.ws, Index: m.tab, InsertIndex: m.tab - 1})
-		case menuMoveTabRight:
-			a.exec(model.CmdMoveTab{Workspace: m.ws, Index: m.tab, InsertIndex: m.tab + 2})
-		case menuMoveTabToSpace:
-			a.openTabSpaceMenu(m.m.X, m.m.Y, m.ws, m.tab)
+		case menuMoveTabLeft, menuMoveTabRight, menuMoveTabToSpace:
+			// Resolve the tab by id: another client may have reordered tabs.
+			wi, ti := a.tabIndexByID(m.tabID)
+			if wi < 0 {
+				a.ShowToast("tab move failed", "the tab no longer exists", "error", a.focusedPane())
+				break
+			}
+			switch m.m.Items[i].Label {
+			case menuMoveTabLeft:
+				if ti > 0 {
+					a.exec(model.CmdMoveTab{Workspace: wi, Index: ti, InsertIndex: ti - 1})
+				}
+			case menuMoveTabRight:
+				if ti < len(a.st.Workspaces[wi].Tabs)-1 {
+					a.exec(model.CmdMoveTab{Workspace: wi, Index: ti, InsertIndex: ti + 2})
+				}
+			default:
+				a.openTabSpaceMenu(m.m.X, m.m.Y, wi, ti)
+			}
 		case "Close":
 			a.closeTabAt(m.ws, m.tab)
 		}
