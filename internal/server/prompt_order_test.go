@@ -16,6 +16,12 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// ikesu probes the login PATH by running $SHELL with -lic and no terminal. A
+// test shell that gates on a fifo or writes a ready file must not run its pane
+// body for that probe: the probe then races the pane for the gate line and
+// truncates the pane's output file (seen as 0 bytes or NUL holes under load).
+const probeGuard = "case \"$*\" in *-lic*) exit 1;; esac\n"
+
 func reserveTestInput(t *testing.T, p *runtime.Pane, size int, keys ...uv.KeyEvent) *runtime.InputOperation {
 	t.Helper()
 	op, err := p.ReserveInputOperation(size, keys)
@@ -33,7 +39,7 @@ func TestAgentPromptDisconnectReturnsWhilePTYIsFull(t *testing.T) {
 		t.Fatal(err)
 	}
 	script := filepath.Join(dir, "shell")
-	body := fmt.Sprintf("#!/bin/sh\nstty raw -echo; touch %q; read line < %q; exec cat > %q\n", ready, gate, received)
+	body := fmt.Sprintf("#!/bin/sh\n"+probeGuard+"stty raw -echo; touch %q; read line < %q; exec cat > %q\n", ready, gate, received)
 	if err := os.WriteFile(script, []byte(body), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +114,7 @@ func TestPaneSendInputAPIRejectsExcessReservedText(t *testing.T) {
 	dir := t.TempDir()
 	ready := filepath.Join(dir, "ready")
 	script := filepath.Join(dir, "shell")
-	body := fmt.Sprintf("#!/bin/sh\nstty raw -echo; touch %q; exec sleep 600\n", ready)
+	body := fmt.Sprintf("#!/bin/sh\n"+probeGuard+"stty raw -echo; touch %q; exec sleep 600\n", ready)
 	if err := os.WriteFile(script, []byte(body), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +150,7 @@ func TestPaneSendInputPreservesAcceptedOrderAfterPTYDrain(t *testing.T) {
 		t.Fatal(err)
 	}
 	script := filepath.Join(dir, "shell")
-	body := fmt.Sprintf("#!/bin/sh\nstty raw -echo; touch %q; read line < %q; exec cat > %q\n", ready, gate, received)
+	body := fmt.Sprintf("#!/bin/sh\n"+probeGuard+"stty raw -echo; touch %q; read line < %q; exec cat > %q\n", ready, gate, received)
 	if err := os.WriteFile(script, []byte(body), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +238,7 @@ func TestAgentPromptDisconnectAfterBodyDoesNotCombineNextInput(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "lines")
 	ready := filepath.Join(t.TempDir(), "ready")
 	script := filepath.Join(t.TempDir(), "shell")
-	body := fmt.Sprintf("#!/bin/sh\nstty echo; touch %q; while IFS= read -r line; do printf '%%s\\n' \"$line\" >> %q; done\n", ready, path)
+	body := fmt.Sprintf("#!/bin/sh\n"+probeGuard+"stty echo; touch %q; while IFS= read -r line; do printf '%%s\\n' \"$line\" >> %q; done\n", ready, path)
 	if err := os.WriteFile(script, []byte(body), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +274,7 @@ func TestAgentPromptManualInputCancelsPendingEnter(t *testing.T) {
 	teststate.Lock(t)
 	path, ready := filepath.Join(t.TempDir(), "line"), filepath.Join(t.TempDir(), "ready")
 	script := filepath.Join(t.TempDir(), "shell")
-	body := fmt.Sprintf("#!/bin/sh\nstty echo; touch %q; IFS= read -r line; printf '%%s\\n' \"$line\" > %q\n", ready, path)
+	body := fmt.Sprintf("#!/bin/sh\n"+probeGuard+"stty echo; touch %q; IFS= read -r line; printf '%%s\\n' \"$line\" > %q\n", ready, path)
 	if err := os.WriteFile(script, []byte(body), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +321,7 @@ func TestConcurrentPaneSendInputRequestsRemainSeparate(t *testing.T) {
 	path := filepath.Join(root, "lines")
 	ready := filepath.Join(root, "ready")
 	script := filepath.Join(root, "shell")
-	body := fmt.Sprintf("#!/bin/sh\nstty -echo; touch %q; while IFS= read -r line; do printf '%%s\\n' \"$line\" >> %q; done\n", ready, path)
+	body := fmt.Sprintf("#!/bin/sh\n"+probeGuard+"stty -echo; touch %q; while IFS= read -r line; do printf '%%s\\n' \"$line\" >> %q; done\n", ready, path)
 	if err := os.WriteFile(script, []byte(body), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -338,7 +344,7 @@ func TestConcurrentDelayedInputsRemainSeparate(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "lines")
 	ready := filepath.Join(t.TempDir(), "ready")
 	script := filepath.Join(t.TempDir(), "shell")
-	body := fmt.Sprintf("#!/bin/sh\nstty -echo; touch %q; while IFS= read -r line; do printf '%%s\\n' \"$line\" >> %q; done\n", ready, path)
+	body := fmt.Sprintf("#!/bin/sh\n"+probeGuard+"stty -echo; touch %q; while IFS= read -r line; do printf '%%s\\n' \"$line\" >> %q; done\n", ready, path)
 	if err := os.WriteFile(script, []byte(body), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -404,7 +410,7 @@ func TestDelayedInputDoesNotSubmitHumanInterruption(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "line")
 	ready := filepath.Join(t.TempDir(), "ready")
 	script := filepath.Join(t.TempDir(), "shell")
-	body := fmt.Sprintf("#!/bin/sh\nstty echo; touch %q; IFS= read -r line; printf '%%s\\n' \"$line\" > %q\n", ready, path)
+	body := fmt.Sprintf("#!/bin/sh\n"+probeGuard+"stty echo; touch %q; IFS= read -r line; printf '%%s\\n' \"$line\" > %q\n", ready, path)
 	if err := os.WriteFile(script, []byte(body), 0700); err != nil {
 		t.Fatal(err)
 	}
