@@ -41,6 +41,7 @@ func force(a []string) bool {
 	return false
 }
 func mainBranch(s string) bool {
+	s = strings.TrimPrefix(s, "+")
 	return has([]string{"main", "master", "refs/heads/main", "refs/heads/master"}, s)
 }
 func gitPush(i Input) Verdict {
@@ -73,6 +74,14 @@ func gitPush(i Input) Verdict {
 			v = branch
 		}
 		destMain = destMain || mainBranch(v)
+	}
+	if i.gitDirUnknown {
+		// The repository behind an unresolved -C is unknown, so neither the
+		// .allow-main permit nor ownership of the current directory applies.
+		if destMain {
+			return result("block", "git-main", "main/master への push は AI からは禁止です。必要なら人間が手動で実行してください。")
+		}
+		return result("ask", "ownership", "git -C の場所を確定できないため承認が必要です。")
 	}
 	if destMain {
 		root := probe(i, "git", "rev-parse", "--show-toplevel")
@@ -153,6 +162,9 @@ func normalizeGit(i Input) Input {
 			if n+1 >= len(a) {
 				return i
 			}
+			if a[n+1] == unresolvedPlaceholder {
+				i.gitDirUnknown = true
+			}
 			if d := a[n+1]; d != "" && d != unresolvedPlaceholder {
 				if !filepath.IsAbs(d) {
 					d = filepath.Join(cwd, d)
@@ -164,10 +176,27 @@ func normalizeGit(i Input) Input {
 			if n+1 >= len(a) {
 				return i
 			}
-			opts = append(opts, v, a[n+1])
+			// Only repository-locating options reach the probes: -c and the
+			// like could run configured commands before anyone approves.
+			if has([]string{"--git-dir", "--work-tree", "--namespace"}, v) {
+				opts = append(opts, v, a[n+1])
+			}
+			if (v == "-c" || v == "--config-env") && strings.HasPrefix(strings.ToLower(a[n+1]), "alias.") {
+				i.gitAlias = true
+			}
 			n += 2
-		case strings.HasPrefix(v, "--git-dir=") || strings.HasPrefix(v, "--work-tree=") || strings.HasPrefix(v, "--namespace=") || strings.HasPrefix(v, "--config-env=") || strings.HasPrefix(v, "--super-prefix=") || strings.HasPrefix(v, "--exec-path="),
-			has([]string{"--no-pager", "-P", "-p", "--paginate", "--no-optional-locks", "--bare", "--no-replace-objects", "--literal-pathspecs", "--glob-pathspecs", "--noglob-pathspecs", "--icase-pathspecs", "--no-lazy-fetch", "--no-advice"}, v):
+		case strings.HasPrefix(v, "--config-env="):
+			if strings.HasPrefix(strings.ToLower(strings.TrimPrefix(v, "--config-env=")), "alias.") {
+				i.gitAlias = true
+			}
+			n++
+		case strings.HasPrefix(v, "--git-dir=") || strings.HasPrefix(v, "--work-tree=") || strings.HasPrefix(v, "--namespace="):
+			opts = append(opts, v)
+			n++
+		case strings.HasPrefix(v, "--super-prefix=") || strings.HasPrefix(v, "--exec-path="):
+			// Not passed to probes: --exec-path picks which git programs run.
+			n++
+		case has([]string{"--no-pager", "-P", "-p", "--paginate", "--no-optional-locks", "--bare", "--no-replace-objects", "--literal-pathspecs", "--glob-pathspecs", "--noglob-pathspecs", "--icase-pathspecs", "--no-lazy-fetch", "--no-advice"}, v):
 			opts = append(opts, v)
 			n++
 		default:

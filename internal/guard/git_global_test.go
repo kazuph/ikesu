@@ -72,3 +72,39 @@ func TestGitGlobalOptionsKeepRules(t *testing.T) {
 		}
 	})
 }
+
+func TestGitGlobalReviewFixes(t *testing.T) {
+	d := t.TempDir()
+	run := func(args ...string) {
+		c := exec.Command("git", args...)
+		c.Dir = d
+		c.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null")
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	run("init", "-q", "-b", "feature")
+	run("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "--allow-empty", "-m", "x")
+	if err := os.WriteFile(filepath.Join(d, ".allow-main"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	in := func(args ...string) Input {
+		return Input{Command: "git", Args: args, Cwd: d, LaunchCwd: d, Env: map[string]string{"PATH": os.Getenv("PATH"), "HOME": d}}
+	}
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"-C", unresolvedPlaceholder, "push", "origin", "main"}, "block"},
+		{[]string{"-C", unresolvedPlaceholder, "push", "origin", "feature"}, "ask"},
+		{[]string{"-c", "alias.p=push", "p", "origin", "main"}, "ask"},
+		{[]string{"--config-env=alias.p=X", "p", "origin", "main"}, "ask"},
+	} {
+		if v := classify(Config{}, in(tc.args...)); v.Decision != tc.want {
+			t.Errorf("%v: got %+v want %s", tc.args, v, tc.want)
+		}
+	}
+	if !mainBranch("+main") || !mainBranch("+refs/heads/master") {
+		t.Error("a forced refspec to main must count as main")
+	}
+}
