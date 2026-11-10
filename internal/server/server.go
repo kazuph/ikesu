@@ -739,9 +739,6 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 		s.restoreLateCodexQuestions()
 	})
 	go s.jobCacheLoop(appDone, jobsDone)
-	if s.session == "" || s.session == api.DefaultSession {
-		go s.guardAuditLoop(appDone)
-	}
 	<-appDone
 	s.stopMailQueries()
 	<-jobsDone

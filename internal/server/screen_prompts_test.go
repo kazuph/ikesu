@@ -52,6 +52,12 @@ func screenTerminal(t *testing.T, name, agent string) (*Server, *runtime.Pane, s
 		s.app.Stop()
 		<-done
 		s.sup.KillAll()
+		// The pane runs inside dir; wait for it so TempDir's removal does not
+		// race a still-exiting shell (seen as "directory not empty" on mini).
+		select {
+		case <-p.Exited():
+		case <-time.After(5 * time.Second):
+		}
 		if s.store != nil {
 			s.store.Close()
 		}

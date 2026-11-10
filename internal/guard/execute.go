@@ -181,7 +181,7 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 	}
 	reason := requestReason(i)
 	askStarted := time.Now()
-	// 聞いた結果を asks.jsonl に残す（週1回の見直しの材料）。失敗しても判定は変えない。
+	// 聞いた結果を asks.jsonl に残す（ikesu guard audit の材料）。失敗しても判定は変えない。
 	noteAsk := func(outcome string, d *api.Decision) {
 		recordAsk(root, i, m, v, via, approvalCommand(i), outcome, d, askStarted, errOut)
 	}
