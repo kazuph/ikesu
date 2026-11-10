@@ -24,6 +24,9 @@ func MenuSize(m *Menu) (w, h int) {
 		}
 	}
 	w += 4 // padding + border
+	if m.Title != "" {
+		w = max(w, len([]rune(m.Title))+6) // " title " on the top border
+	}
 	w = max(w, m.MinWidth)
 	return w, len(m.Items) + 2
 }
@@ -75,6 +78,9 @@ func drawMenu(f *Frame, m *Menu, out *Output) {
 	border := uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.PopupBG}
 	ix, iy, iw, ih := f.Box(r.X, r.Y, r.W, r.H, border)
 	f.Fill(ix, iy, iw, ih, " ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG})
+	if m.Title != "" {
+		f.Text(r.X+2, r.Y, " "+m.Title+" ", uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}, r.X+r.W-2)
+	}
 	if m.Global {
 		f.Fill(ix, iy, iw, ih, " ", uv.Style{Bg: f.Palette.PopupBG})
 	}

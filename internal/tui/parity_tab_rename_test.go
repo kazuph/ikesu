@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"reflect"
 	"testing"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -53,7 +54,11 @@ func TestParityTabRenameSelectsTargetAndKeepsDefaultName(t *testing.T) {
 		t.Fatal("opening the menu must keep the selected tab")
 	}
 	wid, height := render.MenuSize(&a.menu.m)
-	if wid != 14 || height != 5 || a.menu.m.Sel != 0 || a.menu.m.Items[0].Label != "New tab" || a.menu.m.Items[1].Label != "Rename" || a.menu.m.Items[2].Label != "Close" {
+	labels := []string{}
+	for _, item := range a.menu.m.Items {
+		labels = append(labels, item.Label)
+	}
+	if wid < 14 || height != len(labels)+2 || a.menu.m.Sel != 0 || !reflect.DeepEqual(labels, []string{"New tab", "Rename", "", "Move tab left", "Move tab right", "Move to space…", "", "Close"}) {
 		t.Fatal("tab menu does not match the observed actions and initial selection")
 	}
 	a.activateMenu(1)

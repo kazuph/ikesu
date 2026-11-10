@@ -59,7 +59,11 @@ func (a *App) openPaneMenu(x, y, pid int) {
 			items = append(items, render.MenuItem{Label: "Zoom"})
 		}
 	}
-	items = append(items, render.MenuItem{Label: "Close pane"})
+	items = append(items,
+		render.MenuItem{Label: menuMovePaneToTab},
+		render.MenuItem{Label: menuMovePaneToSpace},
+		render.MenuItem{Separator: true},
+		render.MenuItem{Label: "Close pane"})
 	a.menu = &uiMenu{justOpened: true,
 		kind: menuPane,
 		pane: pid,
@@ -240,12 +244,26 @@ func (a *App) openTabMenu(x, y, ws, ti int) {
 		m: render.Menu{
 			// The recorded 0.2.24 tab menu is fourteen columns with New tab selected.
 			X: x, Y: y, Hover: -1, Sel: 0, MinWidth: 14,
-			Items: []render.MenuItem{
-				{Label: "New tab"},
-				{Label: "Rename"},
-				{Label: "Close"},
-			},
+			Items: a.tabMenuItems(ws, ti),
 		},
+	}
+}
+
+// tabMenuItems: the recorded New tab/Rename/Close plus the move entries.
+func (a *App) tabMenuItems(ws, ti int) []render.MenuItem {
+	n := 0
+	if ws >= 0 && ws < len(a.st.Workspaces) {
+		n = len(a.st.Workspaces[ws].Tabs)
+	}
+	return []render.MenuItem{
+		{Label: "New tab"},
+		{Label: "Rename"},
+		{Separator: true},
+		{Label: menuMoveTabLeft, Disabled: ti <= 0},
+		{Label: menuMoveTabRight, Disabled: ti >= n-1},
+		{Label: menuMoveTabToSpace, Disabled: len(a.st.Workspaces) < 2},
+		{Separator: true},
+		{Label: "Close"},
 	}
 }
 
@@ -340,6 +358,12 @@ func (a *App) activateMenu(i int) {
 			a.exec(model.CmdZoomPane{Pane: model.PaneID(pid), Mode: "toggle"})
 		case "Close pane":
 			a.closeFocusedPane()
+		case menuMovePaneToTab:
+			if wi, _ := a.st.FindPane(model.PaneID(pid)); wi >= 0 {
+				a.openPaneTabMenu(m.m.X, m.m.Y, pid, a.st.Workspaces[wi].ID)
+			}
+		case menuMovePaneToSpace:
+			a.openPaneSpaceMenu(m.m.X, m.m.Y, pid)
 		}
 	case menuWorktree:
 		if i < len(m.worktreePaths) {
@@ -434,14 +458,24 @@ func (a *App) activateMenu(i int) {
 			a.exec(model.CmdToggleWorktreeGroup{Index: m.ws})
 		}
 	case menuTab:
-		switch i {
-		case 1:
+		switch m.m.Items[i].Label {
+		case "Rename":
 			a.exec(model.CmdSelectTab{Workspace: m.ws, Tab: m.tab})
 			a.openRenameTabDialog(m.ws, m.tab)
-		case 0:
+		case "New tab":
 			a.exec(model.CmdNewTab{Workspace: m.ws})
-		case 2:
+		case menuMoveTabLeft:
+			a.exec(model.CmdMoveTab{Workspace: m.ws, Index: m.tab, InsertIndex: m.tab - 1})
+		case menuMoveTabRight:
+			a.exec(model.CmdMoveTab{Workspace: m.ws, Index: m.tab, InsertIndex: m.tab + 2})
+		case menuMoveTabToSpace:
+			a.openTabSpaceMenu(m.m.X, m.m.Y, m.ws, m.tab)
+		case "Close":
 			a.closeTabAt(m.ws, m.tab)
+		}
+	case menuMove:
+		if i < len(m.actions) && m.actions[i] != nil {
+			m.actions[i]()
 		}
 	case menuMain:
 		if a.clientMachines && m.m.Items[i].Label != "koi: on" && m.m.Items[i].Label != "koi: off" && m.m.Items[i].Label != "add machine..." && m.m.Items[i].Label != "remove machine..." && m.m.Items[i].Label != "delete idle panes…" {

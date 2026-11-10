@@ -347,7 +347,7 @@ func (a *App) exec(cmd model.Command) {
 	}
 	var metadataOrder []int
 	switch cmd.(type) {
-	case model.CmdMoveWorkspace, model.CmdCloseWorkspace, model.CmdPaneExited:
+	case model.CmdMoveWorkspace, model.CmdCloseWorkspace, model.CmdPaneExited, model.CmdMovePane, model.CmdMoveTabToWorkspace:
 		for _, ws := range a.st.Workspaces {
 			metadataOrder = append(metadataOrder, ws.ID)
 		}

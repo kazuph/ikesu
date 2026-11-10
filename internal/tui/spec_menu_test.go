@@ -47,7 +47,7 @@ func TestSPECExactPaneMenuOrder(t *testing.T) {
 						want = append(want, "Zoom")
 					}
 				}
-				want = append(want, "Close pane")
+				want = append(want, "Move to tab…", "Move pane to space…", "--", "Close pane")
 				if !reflect.DeepEqual(got, want) {
 					t.Fatalf("multi=%v named=%v zoom=%v menu=%v want=%v", multi, named, zoom, got, want)
 				}
