@@ -58,7 +58,7 @@ func readEntries(path string, ai bool) ([]entry, int, error) {
 			row = entry{epoch: ts.Unix(), line: parts[2], verdict: strings.ToUpper(parts[1])}
 		} else {
 			var r Record
-			if e = json.Unmarshal([]byte(line), &r); e != nil || r.CommandLine == "" || r.Epoch == 0 || !has([]string{"allow", "ask", "block"}, r.Decision) {
+			if e = json.Unmarshal([]byte(line), &r); e != nil || r.CommandLine == "" || r.Epoch == 0 || !has([]string{"allow", "ask", "block", "deny"}, r.Decision) {
 				bad++
 				continue
 			}

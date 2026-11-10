@@ -235,7 +235,7 @@ func (s *scriptScanner) body(i Input, data []byte, name string) scriptResult {
 	i.scriptLabel = name
 	commands, e := lineCommands(i, string(data))
 	best := scriptResult{}
-	if v := classify(s.config, Input{RawLine: string(data)}); v.Decision == "block" {
+	if v := classify(s.config, Input{RawLine: string(data)}); blocksRun(v.Decision) {
 		best = scriptResult{kind: scriptBlocked, verdict: v}
 	}
 	if e != nil {
@@ -250,7 +250,7 @@ func (s *scriptScanner) body(i Input, data []byte, name string) scriptResult {
 		} else {
 			v := classify(s.config, cmd)
 			switch v.Decision {
-			case "block":
+			case "block", "deny":
 				r = scriptResult{kind: scriptBlocked, verdict: v}
 			case "ask":
 				r = scriptResult{kind: scriptDanger, verdict: v}
@@ -269,7 +269,7 @@ func (s *scriptScanner) body(i Input, data []byte, name string) scriptResult {
 				deleting := has([]string{"rm", "rmdir", "rimraf", "trash"}, filepath.Base(cmd.Command))
 				if uv, ok := unresolvedVerdict(s.config, cmd, classify); ok && !deleting {
 					kind := scriptDanger
-					if uv.Decision == "block" {
+					if blocksRun(uv.Decision) {
 						kind = scriptBlocked
 					}
 					r = scriptResult{kind: kind, verdict: uv}

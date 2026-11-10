@@ -40,7 +40,7 @@ func defaults(v, d []string) []string {
 	return v
 }
 func (c Config) Commands() []string {
-	return defaults(c.Targets, strings.Fields("rm rmdir rimraf trash mv dd mkfs fdisk diskutil format parted gparted git gh curl wget http https aws npm npx pnpm pnpx yarn bun bunx deno cargo env arch firebase vercel flyctl fly wrangler sqlite3 psql mysql netlify railway render amplify cdk serverless sls pulumi terraform ikesu herdr touch tee cp ln"))
+	return defaults(c.Targets, strings.Fields("rm rmdir rimraf trash mv dd mkfs fdisk diskutil format parted gparted git gh curl wget http https aws npm npx pnpm pnpx yarn bun bunx deno cargo env arch firebase vercel flyctl fly wrangler sqlite3 psql mysql netlify railway render amplify cdk serverless sls pulumi terraform ikesu herdr touch tee cp ln find fd fdfind rg ag ack du tree locate bfs grep egrep fgrep ls mdfind"))
 }
 
 type Input struct {
@@ -181,6 +181,9 @@ func classify(c Config, i Input) Verdict {
 	}
 	if cmd == "gh" {
 		return github(i)
+	}
+	if v, ok := wideScan(i); ok {
+		return v
 	}
 	allow := result("allow", "default", "")
 	ask := result("ask", "dangerous", "実行前に承認が必要です。")

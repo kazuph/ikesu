@@ -171,6 +171,10 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 		PrintBlock(errOut, i, v)
 		return false
 	}
+	if v.Decision == "deny" {
+		PrintDeny(errOut, i, v)
+		return false
+	}
 	deny := func() bool {
 		fmt.Fprintf(errOut, "   %s\n", strings.ReplaceAll(approvalTrigger(i, v), "\n", "\n   "))
 		return false
