@@ -14,7 +14,7 @@ import (
 
 func (r *runner) guardCLI(a []string) int {
 	if len(a) == 0 || a[0] == "--help" || a[0] == "-h" {
-		fmt.Fprintln(r.out(), "ikesu guard exec -- <cmd> [args...]\nikesu guard line -- <command line>\nikesu guard claude-prefix -- <command line>\nikesu guard check -- <cmd> [args...] [--cwd DIR] [--launch-dir DIR]\nikesu guard log [--lines N] [--json]\nikesu guard compare [--guard-log PATH] [--ai-guard-log PATH] [--window SEC] [--since EPOCH]\nikesu guard status")
+		fmt.Fprintln(r.out(), "ikesu guard exec -- <cmd> [args...]\nikesu guard line -- <command line>\nikesu guard claude-prefix -- <command line>\nikesu guard check -- <cmd> [args...] [--cwd DIR] [--launch-dir DIR]\nikesu guard log [--lines N] [--json]\nikesu guard compare [--guard-log PATH] [--ai-guard-log PATH] [--window SEC] [--since EPOCH]\nikesu guard audit [--since 7d] [--json] [--html PATH] [--top N] [--replay]\nikesu guard status")
 		return 0
 	}
 	sub := a[0]
@@ -237,6 +237,9 @@ func (r *runner) guardCLI(a []string) int {
 			return 1
 		}
 		return code
+	}
+	if sub == "audit" {
+		return r.guardAudit(c.Guard, root, a)
 	}
 	if sub == "log" {
 		defaultLines := 20
