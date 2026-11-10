@@ -462,6 +462,13 @@ func sampleMissed(path string, sinceEpoch int64, n int, rng *rand.Rand) ([]Misse
 		if len(bytes.TrimSpace(line)) == 0 {
 			return
 		}
+		// 多くの行は「未確定を通した」を含まない。その行は時刻だけを安く読んで、期間の終わりかを見る。
+		if !bytes.Contains(line, undeterminedPrefixBytes) {
+			if e, ok := quickEpoch(line); ok && e < sinceEpoch {
+				done = true
+			}
+			return
+		}
 		var m missedLine
 		if json.Unmarshal(line, &m) != nil {
 			return
@@ -481,7 +488,7 @@ func sampleMissed(path string, sinceEpoch int64, n int, rng *rand.Rand) ([]Misse
 			picked[j] = s
 		}
 	}
-	for pos > 0 && !done {
+	for pos > 0 && !done && read < maxMissedScanBytes {
 		size := int64(tailChunk)
 		if pos < size {
 			size = pos
@@ -629,4 +636,27 @@ func localTime(ts string) string {
 		return ts
 	}
 	return t.In(time.Local).Format("2006-01-02 15:04")
+}
+
+// maxMissedScanBytes は見逃し側の見本のために decisions.jsonl を後ろから読む上限。期間が長くても読む量を抑える。
+const maxMissedScanBytes = 256 << 20
+
+var undeterminedPrefixBytes = []byte(undeterminedPrefix)
+
+// quickEpoch は記録の1行から "ts_epoch" の数字だけを読む。
+func quickEpoch(line []byte) (int64, bool) {
+	k := bytes.Index(line, []byte(`"ts_epoch":`))
+	if k < 0 {
+		return 0, false
+	}
+	rest := line[k+len(`"ts_epoch":`):]
+	end := 0
+	for end < len(rest) && rest[end] >= '0' && rest[end] <= '9' {
+		end++
+	}
+	if end == 0 {
+		return 0, false
+	}
+	v, err := strconv.ParseInt(string(rest[:end]), 10, 64)
+	return v, err == nil
 }

@@ -110,7 +110,7 @@ func recordAsk(root string, i Input, m Marker, v Verdict, via, command, outcome 
 	now := time.Now()
 	r := AskRecord{
 		TS: now.UTC().Format(time.RFC3339), TSEpoch: now.Unix(),
-		Rule: v.Rule, Reason: i.redact(v.Reason), Command: i.redact(command),
+		Rule: v.Rule, Reason: i.redact(v.Reason), Command: truncateRunes(i.redact(command), 4000),
 		Units: askUnits(i.commandUnits(command)),
 		Cwd:   i.redact(i.Cwd), Repo: i.redact(repoOf(i.Cwd)),
 		PaneID: m.Pane, Agent: m.Agent, Via: via, Outcome: outcome,

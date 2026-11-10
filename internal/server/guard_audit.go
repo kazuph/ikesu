@@ -52,6 +52,10 @@ func (s *Server) guardAuditWeekly(now time.Time) error {
 	if !w.Due(now, guard.ReadLastWeekly(root)) {
 		return nil
 	}
+	// 先に「この週は試した」と書く。作成や集計が失敗しても、毎分やり直して判断待ちや重い集計が増えないようにする。
+	if err := guard.MarkWeekly(root, now); err != nil {
+		return err
+	}
 	store, err := s.db()
 	if err != nil {
 		return err
@@ -65,7 +69,6 @@ func (s *Server) guardAuditWeekly(now time.Time) error {
 		return err
 	}
 	var createErr error
-	created := false
 	s.app.Do(func() {
 		s.initDecisionHub()
 		d, err := store.CreateDecision(*params, now)
@@ -73,12 +76,8 @@ func (s *Server) guardAuditWeekly(now time.Time) error {
 			createErr = err
 			return
 		}
-		created = true
 		s.decisionChanged("decision_created", d)
 		_ = s.expireDecisions(store)
 	})
-	if createErr != nil || !created {
-		return createErr
-	}
-	return guard.MarkWeekly(root, now)
+	return createErr
 }

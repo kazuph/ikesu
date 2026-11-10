@@ -72,7 +72,7 @@ func (r *runner) guardAudit(c guard.Config, root string, a []string) int {
 		return 1
 	}
 	decisions, note := r.auditDecisions()
-	rep, err := guard.BuildAudit(guard.AuditOptions{Root: root, Now: now, Since: since, Top: top, Asks: asks, Decisions: decisions, ServerNote: note, Replay: replay, Config: c, SampleLog: filepath.Join(root, "guard", "decisions.jsonl"), Env: guard.EnvMap(os.Environ())})
+	rep, err := guard.BuildAudit(guard.AuditOptions{Root: root, Now: now, Since: since, Top: top, Asks: asks, Decisions: decisions, ServerNote: note, Replay: replay, Config: c, SampleLog: filepath.Join(root, "guard", "decisions.jsonl"), Env: replayEnv()})
 	if err != nil {
 		fmt.Fprintln(r.errOut(), err)
 		return 1
@@ -113,4 +113,15 @@ func (r *runner) auditDecisions() ([]api.Decision, string) {
 		return nil, "サーバーの承認一覧を読めないため、asks.jsonl の記録だけで集計しました: " + err.Error()
 	}
 	return list.Decisions, ""
+}
+
+// replayEnv は判定し直しに使う環境変数。AI_GUARD_* （申請文・危険語の確認済みの印など）は外し、今の端末の状態で甘く出ないようにする。
+func replayEnv() map[string]string {
+	env := guard.EnvMap(os.Environ())
+	for k := range env {
+		if strings.HasPrefix(k, "AI_GUARD_") {
+			delete(env, k)
+		}
+	}
+	return env
 }
