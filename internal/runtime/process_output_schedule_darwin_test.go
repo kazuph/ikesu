@@ -138,7 +138,12 @@ while True:signal.pause()
 		t.Fatal("invalid fixture child", string(raw), err)
 	}
 	defer syscall.Kill(child, syscall.SIGTERM)
-	if err = syscall.Kill(p.Snapshot().FgPID, syscall.SIGUSR1); err != nil {
+	// After the switch the fixture's parent is no longer the foreground job,
+	// so closing the pane does not hang it up; stop it here or it outlives
+	// the test (seen as orphaned python processes with a zombie child).
+	parent := p.Snapshot().FgPID
+	defer syscall.Kill(parent, syscall.SIGKILL)
+	if err = syscall.Kill(parent, syscall.SIGUSR1); err != nil {
 		t.Fatal(err)
 	}
 	until = time.Now().Add(5 * time.Second)
