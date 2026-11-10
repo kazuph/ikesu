@@ -73,6 +73,7 @@ type Input struct {
 	ShellEnvChanged      bool              `json:"-"`
 	Unresolved           bool              `json:"-"`
 	UnresolvedArg        bool              `json:"-"`
+	unknownWords         map[string]bool
 	RawLine              string            `json:"-"`
 	Command              string            `json:"command"`
 	Args                 []string          `json:"args"`

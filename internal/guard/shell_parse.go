@@ -137,6 +137,7 @@ func lineCommands(i Input, line string) ([]Input, error) {
 			argv = append(argv, value)
 		}
 		next.Command, next.Args = argv[0], argv[1:]
+		next.unknownWords = unknownWords
 		if unknownCommand {
 			setError(unresolvedScriptError{"実行するコマンド名を安全に確定できません: " + next.Command})
 			next.scriptUnknownCommand = true
@@ -369,6 +370,11 @@ func lineVerdict(c Config, i Input, line string) (Input, Verdict, error) {
 		if !(i.runtimeLine && has([]string{"eval", "source", "."}, filepath.Base(command.Command))) {
 			v = Evaluate(c, command)
 		}
+		if v.Decision == "allow" && !i.runtimeLine {
+			if uv, ok := unresolvedVerdict(c, command, Evaluate); ok {
+				v = uv
+			}
+		}
 		if command.scriptResult != nil {
 			r := command.scriptResult
 			if r.kind == scriptSafe {
@@ -425,4 +431,67 @@ const undeterminedPrefix = "未確定を通した: "
 func unresolvedFailure(e error) bool {
 	var unresolved unresolvedScriptError
 	return errors.As(e, &unresolved)
+}
+
+// git の全体オプション（-C <dir> など）を外し、サブコマンドから判定できるようにする。
+func stripGitGlobalOptions(argv []string) []string {
+	n := 1
+	for n < len(argv) {
+		a := argv[n]
+		switch {
+		case a == "-C" || a == "-c" || a == "--git-dir" || a == "--work-tree" || a == "--namespace":
+			n += 2
+		case strings.HasPrefix(a, "--git-dir=") || strings.HasPrefix(a, "--work-tree=") || strings.HasPrefix(a, "--namespace="), a == "--no-pager" || a == "-P" || a == "--no-optional-locks" || a == "--bare":
+			n++
+		default:
+			return append([]string{argv[0]}, argv[n:]...)
+		}
+	}
+	return argv[:1]
+}
+
+const unresolvedPlaceholder = "UNRESOLVED_VALUE"
+
+// 未確定の語が混じる命令でも、外向きの規則・git の決まりは効かせる。
+// (a) 未確定の語を「確定しない印の値」に置き換えた argv で判定する。
+// (b) 先頭語が未確定なら、後ろのリテラルの語のうち既知のコマンド名から始まる部分列も判定する。
+func unresolvedVerdict(c Config, command Input, judge func(Config, Input) Verdict) (Verdict, bool) {
+	if !command.Unresolved {
+		return Verdict{}, false
+	}
+	argv := append([]string{command.Command}, command.Args...)
+	headUnknown := command.unknownWords[command.Command]
+	for n, word := range argv {
+		if command.unknownWords[word] {
+			argv[n] = unresolvedPlaceholder
+		}
+	}
+	try := func(words []string) (Verdict, bool) {
+		candidate := command
+		candidate.Unresolved, candidate.UnresolvedArg, candidate.unknownWords = false, false, nil
+		candidate.RawLine = ""
+		candidate.Command, candidate.Args = words[0], words[1:]
+		v := judge(c, candidate)
+		return v, v.Decision == "block" || v.Decision == "ask"
+	}
+	if filepath.Base(argv[0]) == "git" {
+		argv = stripGitGlobalOptions(argv)
+	}
+	var found Verdict
+	have := false
+	take := func(v Verdict, ok bool) {
+		if ok && (!have || v.Decision == "block" && found.Decision != "block") {
+			found, have = v, true
+		}
+	}
+	if !headUnknown {
+		take(try(argv))
+	} else {
+		for n := 1; n < len(argv); n++ {
+			if argv[n] != unresolvedPlaceholder && has(c.Commands(), filepath.Base(argv[n])) {
+				take(try(argv[n:]))
+			}
+		}
+	}
+	return found, have
 }
