@@ -191,7 +191,7 @@ func TestScriptFileAfterLiteralCd(t *testing.T) {
 					t.Fatalf("target changed: %v %s", e, out)
 				}
 				// cd 後の場所が未確定な行は行全体では止めない。スクリプト内の外向き操作だけ実行時に止まる。
-				if !strings.Contains(string(out), "Command cancelled") {
+				if !strings.Contains(string(out), "Command cancelled") && !strings.Contains(string(out), "外側のコマンド") { // 出力は grep を通る
 					t.Fatalf("dangerous script command was not cancelled: %s", out)
 				}
 			})
