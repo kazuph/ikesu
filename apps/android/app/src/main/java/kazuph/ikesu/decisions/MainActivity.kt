@@ -181,6 +181,35 @@ class MainActivity : Activity() {
         linksClickable = true; setTextIsSelectable(true)
         movementMethod = android.text.method.LinkMovementMethod.getInstance()
     }
+    /** One line of a multi-line command: number, label, joiner and text. Flagged lines get a red bar, tint and reason. */
+    private fun unitRow(unit: JSONObject, number: Int): View {
+        val verdict = unit.optString("verdict")
+        val flagged = isFlaggedVerdict(verdict)
+        val red = 0xFFFF4D4D.toInt()
+        val ink = if (flagged) red else dim
+        fun cell(value: String, size: Float, color: Int, bold: Boolean = false, mono: Boolean = false) = text(value, size).apply {
+            setTextColor(color); setTextIsSelectable(!flagged || mono)
+            if (bold) setTypeface(typeface, Typeface.BOLD) else if (size == 28f) setTypeface(typeface, Typeface.NORMAL)
+            if (mono) typeface = if (bold) Typeface.create(Typeface.MONOSPACE, Typeface.BOLD) else Typeface.MONOSPACE
+        }
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(6), dp(8), dp(6)) }
+        if (flagged) row.setBackgroundColor(0x33FF4D4D)
+        row.addView(View(this).apply { setBackgroundColor(if (flagged) red else Color.TRANSPARENT) }, LinearLayout.LayoutParams(dp(5), -1).apply { marginEnd = dp(8) })
+        row.addView(cell("$number", 20f, ink, flagged), LinearLayout.LayoutParams(dp(28), -2))
+        row.addView(cell(unit.optString("label"), 18f, ink, flagged), LinearLayout.LayoutParams(dp(64), -2))
+        val column = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val joiner = unitJoiner(unit.optString("op"))
+        val line = (if (joiner.isEmpty()) "" else "$joiner ") + unit.optString("text")
+        column.addView(cell(line, 20f, if (flagged) green else dim, mono = true).apply {
+            if (!flagged) { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }
+        })
+        if (flagged) for (note in unitNotes(unit.optString("target"), unit.optString("reason"), unit.optString("rule"))) {
+            column.addView(cell(note, 18f, red))
+        }
+        row.addView(column, LinearLayout.LayoutParams(0, -2, 1f))
+        if (!flagged) row.addView(cell(unitAllowNote(verdict), 18f, dim), LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) })
+        return row
+    }
     private fun linkified(value: String): CharSequence {
         val ranges = UrlFinder.find(value)
         if (ranges.isEmpty()) return value
@@ -260,7 +289,12 @@ class MainActivity : Activity() {
         block(text(item.optString("location"), 18f))
         if (item.optString("question_label").isNotBlank()) block(text(item.optString("question_label"), 18f))
         block(text(decisionHeading(item.optString("raw_title"), item.optString("raw_body"), item.optString("kind")), 28f))
-        for ((kind, value) in permissionDetails(item.optString("permission_explanation"), item.optString("approval_command"), item.optString("permission_warning"), item.optString("permission_command_note"))) {
+        val units = item.optJSONArray("approval_units")?.takeIf { it.length() > 0 }
+        if (units != null) {
+            item.optString("approval_units_heading").takeIf { it.isNotEmpty() }?.let { block(text(it, 20f).apply { setTypeface(typeface, Typeface.BOLD) }) }
+            for (i in 0 until units.length()) units.optJSONObject(i)?.let { block(unitRow(it, i + 1), 6) }
+        }
+        for ((kind, value) in permissionDetails(item.optString("permission_explanation"), if (units != null) "" else item.optString("approval_command"), item.optString("permission_warning"), item.optString("permission_command_note"))) {
             if (kind == "コマンド") {
                 block(text(value, 20f).apply { setTextColor(Color.RED); typeface = Typeface.MONOSPACE })
             }

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { ClientViews, displayedByFocusedClient } from "../mac-dialog-decisions/client-views.mjs";
-import { locationLabel, approvalCommand, approvalTargetRange, approvalFields, decisionText, isClaudeCommandPermission } from "../mac-dialog-decisions/spec.mjs";
+import { locationLabel, approvalCommand, approvalTargetRange, approvalFields, approvalUnits, approvalUnitsHeading, decisionText, isClaudeCommandPermission } from "../mac-dialog-decisions/spec.mjs";
 // ikesu plugin daemon: mirror pending decisions to Slack when the Sabera
 // glasses are not answering, and turn Slack answers (number reactions or
 // thread replies) into `ikesu decision answer --responder slack`.
@@ -814,7 +814,45 @@ function buildDecisionBlocks({
   if (repeatCount > 1) blocks.push({type: "context", elements: [{type: "mrkdwn", text: `同じ申請 ${repeatCount}回目`}]});
   if (presentation.title) for (const chunk of splitExactText(presentation.title, SLACK_SECTION_TEXT_LIMIT - 2)) blocks.push({type: "section", text: {type: "mrkdwn", text: `*${chunk}*`}});
   if (isClaudeCommandPermission(decision) && decision.origin?.explanation) for (const chunk of splitExactText(decision.origin.explanation)) blocks.push({type: "section", text: {type: "plain_text", text: chunk}});
-  if (approvalCommand(decision)) {
+  const units = approvalUnits(decision);
+  if (units) {
+    const [headLine, ...headRest] = approvalUnitsHeading(units, decision.origin).split("\n");
+    blocks.push({type: "section", text: {type: "mrkdwn", text: [`*${headLine}*`, ...headRest].join("\n")}});
+    units.forEach((unit, index) => {
+      const flagged = unit.verdict === "ask" || unit.verdict === "block";
+      const tag = `\`${index + 1} ${unit.label}\``;
+      const joiner = unit.op === "\n" ? "⏎" : unit.op;
+      const rawNotes = [];
+      if (flagged) {
+        if (unit.target) rawNotes.push(`中で: ${unit.target}`);
+        if (unit.reason || unit.rule) rawNotes.push(`理由: ${unit.reason}${unit.reason && unit.rule ? " ／ " : ""}${unit.rule ? `規則 ${unit.rule}` : ""}`);
+      } else rawNotes.push(unit.verdict === "unjudged" ? "未判定" : "確認なし");
+      // 利用者の打った文字列が入るので、Slack の mrkdwn として解釈されないよう & < > を置き換える。
+      // 置き換えで最大5倍になるため、元の文字列を500字ずつに分けてから置き換える。
+      const noteLines = rawNotes.flatMap(note => splitExactText(note, 500).map(chunk => {
+        const safe = chunk.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        return flagged ? `>${safe}` : `_${safe}_`;
+      }));
+      const lead = `${flagged ? "🔴 " : ""}${tag}${joiner ? ` ${joiner}` : ""}`;
+      const notesText = noteLines.length ? "\n" + noteLines.join("\n") : "";
+      const inline = unit.text.length * 5 <= SLACK_SECTION_TEXT_LIMIT - 400 && !/[`\n]/.test(unit.text) && lead.length + unit.text.length * 5 + 3 + notesText.length <= SLACK_SECTION_TEXT_LIMIT;
+      if (inline) {
+        blocks.push({type: "section", text: {type: "mrkdwn", text: `${lead} \`${(unit.text || " ").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}\`${notesText}`}});
+      } else {
+        blocks.push({type: "section", text: {type: "mrkdwn", text: lead}});
+        for (const chunk of splitExactText(unit.text)) blocks.push({type: "rich_text", elements: [{type: "rich_text_preformatted", elements: [{type: "text", text: chunk}]}]});
+        let page = "";
+        for (const line of noteLines) {
+          if (page && page.length + 1 + line.length > SLACK_SECTION_TEXT_LIMIT) {
+            blocks.push({type: "section", text: {type: "mrkdwn", text: page}});
+            page = "";
+          }
+          page = page ? `${page}\n${line}` : line;
+        }
+        if (page) blocks.push({type: "section", text: {type: "mrkdwn", text: page}});
+      }
+    });
+  } else if (approvalCommand(decision)) {
     if (isClaudeCommandPermission(decision)) blocks.push({type: "section", text: {type: "plain_text", text: "画面の表示どおり（折り返しを含む）"}});
     for (const chunk of splitExactText(approvalCommand(decision))) blocks.push({type: "rich_text", elements: [{type: "rich_text_preformatted", elements: [{type: "text", text: chunk}]}]});
     const range = approvalTargetRange(decision);

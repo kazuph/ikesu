@@ -20,3 +20,17 @@ fun deadlineAndCount(deadline: String, remaining: Int): String =
 
 fun permissionDetails(explanation: String, command: String, warning: String, note: String = ""): List<Pair<String, String>> =
     listOf("理由" to explanation, "注記" to note, "コマンド" to command, "警告" to warning).filter { it.second.isNotEmpty() }
+
+fun isFlaggedVerdict(verdict: String): Boolean = verdict == "ask" || verdict == "block"
+
+fun unitJoiner(op: String): String = if (op == "\n") "⏎" else op
+
+/** Red lines under a flagged command row: where it hit (target), then why and which rule. */
+fun unitNotes(target: String, reason: String, rule: String): List<String> = buildList {
+    if (target.isNotEmpty()) add("中で: $target")
+    if (reason.isNotEmpty() || rule.isNotEmpty()) {
+        add("理由: " + reason + (if (reason.isNotEmpty() && rule.isNotEmpty()) " ／ " else "") + (if (rule.isEmpty()) "" else "規則 $rule"))
+    }
+}
+
+fun unitAllowNote(verdict: String): String = if (verdict == "unjudged") "未判定" else "確認なし"

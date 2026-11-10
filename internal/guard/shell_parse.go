@@ -74,6 +74,14 @@ func lineCommands(i Input, line string) ([]Input, error) {
 			next.Cwd = cwdBeforeCd
 		}
 		next.scriptResult = nil
+		callStart, callOffset := len(commands), int(call.Pos().Offset())
+		// 入れ子の解析で増えた命令も、この呼び出しの位置の行に割り当てる。
+		stamp := func() {
+			for k := callStart; k < len(commands); k++ {
+				commands[k].callOffset = callOffset
+			}
+		}
+		next.callOffset = callOffset
 		next.scriptLine = call.Pos().Line()
 		next.scriptKnownArgs = nil
 		next.Env = EnvMap(environment(i.Env))
@@ -174,6 +182,7 @@ func lineCommands(i Input, line string) ([]Input, error) {
 				child.evalDepth++
 				nested, nestedErr := lineCommands(child, strings.Join(words, " "))
 				commands = append(commands, nested...)
+				stamp()
 				if nestedErr != nil {
 					setError(nestedErr)
 				}
@@ -187,6 +196,7 @@ func lineCommands(i Input, line string) ([]Input, error) {
 		if e := commandScript(unwrapped, redirections[call], &commands); e != nil {
 			setError(e)
 		}
+		stamp()
 
 		return true
 	})
@@ -352,7 +362,15 @@ func splitPrefix(text string, env map[string]string) ([]string, error) {
 	return words, nil
 }
 
+// lineVerdict は判定に加えて、行ごとの判定の材料（judgement）を返す Input に付ける。
 func lineVerdict(c Config, i Input, line string) (Input, Verdict, error) {
+	j := &lineJudgement{line: line, blockOffset: -1}
+	i, v, err := lineVerdictJudged(c, i, line, j)
+	i.judgement = j
+	return i, v, err
+}
+
+func lineVerdictJudged(c Config, i Input, line string, j *lineJudgement) (Input, Verdict, error) {
 	i.GuardCommands = c.Commands()
 	i.scriptScanner = &scriptScanner{config: c}
 	// wide-scan は AI が打った最上位の行だけで判定する（DEBUG トラップの行・スクリプトの中身・シムは対象外）。
@@ -393,10 +411,12 @@ func lineVerdict(c Config, i Input, line string) (Input, Verdict, error) {
 			// 削除の対象が未確定な間は聞く（サンドボックスを入れるまでの例外）。
 			v = result("ask", "rm-paths", "削除操作は確認が必要です")
 		}
+		j.add(command, v)
 		if blocksRun(v.Decision) && !blocksRun(best.Decision) || v.Decision == "ask" && best.Decision == "allow" {
 			i, best = command, v
 		}
 		if blocksRun(best.Decision) {
+			j.blockOffset, j.blockSet = command.callOffset, true
 			return i, best, nil
 		}
 	}
@@ -416,6 +436,7 @@ func lineVerdict(c Config, i Input, line string) (Input, Verdict, error) {
 		for _, command := range commands {
 			command.RawLine = ""
 			if danger(c, command) {
+				j.add(command, best)
 				i.TriggerCommand = command.Line()
 				break
 			}

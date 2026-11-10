@@ -69,6 +69,8 @@ type Input struct {
 	scriptLine           uint
 	scriptKnownArgs      []string
 	scriptUnknownCommand bool
+	callOffset           int // lineCommands が解析した文字列の中での、この命令の位置（表示用の行の割り当て専用）
+	judgement            *lineJudgement
 	TriggerCommand       string            `json:"-"` // Display only; never used by policy or approval keys.
 	CwdUncertain         bool              `json:"-"`
 	AuthorizationEnv     map[string]string `json:"-"`

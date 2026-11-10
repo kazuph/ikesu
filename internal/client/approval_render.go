@@ -8,6 +8,7 @@ import (
 	"unicode"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/render"
 )
 
@@ -150,6 +151,12 @@ func (s *approvalState) overlay(in *render.Input) {
 		}
 		blank()
 		add(" reason "+d.Origin.Explanation, "reason", 8, false)
+	} else if d.Kind == "command_guard" && len(d.Origin.CommandUnits) > 0 {
+		addCommandUnits(add, d.Origin, width)
+		blank()
+		if d.Body != nil {
+			add(" reason "+*d.Body, "reason", 8, false)
+		}
 	} else {
 		add(" $ "+d.Origin.Command, "surface", 0, false)
 		if d.Origin.TargetCommand != "" {
@@ -205,6 +212,48 @@ func (s *approvalState) overlay(in *render.Input) {
 		footer(append(parts, "confirm ↵", "scroll pgup/pgdn", "close esc")...)
 	}
 	in.Approval = &render.Approval{Pane: pane, Title: title, Lines: lines, Kinds: kinds, Scroll: s.scroll, Follow: s.follow, Late: d.LateAnswer}
+}
+
+// addCommandUnits は command_guard の命令を行ごとに出す。確認対象（ask・block）の行は切らずに折り返し、他の行は幅で切る。
+func addCommandUnits(add func(value, role string, prefix int, selected bool), o *api.DecisionOrigin, width int) {
+	var targets []string
+	for n, u := range o.CommandUnits {
+		if u.Verdict == "ask" || u.Verdict == "block" {
+			targets = append(targets, strconv.Itoa(n+1))
+		}
+	}
+	if len(targets) == 0 {
+		rule := o.GuardRule
+		if rule == "" {
+			rule = "不明"
+		}
+		add(fmt.Sprintf(" 行を特定できない（規則 %s）", rule), "warning", 0, false)
+	} else {
+		add(fmt.Sprintf(" %d行のうち %s行目が確認対象", len(o.CommandUnits), strings.Join(targets, "・")), "warning", 0, false)
+	}
+	for n, u := range o.CommandUnits {
+		op := u.Op
+		if op == "\n" {
+			op = "↵"
+		}
+		parts := []string{strconv.Itoa(n + 1), u.Label}
+		if op != "" {
+			parts = append(parts, op)
+		}
+		parts = append(parts, u.Text)
+		line := " " + strings.Join(parts, " ")
+		if u.Verdict == "ask" || u.Verdict == "block" {
+			add(line, "warning", 0, false)
+			if u.Target != "" {
+				add("   中で: "+u.Target, "warning", 0, false)
+			}
+			if u.Reason != "" || u.Rule != "" {
+				add("   理由: "+u.Reason+"（規則 "+u.Rule+"）", "warning", 0, false)
+			}
+			continue
+		}
+		add(ansi.Truncate(safeApprovalText(line), width, "…"), "dim", 0, false)
+	}
 }
 
 func approvalPaneID(value string) (int, bool) {

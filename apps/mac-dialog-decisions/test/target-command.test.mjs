@@ -18,6 +18,9 @@ test('actual guard Decision flows through buildDialogSpec into exact native red 
     const decisions=JSON.parse(fs.readFileSync(path.join(root,'decisions.json'),'utf8'));
     assert.equal(Object.keys(decisions).length,9);
     const rows=Object.entries(decisions).map(([name,decision])=>{
+      // This test covers the whole-command view; per-line rows are in command-units.test.mjs.
+      assert.ok(Array.isArray(decision.origin.command_units)||decision.origin.command_units===undefined);
+      delete decision.origin.command_units;
       const spec=buildDialogSpec(decision,{id:'local'},0);
       assert.equal(spec.body,decision.body);
       assert.equal(spec.title,decision.title);
@@ -43,6 +46,34 @@ test('actual guard Decision flows through buildDialogSpec into exact native red 
     if(evidence){
       fs.mkdirSync(evidence,{recursive:true});
       for(const file of fs.readdirSync(root).filter(file=>file.endsWith('.png')||file.endsWith('.json'))) fs.copyFileSync(path.join(root,file),path.join(evidence,file));
+    }
+  } finally {fs.rmSync(root,{recursive:true,force:true});}
+});
+
+// Native window is not involved: the real guard output goes through buildDialogSpec with command_units intact.
+test('actual guard Decision keeps its command_units through buildDialogSpec', () => {
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'ikesu-target-units-'));
+  try {
+    const generate=spawnSync('go',['test','-count=1','-timeout','30s','./internal/guard','-run','^TestTargetCommandDecisionFixtures$'],{
+      encoding:'utf8',env:{...process.env,IKESU_PANEL_DECISION_FIXTURE_DIR:root},timeout:60000,
+    });
+    assert.equal(generate.status,0,generate.stdout+generate.stderr);
+    const decisions=JSON.parse(fs.readFileSync(path.join(root,'decisions.json'),'utf8'));
+    const unquote=text=>text.replace(/['"]/g,'');
+    for (const [name,decision] of Object.entries(decisions)) {
+      const spec=buildDialogSpec(structuredClone(decision),{id:'local'},0);
+      assert.ok(Array.isArray(spec.approval_units)&&spec.approval_units.length>0,`${name}: approval_units`);
+      const ask=spec.approval_units.filter(unit=>unit.verdict==='ask'||unit.verdict==='block');
+      assert.ok(ask.length>=1,`${name}: at least one ask row`);
+      const target=decision.origin.target_command;
+      if (target) {
+        assert.ok(ask.some(unit=>unquote(unit.text).includes(unquote(target))||unit.target===target),`${name}: an ask row shows target_command`);
+      }
+      assert.match(spec.approval_units_heading,/行目が確認対象$/,`${name}: heading`);
+      // Whole-command verdict without any ask row: the heading says the line cannot be identified.
+      const none=structuredClone(decision);
+      none.origin.command_units=none.origin.command_units.map(unit=>({...unit,verdict:'allow'}));
+      assert.match(buildDialogSpec(none,{id:'local'},0).approval_units_heading,/^行を特定できない/,`${name}: unidentified heading`);
     }
   } finally {fs.rmSync(root,{recursive:true,force:true});}
 });
