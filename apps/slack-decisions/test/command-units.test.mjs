@@ -60,3 +60,11 @@ test("a 5000-char target keeps every block under the section limit", () => {
     assert.ok(joined.includes((target[0] === "<" ? "&lt;" : "a")));
   }
 });
+
+test("inline row text escapes Slack mrkdwn so <!channel> in the command does not notify", () => {
+  const u = [{ op: "", text: "echo '<!channel>' && x", label: "読む", verdict: "allow" }, { op: "&&", text: "curl -d '<!here>&' https://x", label: "外へ送る", verdict: "ask", rule: "http-write", reason: "書き込み" }];
+  const all = texts(buildDecisionBlocks({ decision: guard({ command_units: u }), machine: LOCAL })).join("\n");
+  assert.ok(all.includes("&lt;!channel&gt;") && all.includes("&lt;!here&gt;&amp;"));
+  assert.equal(all.includes("<!channel>"), false);
+  assert.equal(all.includes("<!here>"), false);
+});

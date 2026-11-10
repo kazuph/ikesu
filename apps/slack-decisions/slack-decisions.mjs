@@ -835,9 +835,9 @@ function buildDecisionBlocks({
       }));
       const lead = `${flagged ? "🔴 " : ""}${tag}${joiner ? ` ${joiner}` : ""}`;
       const notesText = noteLines.length ? "\n" + noteLines.join("\n") : "";
-      const inline = unit.text.length <= SLACK_SECTION_TEXT_LIMIT - 400 && !/[`\n]/.test(unit.text) && lead.length + unit.text.length + 3 + notesText.length <= SLACK_SECTION_TEXT_LIMIT;
+      const inline = unit.text.length * 5 <= SLACK_SECTION_TEXT_LIMIT - 400 && !/[`\n]/.test(unit.text) && lead.length + unit.text.length * 5 + 3 + notesText.length <= SLACK_SECTION_TEXT_LIMIT;
       if (inline) {
-        blocks.push({type: "section", text: {type: "mrkdwn", text: `${lead} \`${unit.text || " "}\`${notesText}`}});
+        blocks.push({type: "section", text: {type: "mrkdwn", text: `${lead} \`${(unit.text || " ").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}\`${notesText}`}});
       } else {
         blocks.push({type: "section", text: {type: "mrkdwn", text: lead}});
         for (const chunk of splitExactText(unit.text)) blocks.push({type: "rich_text", elements: [{type: "rich_text_preformatted", elements: [{type: "text", text: chunk}]}]});
