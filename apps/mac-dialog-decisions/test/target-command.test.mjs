@@ -18,6 +18,9 @@ test('actual guard Decision flows through buildDialogSpec into exact native red 
     const decisions=JSON.parse(fs.readFileSync(path.join(root,'decisions.json'),'utf8'));
     assert.equal(Object.keys(decisions).length,9);
     const rows=Object.entries(decisions).map(([name,decision])=>{
+      // This test covers the whole-command view; per-line rows are in command-units.test.mjs.
+      assert.ok(Array.isArray(decision.origin.command_units)||decision.origin.command_units===undefined);
+      delete decision.origin.command_units;
       const spec=buildDialogSpec(decision,{id:'local'},0);
       assert.equal(spec.body,decision.body);
       assert.equal(spec.title,decision.title);

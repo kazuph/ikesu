@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { ClientViews, displayedByFocusedClient } from "../mac-dialog-decisions/client-views.mjs";
-import { locationLabel, approvalCommand, approvalTargetRange, approvalFields, decisionText, isClaudeCommandPermission } from "../mac-dialog-decisions/spec.mjs";
+import { locationLabel, approvalCommand, approvalTargetRange, approvalFields, approvalUnits, approvalUnitsHeading, decisionText, isClaudeCommandPermission } from "../mac-dialog-decisions/spec.mjs";
 // ikesu plugin daemon: mirror pending decisions to Slack when the Sabera
 // glasses are not answering, and turn Slack answers (number reactions or
 // thread replies) into `ikesu decision answer --responder slack`.
@@ -814,7 +814,30 @@ function buildDecisionBlocks({
   if (repeatCount > 1) blocks.push({type: "context", elements: [{type: "mrkdwn", text: `同じ申請 ${repeatCount}回目`}]});
   if (presentation.title) for (const chunk of splitExactText(presentation.title, SLACK_SECTION_TEXT_LIMIT - 2)) blocks.push({type: "section", text: {type: "mrkdwn", text: `*${chunk}*`}});
   if (isClaudeCommandPermission(decision) && decision.origin?.explanation) for (const chunk of splitExactText(decision.origin.explanation)) blocks.push({type: "section", text: {type: "plain_text", text: chunk}});
-  if (approvalCommand(decision)) {
+  const units = approvalUnits(decision);
+  if (units) {
+    const [headLine, ...headRest] = approvalUnitsHeading(units, decision.origin).split("\n");
+    blocks.push({type: "section", text: {type: "mrkdwn", text: [`*${headLine}*`, ...headRest].join("\n")}});
+    units.forEach((unit, index) => {
+      const flagged = unit.verdict === "ask" || unit.verdict === "block";
+      const tag = `\`${index + 1} ${unit.label}\``;
+      const joiner = unit.op === "\n" ? "⏎" : unit.op;
+      const inline = unit.text.length <= SLACK_SECTION_TEXT_LIMIT - 400 && !/[`\n]/.test(unit.text);
+      const notes = [];
+      if (flagged) {
+        if (unit.target) notes.push(`中で: ${unit.target}`);
+        if (unit.reason || unit.rule) notes.push(`理由: ${unit.reason}${unit.reason && unit.rule ? " ／ " : ""}${unit.rule ? `規則 ${unit.rule}` : ""}`);
+      } else notes.push(unit.verdict === "unjudged" ? "未判定" : "確認なし");
+      const lead = `${flagged ? "🔴 " : ""}${tag}${joiner ? ` ${joiner}` : ""}`;
+      if (inline) {
+        blocks.push({type: "section", text: {type: "mrkdwn", text: `${lead} \`${unit.text || " "}\`${notes.length ? "\n" + notes.map(note => flagged ? `>${note}` : `_${note}_`).join("\n") : ""}`}});
+      } else {
+        blocks.push({type: "section", text: {type: "mrkdwn", text: lead}});
+        for (const chunk of splitExactText(unit.text)) blocks.push({type: "rich_text", elements: [{type: "rich_text_preformatted", elements: [{type: "text", text: chunk}]}]});
+        if (notes.length) blocks.push({type: "section", text: {type: "mrkdwn", text: notes.map(note => flagged ? `>${note}` : `_${note}_`).join("\n")}});
+      }
+    });
+  } else if (approvalCommand(decision)) {
     if (isClaudeCommandPermission(decision)) blocks.push({type: "section", text: {type: "plain_text", text: "画面の表示どおり（折り返しを含む）"}});
     for (const chunk of splitExactText(approvalCommand(decision))) blocks.push({type: "rich_text", elements: [{type: "rich_text_preformatted", elements: [{type: "text", text: chunk}]}]});
     const range = approvalTargetRange(decision);

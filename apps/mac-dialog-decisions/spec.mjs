@@ -71,6 +71,42 @@ export function approvalTargetRange(decision) {
     ? {start: 0, length: target.length} : null;
 }
 
+const UNIT_OPS = new Set(["", "&&", "||", "|", ";", "\n"]);
+const UNIT_VERDICTS = new Set(["allow", "ask", "block", "unjudged"]);
+
+// origin.command_units -> per-line rows for the panel. Any malformed element
+// or unknown verdict drops the whole list so the old one-block view returns.
+export function approvalUnits(decision) {
+  if (decision.kind !== "command_guard") return null;
+  const raw = decision.origin?.command_units;
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const str = value => (typeof value === "string" ? value : undefined);
+  const units = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+    if (typeof item.op !== "string" || !UNIT_OPS.has(item.op)) return null;
+    if (typeof item.text !== "string" || typeof item.label !== "string" || !item.label) return null;
+    if (typeof item.verdict !== "string" || !UNIT_VERDICTS.has(item.verdict)) return null;
+    for (const key of ["rule", "reason", "target"]) {
+      if (item[key] !== undefined && item[key] !== null && typeof item[key] !== "string") return null;
+    }
+    units.push({op: item.op, text: item.text, label: item.label, verdict: item.verdict,
+      rule: str(item.rule) || "", reason: str(item.reason) || "", target: str(item.target) || ""});
+  }
+  return units;
+}
+
+export function approvalUnitsHeading(units, origin = {}) {
+  if (!units) return "";
+  const flagged = units.map((u, i) => (u.verdict === "ask" || u.verdict === "block" ? i + 1 : 0)).filter(Boolean);
+  if (flagged.length === 0) {
+    const rule = String(origin.guard_rule || "");
+    const reason = String(origin.guard_reason || "");
+    return `行を特定できない${rule ? `（規則 ${rule}）` : ""}${reason ? "\n" + reason : ""}`;
+  }
+  return `${units.length}行のうち ${flagged.join("・")}行目が確認対象`;
+}
+
 export function approvalFields(body) {
   const original = String(body || "");
   const inherited = original.match(/^申請文（(外側(?:から引き継ぎ|のコマンド [^\n]* から引き継ぎ))）\n/u);
@@ -152,6 +188,7 @@ export function buildDialogSpec(decision, machine, queueRemaining = 0, options =
 
   const machineId = machine?.id || origin.machine || "local";
   const remote = machineId !== "local";
+  const units = approvalUnits(decision);
   const project = projectName(decision);
   return {
     media_sources: (() => { const media = discoverRichContent(decision); return [...new Set([...media.links, ...media.images, ...(media.videos || [])])]; })(),
@@ -161,6 +198,8 @@ export function buildDialogSpec(decision, machine, queueRemaining = 0, options =
     source: sourceLabel(decision),
     location: locationLabel(decision, machine),
     approval_command: approvalCommand(decision),
+    approval_units: units,
+    approval_units_heading: approvalUnitsHeading(units, origin),
     permission_explanation: isClaudeCommandPermission(decision) ? String(origin.explanation || "") : "",
     permission_command_note: isClaudeCommandPermission(decision) ? "画面の表示どおり（折り返しを含む）" : "",
     permission_warning: isClaudeCommandPermission(decision) ? String(origin.warning || "") : "",

@@ -38,6 +38,23 @@ type DecisionOrigin struct {
 	TargetCommand  string `json:"target_command,omitempty"`
 	Reason         string `json:"reason,omitempty"`
 	Machine        string `json:"machine,omitempty"`
+	// GuardRule・GuardReason は guard が ask にした規則と判定理由（申請文の Reason とは別）。
+	GuardRule   string `json:"guard_rule,omitempty"`
+	GuardReason string `json:"guard_reason,omitempty"`
+	// CommandUnits は表示用コマンド（Command）を最上位の && || ; | 改行で区切った行ごとの判定。
+	// 無いときは今までどおり Command と TargetCommand だけで表示する。
+	CommandUnits []CommandUnit `json:"command_units,omitempty"`
+}
+
+// CommandUnit はダイアログの1行。Text は伏せ字済みの Command から切り出した文字列。
+type CommandUnit struct {
+	Op      string `json:"op"`               // 前の行とのつなぎ: "" "&&" "||" "|" ";" "\n"
+	Text    string `json:"text"`             // その行のコマンド（伏せ字済み）
+	Label   string `json:"label"`            // 移動・読む・書く・消す・実行・外へ送る・別マシン・不明
+	Verdict string `json:"verdict"`          // allow・ask・block・unjudged（block の後ろで判定していない）
+	Rule    string `json:"rule,omitempty"`   // ask・block の規則
+	Reason  string `json:"reason,omitempty"` // ask・block の判定理由（伏せ字済み）
+	Target  string `json:"target,omitempty"` // スクリプトの中などで引っかかった命令（伏せ字済み）
 }
 type DecisionAnswer struct {
 	OptionID       *string  `json:"option_id"`

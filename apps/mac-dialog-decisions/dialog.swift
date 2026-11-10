@@ -26,6 +26,15 @@ struct DialogDetail: Decodable {
 }
 struct ApprovalRange: Decodable { let start: Int; let length: Int }
 struct ApprovalField: Decodable { let label: String; let value: String }
+struct ApprovalUnit: Decodable {
+  let op: String
+  let text: String
+  let label: String
+  let verdict: String
+  let rule: String?
+  let reason: String?
+  let target: String?
+}
 
 struct DialogSpec: Decodable {
   let present_in_background: Bool?
@@ -35,6 +44,8 @@ struct DialogSpec: Decodable {
   let permission_warning: String?
   let approval_target_range: ApprovalRange?
   let approval_fields: [ApprovalField]?
+  let approval_units: [ApprovalUnit]?
+  let approval_units_heading: String?
   let media_sources: [String]?
   let kind: String?
   let window_title: String
@@ -467,6 +478,97 @@ final class DialogController: NSObject, NSWindowDelegate {
     }
   }
 
+  // One line of a multi-line command: number, label, joiner, text. Lines the
+  // guard will ask about (or block) get a red bar, a red tint and the reason.
+  func unitRow(_ unit: ApprovalUnit, number: Int) -> NSView {
+    let flagged = unit.verdict == "ask" || unit.verdict == "block"
+    let numberWidth: CGFloat = 28, tagWidth: CGFloat = 76, opWidth: CGFloat = 30
+    let ink: NSColor = flagged ? .systemRed : .secondaryLabelColor
+    let weight: NSFont.Weight = flagged ? .bold : .regular
+
+    let line = NSStackView()
+    line.orientation = .horizontal
+    line.alignment = .firstBaseline
+    line.spacing = 6
+    line.translatesAutoresizingMaskIntoConstraints = false
+    let num = label(String(number), size: Look.base, weight: weight, color: ink, selectable: false)
+    num.widthAnchor.constraint(equalToConstant: numberWidth).isActive = true
+    let tag = label(unit.label, size: Look.small, weight: flagged ? .bold : .semibold, color: ink, selectable: false)
+    tag.widthAnchor.constraint(equalToConstant: tagWidth).isActive = true
+    let joiner = unit.op == "\n" ? "⏎" : unit.op
+    let op = label(joiner, size: Look.base, color: .secondaryLabelColor, mono: true, selectable: false)
+    op.widthAnchor.constraint(equalToConstant: opWidth).isActive = true
+    let body = label(unit.text, size: Look.base, color: flagged ? .labelColor : .secondaryLabelColor, mono: true)
+    body.setContentHuggingPriority(.defaultLow, for: .horizontal)
+    body.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+    if !flagged {
+      body.maximumNumberOfLines = 1
+      body.lineBreakMode = .byTruncatingTail
+    }
+    for v in [num, tag, op, body] { line.addArrangedSubview(v) }
+    if !flagged {
+      let note = label(unit.verdict == "unjudged" ? "未判定" : "確認なし", size: Look.small, color: .tertiaryLabelColor, selectable: false)
+      note.setContentHuggingPriority(.required, for: .horizontal)
+      note.setContentCompressionResistancePriority(.required, for: .horizontal)
+      line.addArrangedSubview(note)
+    }
+
+    let column = NSStackView()
+    column.orientation = .vertical
+    column.alignment = .leading
+    column.spacing = 3
+    column.translatesAutoresizingMaskIntoConstraints = false
+    column.addArrangedSubview(line)
+    line.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
+    if flagged {
+      var notes: [String] = []
+      if let target = unit.target, !target.isEmpty { notes.append("中で: " + target) }
+      let reason = unit.reason ?? "", rule = unit.rule ?? ""
+      if !reason.isEmpty || !rule.isEmpty {
+        notes.append("理由: " + reason + (!reason.isEmpty && !rule.isEmpty ? " ／ " : "") + (rule.isEmpty ? "" : "規則 " + rule))
+      }
+      for text in notes {
+        let detail = label(text, size: Look.small, color: .systemRed)
+        let indent = NSView()
+        indent.translatesAutoresizingMaskIntoConstraints = false
+        let row = NSStackView(views: [indent, detail])
+        row.orientation = .horizontal
+        row.alignment = .top
+        row.spacing = 0
+        indent.widthAnchor.constraint(equalToConstant: numberWidth + tagWidth + 12).isActive = true
+        column.addArrangedSubview(row)
+        row.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
+      }
+    }
+
+    let box = NSView()
+    box.translatesAutoresizingMaskIntoConstraints = false
+    box.wantsLayer = true
+    box.addSubview(column)
+    let barWidth: CGFloat = 4
+    NSLayoutConstraint.activate([
+      column.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 10 + barWidth),
+      column.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -10),
+      column.topAnchor.constraint(equalTo: box.topAnchor, constant: 5),
+      column.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -5),
+    ])
+    if flagged {
+      let bar = NSView()
+      bar.translatesAutoresizingMaskIntoConstraints = false
+      bar.wantsLayer = true
+      bar.layer?.backgroundColor = NSColor.systemRed.cgColor
+      box.addSubview(bar)
+      NSLayoutConstraint.activate([
+        bar.leadingAnchor.constraint(equalTo: box.leadingAnchor),
+        bar.topAnchor.constraint(equalTo: box.topAnchor),
+        bar.bottomAnchor.constraint(equalTo: box.bottomAnchor),
+        bar.widthAnchor.constraint(equalToConstant: barWidth),
+      ])
+      box.layer?.backgroundColor = NSColor.systemRed.withAlphaComponent(0.10).cgColor
+    }
+    return box
+  }
+
   func build() {
     let content = FlippedView()
     content.translatesAutoresizingMaskIntoConstraints = false
@@ -516,7 +618,12 @@ final class DialogController: NSObject, NSWindowDelegate {
     if let explanation = spec.permission_explanation, !explanation.isEmpty {
       full(richLabel(explanation, size: Look.base))
     }
-    if let command = spec.approval_command, !command.isEmpty {
+    if let units = spec.approval_units, !units.isEmpty {
+      if let heading = spec.approval_units_heading, !heading.isEmpty {
+        full(label(heading, size: Look.base, weight: .semibold))
+      }
+      for (index, unit) in units.enumerated() { full(unitRow(unit, number: index + 1)) }
+    } else if let command = spec.approval_command, !command.isEmpty {
       if let note = spec.permission_command_note, !note.isEmpty { full(label(note, size: Look.small, color: .secondaryLabelColor)) }
       let range = spec.approval_target_range.map { NSRange(location: $0.start, length: $0.length) }
       full(richLabel(command, size: Look.base, mono: true, commandRanges: range.map { [$0] } ?? []))

@@ -25,4 +25,12 @@ class DecisionPresentationTest {
         assertEquals("期限なし　｜　ほか 0 件", deadlineAndCount("", 0))
         assertEquals("期限 12:30（残り約5分）　｜　ほか 2 件", deadlineAndCount("期限 12:30（残り約5分）", 2))
     }
+    @Test fun commandUnitRowsExplainOnlyFlaggedLines() {
+        assertEquals(listOf("中で: rm -rf out/", "理由: 作業フォルダの外を消す ／ 規則 rm-paths"), unitNotes("rm -rf out/", "作業フォルダの外を消す", "rm-paths"))
+        assertEquals(listOf("理由: 外を消す"), unitNotes("", "外を消す", ""))
+        assertEquals(emptyList<String>(), unitNotes("", "", ""))
+        assertEquals(true, isFlaggedVerdict("block")); assertEquals(false, isFlaggedVerdict("allow"))
+        assertEquals("確認なし", unitAllowNote("allow")); assertEquals("未判定", unitAllowNote("unjudged"))
+        assertEquals("⏎", unitJoiner("\n")); assertEquals("&&", unitJoiner("&&"))
+    }
 }

@@ -226,7 +226,7 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 		body += reason
 	}
 	body = i.redact(body)
-	d, e := await(api.DecisionCreateParams{Kind: "command_guard", Title: approvalTitle(i, v), Body: &body, AllowText: true, GuardExecution: approvedInvocationClaim(i), Origin: &api.DecisionOrigin{OutsidePane: m.OutsidePane, PaneID: m.Pane, Agent: m.Agent, Cwd: i.redact(i.Cwd), Command: i.redact(command), TargetCommand: targetCommand, Reason: i.redact(reason)}, Options: []api.DecisionOption{{ID: "approve", Label: "承認", Role: "approve"}, {ID: "day_allow", Label: "1日許可", Role: "approve"}, {ID: "reject", Label: "却下", Role: "reject"}}, TimeoutMS: &ms}, timeout)
+	d, e := await(api.DecisionCreateParams{Kind: "command_guard", Title: approvalTitle(i, v), Body: &body, AllowText: true, GuardExecution: approvedInvocationClaim(i), Origin: &api.DecisionOrigin{OutsidePane: m.OutsidePane, PaneID: m.Pane, Agent: m.Agent, Cwd: i.redact(i.Cwd), Command: i.redact(command), TargetCommand: targetCommand, Reason: i.redact(reason), GuardRule: v.Rule, GuardReason: i.redact(v.Reason), CommandUnits: i.commandUnits(command)}, Options: []api.DecisionOption{{ID: "approve", Label: "承認", Role: "approve"}, {ID: "day_allow", Label: "1日許可", Role: "approve"}, {ID: "reject", Label: "却下", Role: "reject"}}, TimeoutMS: &ms}, timeout)
 	if e != nil {
 		fmt.Fprintf(errOut, "❌ Command cancelled: 判断待ちのサーバーとの通信に失敗しました: %v\n", e)
 		return deny()
