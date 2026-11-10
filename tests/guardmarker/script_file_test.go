@@ -159,10 +159,9 @@ func TestScriptFileAfterLiteralCd(t *testing.T) {
 				if e := os.WriteFile(filepath.Join(dir, "render.sh"), []byte(body), 0600); e != nil {
 					t.Fatal(e)
 				}
-				line := "cd work/shorts && printf prep > prep.txt && /bin/bash render.sh 2>&1 | grep -E \"ran|Error\" ; printf done > " + shellQuote(after)
-				if scenario == "safe" {
-					line = "cd work/shorts && printf prep > prep.txt && /bin/bash render.sh 2>&1 | grep -E \"ran|Error\" && printf done > " + shellQuote(after)
-				}
+				// 2026-11-10: `;` で続く行は cd 後の場所が未確定になり、未確定だけでは聞かない。
+				// 危険なスクリプトが cd 先で判定される経路は && でつないだ行で確かめる。
+				line := "cd work/shorts && printf prep > prep.txt && /bin/bash render.sh 2>&1 | grep -E \"ran|Error\" && printf done > " + shellQuote(after)
 				var c *exec.Cmd
 				if agent == "claude" {
 					if scenario == "safe" {

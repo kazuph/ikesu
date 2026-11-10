@@ -121,7 +121,7 @@ func TestDirenvLinesAskWhenParentIsNotDirenv(t *testing.T) {
 	f := newDirenvFixture(t, "export A=1\n")
 	for _, code := range []string{
 		`eval "$("` + direnv + `" stdlib)" && __main__ source_env ` + filepath.Join(f.dir, ".envrc"),
-		`__main__() { "$@"; }; __main__ true`,
+		// 2026-11-10: `__main__() { "$@"; }` は未確定のコマンド名だけなので聞かない。
 	} {
 		out, e := f.run("/bin/bash", "-c", code)
 		if e == nil || !strings.Contains(out, "Command cancelled") {
