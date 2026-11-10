@@ -2,6 +2,7 @@ package guard
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -35,7 +36,11 @@ func lineCommands(i Input, line string) ([]Input, error) {
 	}
 	var commands []Input
 	setError := func(e error) {
-		if !i.scriptBody || err == nil || scriptError(e).kind > scriptError(err).kind {
+		if i.scriptBody {
+			if err == nil || scriptError(e).kind > scriptError(err).kind {
+				err = e
+			}
+		} else if err == nil || !unresolvedFailure(e) || unresolvedFailure(err) {
 			err = e
 		}
 	}
@@ -48,7 +53,9 @@ func lineCommands(i Input, line string) ([]Input, error) {
 		}
 		return true
 	})
-	if e := treeBoundary(i, tree); e != nil {
+	boundaryInput := i
+	boundaryInput.RawLine = line
+	if e := treeBoundary(boundaryInput, tree); e != nil {
 		setError(e)
 	}
 	syntax.Walk(tree, func(node syntax.Node) bool {
@@ -117,6 +124,8 @@ func lineCommands(i Input, line string) ([]Input, error) {
 				unknownWords[value] = true
 				if n == 0 {
 					unknownCommand = true
+				} else {
+					next.UnresolvedArg = true
 				}
 			}
 			if e == nil && i.privateExpansion(word, value) {
@@ -128,12 +137,9 @@ func lineCommands(i Input, line string) ([]Input, error) {
 			argv = append(argv, value)
 		}
 		next.Command, next.Args = argv[0], argv[1:]
+		next.unknownWords = unknownWords
 		if unknownCommand {
-			if i.scriptBody {
-				setError(unresolvedScriptError{"実行するコマンド名を安全に確定できません: " + next.Command})
-			} else {
-				setError(fmt.Errorf("実行するコマンド名を安全に確定できません: %s", next.Command))
-			}
+			setError(unresolvedScriptError{"実行するコマンド名を安全に確定できません: " + next.Command})
 			next.scriptUnknownCommand = true
 		}
 		next.AuthorizationEnv = EnvMap(environment(i.AuthorizationEnv))
@@ -142,7 +148,7 @@ func lineCommands(i Input, line string) ([]Input, error) {
 		}
 		unwrapped, e := unwrapCommand(next)
 		if i.runtimeLine && unknownWords[unwrapped.Command] {
-			setError(fmt.Errorf("実行するコマンド名を安全に確定できません"))
+			setError(unresolvedScriptError{"実行するコマンド名を安全に確定できません"})
 		}
 		if next.probePrivate {
 			unwrapped.Env = EnvMap(environment(next.Env))
@@ -358,21 +364,32 @@ func lineVerdict(c Config, i Input, line string) (Input, Verdict, error) {
 	if !i.runtimeLine && danger(c, i) && i.Env["AI_GUARD_DANGER_WORD_ACK"] != "1" {
 		best = result("ask", "danger-word-line", "deploy/publish を含む入力行は確認対象です")
 	}
+	var undetermined []string
 	for _, command := range commands {
 		v := result("allow", "default", "")
 		if !(i.runtimeLine && has([]string{"eval", "source", "."}, filepath.Base(command.Command))) {
 			v = Evaluate(c, command)
+		}
+		if v.Decision == "allow" && !i.runtimeLine {
+			if uv, ok := unresolvedVerdict(c, command, Evaluate); ok {
+				v = uv
+			}
 		}
 		if command.scriptResult != nil {
 			r := command.scriptResult
 			if r.kind == scriptSafe {
 				continue
 			}
+			if r.kind == scriptUnresolved {
+				undetermined = append(undetermined, r.verdict.Reason)
+				continue
+			}
 			v = r.verdict
 			command.TriggerCommand = r.trigger
 		}
-		if !i.runtimeLine && command.Unresolved && v.Decision == "allow" && (has(c.Commands(), filepath.Base(command.Command)) || strings.ContainsAny(command.Command, "$`")) {
-			v = result("ask", "shell-line", "展開後のコマンドまたは引数を安全に確定できません")
+		if v.Decision == "allow" && command.UnresolvedArg && has([]string{"rm", "rmdir", "rimraf", "trash"}, filepath.Base(command.Command)) {
+			// 削除の対象が未確定な間は聞く（サンドボックスを入れるまでの例外）。
+			v = result("ask", "rm-paths", "削除操作は確認が必要です")
 		}
 		if v.Decision == "block" || v.Decision == "ask" && best.Decision == "allow" {
 			i, best = command, v
@@ -380,6 +397,10 @@ func lineVerdict(c Config, i Input, line string) (Input, Verdict, error) {
 		if best.Decision == "block" {
 			return i, best, nil
 		}
+	}
+	if err != nil && unresolvedFailure(err) {
+		undetermined = append(undetermined, err.Error())
+		err = nil
 	}
 	if err != nil {
 		if i.AuthorizationEnv == nil && len(commands) > 0 {
@@ -398,5 +419,79 @@ func lineVerdict(c Config, i Input, line string) (Input, Verdict, error) {
 			}
 		}
 	}
+	if best.Decision == "allow" && best.Rule == "default" && len(undetermined) > 0 {
+		best.Reason = undeterminedPrefix + strings.Join(undetermined, " / ")
+	}
 	return i, best, nil
+}
+
+// 未確定を理由には聞かない。通したことは guard log の reason の印で区別する。
+const undeterminedPrefix = "未確定を通した: "
+
+func unresolvedFailure(e error) bool {
+	var unresolved unresolvedScriptError
+	return errors.As(e, &unresolved)
+}
+
+// git の全体オプション（-C <dir> など）を外し、サブコマンドから判定できるようにする。
+func stripGitGlobalOptions(argv []string) []string {
+	n := 1
+	for n < len(argv) {
+		a := argv[n]
+		switch {
+		case a == "-C" || a == "-c" || a == "--git-dir" || a == "--work-tree" || a == "--namespace":
+			n += 2
+		case strings.HasPrefix(a, "--git-dir=") || strings.HasPrefix(a, "--work-tree=") || strings.HasPrefix(a, "--namespace="), a == "--no-pager" || a == "-P" || a == "--no-optional-locks" || a == "--bare":
+			n++
+		default:
+			return append([]string{argv[0]}, argv[n:]...)
+		}
+	}
+	return argv[:1]
+}
+
+const unresolvedPlaceholder = "UNRESOLVED_VALUE"
+
+// 未確定の語が混じる命令でも、外向きの規則・git の決まりは効かせる。
+// (a) 未確定の語を「確定しない印の値」に置き換えた argv で判定する。
+// (b) 先頭語が未確定なら、後ろのリテラルの語のうち既知のコマンド名から始まる部分列も判定する。
+func unresolvedVerdict(c Config, command Input, judge func(Config, Input) Verdict) (Verdict, bool) {
+	if !command.Unresolved {
+		return Verdict{}, false
+	}
+	argv := append([]string{command.Command}, command.Args...)
+	headUnknown := command.unknownWords[command.Command]
+	for n, word := range argv {
+		if command.unknownWords[word] {
+			argv[n] = unresolvedPlaceholder
+		}
+	}
+	try := func(words []string) (Verdict, bool) {
+		candidate := command
+		candidate.Unresolved, candidate.UnresolvedArg, candidate.unknownWords = false, false, nil
+		candidate.RawLine = ""
+		candidate.Command, candidate.Args = words[0], words[1:]
+		v := judge(c, candidate)
+		return v, v.Decision == "block" || v.Decision == "ask"
+	}
+	if filepath.Base(argv[0]) == "git" {
+		argv = stripGitGlobalOptions(argv)
+	}
+	var found Verdict
+	have := false
+	take := func(v Verdict, ok bool) {
+		if ok && (!have || v.Decision == "block" && found.Decision != "block") {
+			found, have = v, true
+		}
+	}
+	if !headUnknown {
+		take(try(argv))
+	} else {
+		for n := 1; n < len(argv); n++ {
+			if argv[n] != unresolvedPlaceholder && has(c.Commands(), filepath.Base(argv[n])) {
+				take(try(argv[n:]))
+			}
+		}
+	}
+	return found, have
 }

@@ -1,7 +1,9 @@
 package guard
 
 import (
+	"bytes"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -226,13 +228,20 @@ func treeBoundary(i Input, tree *syntax.File) error {
 					e = unresolvedScriptError{"スクリプト内で変わる変数です"}
 				}
 				if e != nil {
-					if i.scriptBody {
+					// 未確定なだけでは聞かない。確定済みの失敗は上書きしない。
+					// ただしガード自身の変数を使う書き込み先は、見えている時点で確認する。
+					if strings.Contains(wordText(n.Word), "IKESU_GUARD") || guardNameClue(i, wordText(n.Word)) {
+						failure = fmt.Errorf("ガードの置き場所を指す変数で書き込み先を組み立てる操作には承認が必要です")
+					} else if failure == nil || unresolvedFailure(failure) {
 						failure = unresolvedScriptError{"書き込み先のパスを安全に確定できません"}
-					} else {
-						failure = fmt.Errorf("書き込み先のパスを安全に確定できません")
 					}
 				} else if !i.runtimeLine && i.CwdUncertain && !filepath.IsAbs(path) && !(n.Op == syntax.DplOut && descriptorTarget(path)) {
-					failure = fmt.Errorf("ディレクトリ変更を含む入力の書き込み先を安全に確定できません")
+					if root := guardDirectory(i); root != "" && (strings.Contains(i.RawLine, root) || guardNameClue(i, wordText(n.Word))) {
+						// 行にガードの置き場所が見えている時は、cd 後の相対パスでも確認する。
+						failure = fmt.Errorf("ディレクトリ変更を含む入力の書き込み先を安全に確定できません")
+					} else if failure == nil || unresolvedFailure(failure) {
+						failure = unresolvedScriptError{"ディレクトリ変更を含む入力の書き込み先を安全に確定できません"}
+					}
 				} else if guardPath(i, path) {
 					failure = fmt.Errorf("ガードの置き場所へのリダイレクトには承認が必要です")
 				}
@@ -462,4 +471,36 @@ func reservedExpansionWrite(i Input, node syntax.Node) bool {
 
 func runtimeReasonVariable(i Input, name string) bool {
 	return has([]string{"AI_GUARD_REQUEST_REASON", "AI_GUARD_REQUEST_ENV_NAME", "IKESU_GUARD_PARENT_REASON", requestReasonEnvName(i)}, name)
+}
+
+func wordText(word *syntax.Word) string {
+	var printed bytes.Buffer
+	_ = syntax.NewPrinter().Print(&printed, word)
+	return printed.String()
+}
+
+// 未確定な書き込み先でも、リテラルの名前がガードの保護対象（置き場所の名前・
+// その直下の名前・目印のファイル名）に当たる時は確認を残す。名前の手がかりが無い
+// 書き込み先（"$X" など）は対象外。
+func guardNameClue(i Input, text string) bool {
+	root := guardDirectory(i)
+	if root == "" {
+		return false
+	}
+	names := map[string]bool{filepath.Base(root): true, "bash-env": true}
+	if marker := i.Env["IKESU_GUARD_MARKER"]; marker != "" {
+		names[filepath.Base(marker)] = true
+	}
+	if entries, err := os.ReadDir(root); err == nil {
+		for _, e := range entries {
+			names[e.Name()] = true
+		}
+	}
+	segments := strings.FieldsFunc(text, func(r rune) bool { return strings.ContainsRune("/$\"'`{}()<>;&| \t\n=:", r) })
+	for _, s := range segments {
+		if names[s] {
+			return true
+		}
+	}
+	return false
 }

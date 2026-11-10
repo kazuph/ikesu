@@ -154,7 +154,8 @@ func TestScriptFileAfterLiteralCd(t *testing.T) {
 				after := filepath.Join(a.Root, "after")
 				body := "printf ran\n"
 				if scenario == "danger" {
-					body = "/bin/rm " + shellQuote(target) + "\n"
+					// 2026-11-10: 未確定だけでは聞かないので、外向きの規則（HTTP 書き込み）に当たる中身で確かめる。
+					body = "/usr/bin/curl -X POST http://example.invalid/x\n"
 				}
 				if e := os.WriteFile(filepath.Join(dir, "render.sh"), []byte(body), 0600); e != nil {
 					t.Fatal(e)
@@ -189,8 +190,9 @@ func TestScriptFileAfterLiteralCd(t *testing.T) {
 				if _, e = os.Stat(target); e != nil {
 					t.Fatalf("target changed: %v %s", e, out)
 				}
-				if _, e = os.Stat(after); !os.IsNotExist(e) {
-					t.Fatalf("after line ran: %s", out)
+				// cd 後の場所が未確定な行は行全体では止めない。スクリプト内の外向き操作だけ実行時に止まる。
+				if !strings.Contains(string(out), "Command cancelled") && !strings.Contains(string(out), "外側のコマンド") { // 出力は grep を通る
+					t.Fatalf("dangerous script command was not cancelled: %s", out)
 				}
 			})
 		}

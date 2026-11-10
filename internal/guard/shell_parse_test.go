@@ -36,7 +36,7 @@ func TestShellGrammarAndPrefixesUseExistingRules(t *testing.T) {
 		{"f() { /bin/rm " + target + "; }; true", "ask"},
 		{"env -i /bin/zsh -c '/bin/rm " + target + "'", "ask"},
 		{"env --unknown-option /bin/rm " + target, "ask"},
-		{"builtin command \"$UNSET\"", "ask"},
+		{"builtin command \"$UNSET\"", "allow"}, // 未確定のコマンド名は通す（2026-11-10）
 		{"if ; then", "ask"},
 		{"true || git push --force", "block"},
 		{"env -S 'git push --force'", "block"},

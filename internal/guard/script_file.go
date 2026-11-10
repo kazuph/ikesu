@@ -23,6 +23,7 @@ type scriptKind uint8
 const (
 	scriptSafe scriptKind = iota
 	scriptUnresolved
+	scriptDeleteUnresolved
 	scriptUnparseable
 	scriptDanger
 	scriptBlocked
@@ -102,8 +103,12 @@ func shellFileArgument(args []string) (string, bool, bool) {
 }
 
 func (s *scriptScanner) file(i Input, name string) scriptResult {
-	fail := func(reason string) scriptResult { return scriptIssue(scriptUnparseable, name+": "+reason) }
-	if i.Unresolved || name == "" || name == "-" || strings.HasPrefix(name, "/dev/fd/") || name == "/dev/stdin" || strings.HasPrefix(name, "/proc/self/fd/") {
+	// 読めない・大きすぎる・解析できないファイルは未確定として通す（guard log に残す）。
+	fail := func(reason string) scriptResult { return scriptIssue(scriptUnresolved, name+": "+reason) }
+	if name == "-" || strings.HasPrefix(name, "/dev/fd/") || name == "/dev/stdin" || strings.HasPrefix(name, "/proc/self/fd/") {
+		return scriptIssue(scriptUnparseable, name+": 実行するファイルを確定できません")
+	}
+	if i.Unresolved && !has(i.scriptKnownArgs, name) || name == "" {
 		return fail("実行するファイルを確定できません")
 	}
 	if !filepath.IsAbs(name) {
@@ -155,7 +160,9 @@ func (s *scriptScanner) body(i Input, data []byte, name string) scriptResult {
 	i.shellVariables = nil
 	i.shellArrays = nil
 	i.runtimeLine = false
-	fail := func(reason string) scriptResult { return scriptIssue(scriptUnparseable, name+": "+reason) }
+	// 呼び出し側の引数の未確定は、中の各行へ引き継がない。
+	i.Unresolved, i.UnresolvedArg, i.scriptKnownArgs, i.unknownWords = false, false, nil, nil
+	fail := func(reason string) scriptResult { return scriptIssue(scriptUnresolved, name+": "+reason) }
 	tree, e := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(string(data)), name)
 	if e != nil {
 		return fail("スクリプト全体の構文を解析できません: " + e.Error())
@@ -259,7 +266,17 @@ func (s *scriptScanner) body(i Input, data []byte, name string) scriptResult {
 			if cmd.Unresolved && r.kind != scriptBlocked {
 				known := cmd
 				known.Args = cmd.scriptKnownArgs
-				if cmd.scriptUnknownCommand || classify(s.config, known).Decision != "ask" {
+				deleting := has([]string{"rm", "rmdir", "rimraf", "trash"}, filepath.Base(cmd.Command))
+				if uv, ok := unresolvedVerdict(s.config, cmd, classify); ok && !deleting {
+					kind := scriptDanger
+					if uv.Decision == "block" {
+						kind = scriptBlocked
+					}
+					r = scriptResult{kind: kind, verdict: uv}
+				} else if has([]string{"rm", "rmdir", "rimraf", "trash"}, filepath.Base(cmd.Command)) && !cmd.scriptUnknownCommand {
+					// 削除の対象が未確定な間は聞く（サンドボックスを入れるまでの例外）。
+					r = scriptResult{kind: scriptDeleteUnresolved, verdict: result("ask", "rm-paths", "削除操作は確認が必要です")}
+				} else if cmd.scriptUnknownCommand || classify(s.config, known).Decision != "ask" {
 					r = scriptIssue(scriptUnresolved, "変数展開後のコマンドを確定できません")
 				}
 			}
@@ -274,11 +291,12 @@ func (s *scriptScanner) body(i Input, data []byte, name string) scriptResult {
 		}
 		best = best.merge(r)
 	}
-	if best.kind == scriptUnresolved {
+	if best.kind == scriptDeleteUnresolved {
+		// 削除の対象が未確定なスクリプトは、実行中の見張りが各行を確かめる時だけ通す。
 		if filepath.Base(i.Command) == "bash" && verifiedBashEnv(i) {
 			return scriptResult{}
 		}
-		best = scriptIssue(scriptUnparseable, "変数で未確定のスクリプトに実行中の見張りを確認できません: "+name)
+		best.kind = scriptUnparseable
 	}
 	return best
 }

@@ -1,8 +1,17 @@
 package guard
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // LineInput exposes the first parsed command for existing callers.
@@ -76,6 +85,10 @@ func AuthorizeLine(c Config, root string, i Input, line string, errOut io.Writer
 		fmt.Fprintln(errOut, i.shellDiagnostic(parseErr.Error(), line))
 	}
 	if verdict.Decision == "allow" {
+		if strings.HasPrefix(verdict.Reason, undeterminedPrefix) {
+			// 未確定を理由に通したことを、後から区別できるよう記録する。
+			logUndetermined(root, i, m, verdict, line, errOut)
+		}
 		return true
 	}
 	return authorize(c, root, i, "line", errOut, await, &verdict)
@@ -88,4 +101,63 @@ func authorizationIdentityKey(key string) bool {
 		return true
 	}
 	return false
+}
+
+const undeterminedLineLimit, undeterminedReasonLimit = 512, 256
+const undeterminedDedupWindow = 60 * time.Second
+
+func truncateRunes(s string, limit int) string {
+	if r := []rune(s); len(r) > limit {
+		return string(r[:limit])
+	}
+	return s
+}
+
+// 「未確定を通した」記録は短く切り、同じ pane・行・理由は60秒に1回だけ残す。
+func logUndetermined(root string, i Input, m Marker, v Verdict, line string, errOut io.Writer) {
+	v.Reason = truncateRunes(v.Reason, undeterminedReasonLimit)
+	record := Input{Cwd: i.Cwd, LaunchCwd: i.LaunchCwd, Env: i.Env, RawLine: truncateRunes(line, undeterminedLineLimit)}
+	sum := sha256.Sum256([]byte(m.Pane + "\x00" + line + "\x00" + v.Reason))
+	key := hex.EncodeToString(sum[:])
+	if undeterminedSeenRecently(root, key) {
+		return
+	}
+	if e := Log(root, record, m, v, "line"); e != nil {
+		fmt.Fprintln(errOut, "guard log:", e)
+	}
+}
+
+func undeterminedSeenRecently(root, key string) bool {
+	d := filepath.Join(root, "guard")
+	if os.MkdirAll(d, 0700) != nil {
+		return false
+	}
+	f, e := os.OpenFile(filepath.Join(d, "undetermined-seen.json"), os.O_CREATE|os.O_RDWR, 0600)
+	if e != nil {
+		return false
+	}
+	defer f.Close()
+	if unix.Flock(int(f.Fd()), unix.LOCK_EX) != nil {
+		return false
+	}
+	defer unix.Flock(int(f.Fd()), unix.LOCK_UN)
+	seen := map[string]int64{}
+	if data, e := io.ReadAll(f); e == nil && len(data) > 0 {
+		_ = json.Unmarshal(data, &seen)
+	}
+	now := time.Now()
+	for k, t := range seen {
+		if now.Sub(time.Unix(t, 0)) >= undeterminedDedupWindow {
+			delete(seen, k)
+		}
+	}
+	_, dup := seen[key]
+	if !dup {
+		seen[key] = now.Unix()
+	}
+	if data, e := json.Marshal(seen); e == nil {
+		_ = f.Truncate(0)
+		_, _ = f.WriteAt(data, 0)
+	}
+	return dup
 }

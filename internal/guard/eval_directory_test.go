@@ -1,6 +1,9 @@
 package guard
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestEvalDirectoryChangeAffectsSiblings(t *testing.T) {
 	i := Input{Cwd: t.TempDir(), Env: map[string]string{"PATH": "/usr/bin:/bin"}}
@@ -15,7 +18,12 @@ func TestEvalDirectoryChangeAffectsSiblings(t *testing.T) {
 		t.Run(tc.wrapped, func(t *testing.T) {
 			_, got, _ := lineVerdict(Config{}, i, tc.wrapped)
 			_, want, _ := lineVerdict(Config{}, i, tc.direct)
-			if got.Decision != "ask" || got.Decision != want.Decision {
+			// 書き込み先が cd 後の相対パスなだけでは聞かない（2026-11-10）。
+			wantDecision := "ask"
+			if strings.Contains(tc.wrapped, "relative.txt") {
+				wantDecision = "allow"
+			}
+			if got.Decision != wantDecision || got.Decision != want.Decision {
 				t.Fatalf("wrapped=%+v direct=%+v", got, want)
 			}
 		})

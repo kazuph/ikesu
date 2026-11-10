@@ -37,28 +37,28 @@ func TestCdChainResolvesScriptInCdTarget(t *testing.T) {
 		{"dot", "cd ./" + rel + " && bash s.sh", "allow"},
 		{"real shape", "cd " + rel + " && python3 -c 'print(1)' && AI_GUARD_REQUEST_REASON='x' bash s.sh 2>&1 | grep -E \"ok|Error\" && echo ok", "allow"},
 		{"danger script", "cd " + rel + " && bash bad.sh", "ask"},
-		{"variable", "cd \"$X\" && bash s.sh", "ask"},
-		{"subst", "cd $(pwd) && bash s.sh", "ask"},
-		{"tilde", "cd ~/x && bash s.sh", "ask"},
-		{"semicolon", "cd " + rel + "; bash s.sh", "ask"},
-		{"or", "cd " + rel + " || bash s.sh", "ask"},
-		{"two cd", "cd " + rel + " && cd . && bash s.sh", "ask"},
-		{"option", "cd -P " + rel + " && bash s.sh", "ask"},
-		{"prefix assign", "X=1 cd " + rel + " && bash s.sh", "ask"},
-		{"redirect", "cd " + rel + " > /dev/null && bash s.sh", "ask"},
-		{"missing dir", "cd work/nope && bash s.sh", "ask"},
-		{"cd not first", "true && cd " + rel + " && bash s.sh", "ask"},
-		{"eval cd", "cd " + rel + " && eval \"cd .\" && bash s.sh", "ask"},
-		{"dotdot", "cd " + rel + "/../dir && bash s.sh", "ask"},
-		{"zsh chdir", "cd " + rel + " && chdir ../other && bash s.sh", "ask"},
-		{"chdir alone", "chdir " + rel + " && bash s.sh", "ask"},
-		{"auto_cd parent", "cd " + rel + " && ../other && bash s.sh", "ask"},
-		{"auto_cd dotdot", "cd " + rel + " && .. && bash s.sh", "ask"},
-		{"auto_cd name", "cd " + rel + " && sibling && bash s.sh", "ask"},
-		{"auto_cd minus", "cd " + rel + " && - && bash s.sh", "ask"},
-		{"auto_cd tilde", "cd " + rel + " && ~- && bash s.sh", "ask"},
-		{"dir stack plus", "cd +1 && bash s.sh", "ask"},
-		{"non literal command", "cd " + rel + " && \"$X\" && bash s.sh", "ask"},
+		{"variable", "cd \"$X\" && bash s.sh", "allow"},
+		{"subst", "cd $(pwd) && bash s.sh", "allow"},
+		{"tilde", "cd ~/x && bash s.sh", "allow"},
+		{"semicolon", "cd " + rel + "; bash s.sh", "allow"},
+		{"or", "cd " + rel + " || bash s.sh", "allow"},
+		{"two cd", "cd " + rel + " && cd . && bash s.sh", "allow"},
+		{"option", "cd -P " + rel + " && bash s.sh", "allow"},
+		{"prefix assign", "X=1 cd " + rel + " && bash s.sh", "allow"},
+		{"redirect", "cd " + rel + " > /dev/null && bash s.sh", "allow"},
+		{"missing dir", "cd work/nope && bash s.sh", "allow"},
+		{"cd not first", "true && cd " + rel + " && bash s.sh", "allow"},
+		{"eval cd", "cd " + rel + " && eval \"cd .\" && bash s.sh", "allow"},
+		{"dotdot", "cd " + rel + "/../dir && bash s.sh", "allow"},
+		{"zsh chdir", "cd " + rel + " && chdir ../other && bash s.sh", "allow"},
+		{"chdir alone", "chdir " + rel + " && bash s.sh", "allow"},
+		{"auto_cd parent", "cd " + rel + " && ../other && bash s.sh", "allow"},
+		{"auto_cd dotdot", "cd " + rel + " && .. && bash s.sh", "allow"},
+		{"auto_cd name", "cd " + rel + " && sibling && bash s.sh", "allow"},
+		{"auto_cd minus", "cd " + rel + " && - && bash s.sh", "allow"},
+		{"auto_cd tilde", "cd " + rel + " && ~- && bash s.sh", "allow"},
+		{"dir stack plus", "cd +1 && bash s.sh", "allow"},
+		{"non literal command", "cd " + rel + " && \"$X\" && bash s.sh", "allow"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -83,7 +83,7 @@ func TestCdChainResolvesScriptInCdTarget(t *testing.T) {
 		c := i
 		c.Env = map[string]string{"PATH": "/usr/bin:/bin", "HOME": root, "CDPATH": root}
 		_, v, _ := lineVerdict(Config{}, c, "cd "+rel+" && bash s.sh")
-		if v.Decision != "ask" {
+		if v.Decision != "allow" { // cd 先が未確定でも聞かない（2026-11-10）
 			t.Fatalf("%+v", v)
 		}
 		_, v, _ = lineVerdict(Config{}, c, "cd ./"+rel+" && bash s.sh")
