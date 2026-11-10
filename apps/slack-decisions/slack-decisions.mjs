@@ -822,19 +822,34 @@ function buildDecisionBlocks({
       const flagged = unit.verdict === "ask" || unit.verdict === "block";
       const tag = `\`${index + 1} ${unit.label}\``;
       const joiner = unit.op === "\n" ? "⏎" : unit.op;
-      const inline = unit.text.length <= SLACK_SECTION_TEXT_LIMIT - 400 && !/[`\n]/.test(unit.text);
-      const notes = [];
+      const rawNotes = [];
       if (flagged) {
-        if (unit.target) notes.push(`中で: ${unit.target}`);
-        if (unit.reason || unit.rule) notes.push(`理由: ${unit.reason}${unit.reason && unit.rule ? " ／ " : ""}${unit.rule ? `規則 ${unit.rule}` : ""}`);
-      } else notes.push(unit.verdict === "unjudged" ? "未判定" : "確認なし");
+        if (unit.target) rawNotes.push(`中で: ${unit.target}`);
+        if (unit.reason || unit.rule) rawNotes.push(`理由: ${unit.reason}${unit.reason && unit.rule ? " ／ " : ""}${unit.rule ? `規則 ${unit.rule}` : ""}`);
+      } else rawNotes.push(unit.verdict === "unjudged" ? "未判定" : "確認なし");
+      // 利用者の打った文字列が入るので、Slack の mrkdwn として解釈されないよう & < > を置き換える。
+      // 置き換えで最大5倍になるため、元の文字列を500字ずつに分けてから置き換える。
+      const noteLines = rawNotes.flatMap(note => splitExactText(note, 500).map(chunk => {
+        const safe = chunk.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        return flagged ? `>${safe}` : `_${safe}_`;
+      }));
       const lead = `${flagged ? "🔴 " : ""}${tag}${joiner ? ` ${joiner}` : ""}`;
+      const notesText = noteLines.length ? "\n" + noteLines.join("\n") : "";
+      const inline = unit.text.length <= SLACK_SECTION_TEXT_LIMIT - 400 && !/[`\n]/.test(unit.text) && lead.length + unit.text.length + 3 + notesText.length <= SLACK_SECTION_TEXT_LIMIT;
       if (inline) {
-        blocks.push({type: "section", text: {type: "mrkdwn", text: `${lead} \`${unit.text || " "}\`${notes.length ? "\n" + notes.map(note => flagged ? `>${note}` : `_${note}_`).join("\n") : ""}`}});
+        blocks.push({type: "section", text: {type: "mrkdwn", text: `${lead} \`${unit.text || " "}\`${notesText}`}});
       } else {
         blocks.push({type: "section", text: {type: "mrkdwn", text: lead}});
         for (const chunk of splitExactText(unit.text)) blocks.push({type: "rich_text", elements: [{type: "rich_text_preformatted", elements: [{type: "text", text: chunk}]}]});
-        if (notes.length) blocks.push({type: "section", text: {type: "mrkdwn", text: notes.map(note => flagged ? `>${note}` : `_${note}_`).join("\n")}});
+        let page = "";
+        for (const line of noteLines) {
+          if (page && page.length + 1 + line.length > SLACK_SECTION_TEXT_LIMIT) {
+            blocks.push({type: "section", text: {type: "mrkdwn", text: page}});
+            page = "";
+          }
+          page = page ? `${page}\n${line}` : line;
+        }
+        if (page) blocks.push({type: "section", text: {type: "mrkdwn", text: page}});
       }
     });
   } else if (approvalCommand(decision)) {

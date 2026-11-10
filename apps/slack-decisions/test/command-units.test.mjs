@@ -40,3 +40,23 @@ test("multi-line or backtick text goes to a preformatted block", () => {
   assert.ok(blocks.some(b => b.type === "rich_text"));
   assert.ok(texts(blocks).some(t => t === "🔴 `1 実行`"));
 });
+
+test("notes escape Slack mrkdwn so <!channel> in target does not notify", () => {
+  const u = [{ op: "", text: "bash x.sh", label: "実行", verdict: "ask", rule: "r<!here>", reason: "a & <b>", target: "echo <!channel> <@U1> &" }];
+  const all = texts(buildDecisionBlocks({ decision: guard({ command_units: u }), machine: LOCAL }));
+  const ask = all.find(t => t.includes("中で:"));
+  assert.ok(ask.includes("&lt;!channel&gt;") && ask.includes("&lt;@U1&gt; &amp;"));
+  assert.ok(ask.includes("a &amp; &lt;b&gt;") && ask.includes("r&lt;!here&gt;"));
+  assert.equal(ask.includes("<!channel>"), false);
+  assert.equal(ask.includes("<!here>"), false);
+});
+
+test("a 5000-char target keeps every block under the section limit", () => {
+  for (const target of ["a".repeat(5000), "<".repeat(5000)]) {
+    const u = [{ op: "", text: "bash x.sh", label: "実行", verdict: "ask", rule: "r", reason: "why", target }];
+    const blocks = buildDecisionBlocks({ decision: guard({ command_units: u }), machine: LOCAL });
+    for (const b of blocks) if (b.type === "section") assert.ok(b.text.text.length <= 3000, `section ${b.text.text.length}`);
+    const joined = texts(blocks).join("\n");
+    assert.ok(joined.includes((target[0] === "<" ? "&lt;" : "a")));
+  }
+});

@@ -192,10 +192,44 @@ func commandLabel(name string, args []string) string {
 		if sub == "reset" && hard {
 			return "消す"
 		}
+		rest := []string{}
+		for n, a := range args {
+			if a == sub {
+				rest = args[n+1:]
+				break
+			}
+		}
+		switch sub {
+		case "branch":
+			for _, a := range rest {
+				if a == "-D" || a == "-d" || a == "--delete" {
+					return "消す"
+				}
+			}
+		case "stash":
+			if len(rest) > 0 && (rest[0] == "drop" || rest[0] == "clear") {
+				return "消す"
+			}
+		}
 		if l, ok := gitLabels[sub]; ok {
 			return l
 		}
 		return "実行"
+	case "find":
+		for n, a := range args {
+			if a == "-delete" {
+				return "消す"
+			}
+			if (a == "-exec" || a == "-execdir" || a == "-ok" || a == "-okdir") && n+1 < len(args) {
+				switch filepath.Base(args[n+1]) {
+				case "rm", "rmdir", "unlink", "trash":
+					return "消す"
+				}
+			}
+		}
+		return "読む"
+	case "gh":
+		return ghLabel(args)
 	case "sed":
 		if anyArg(func(a string) bool {
 			return a == "--in-place" || strings.HasPrefix(a, "--in-place=") || (strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "i"))
@@ -250,6 +284,79 @@ func commandLabel(name string, args []string) string {
 		return l
 	}
 	return "実行"
+}
+
+// ghLabel は読むだけの gh 下位コマンドを「読む」、それ以外を「外へ送る」にする。
+func ghLabel(args []string) string {
+	words := []string{}
+	for _, a := range args {
+		if !strings.HasPrefix(a, "-") {
+			words = append(words, a)
+		}
+	}
+	if len(words) == 0 {
+		return "外へ送る"
+	}
+	pick := func(m ...string) bool {
+		if len(words) < 2 {
+			return false
+		}
+		for _, x := range m {
+			if words[1] == x {
+				return true
+			}
+		}
+		return false
+	}
+	switch words[0] {
+	case "pr":
+		if pick("list", "view", "diff", "checks", "status") {
+			return "読む"
+		}
+	case "issue":
+		if pick("list", "view", "status") {
+			return "読む"
+		}
+	case "run":
+		if pick("list", "view", "watch") {
+			return "読む"
+		}
+	case "repo":
+		if pick("view") {
+			return "読む"
+		}
+	case "release":
+		if pick("list", "view") {
+			return "読む"
+		}
+	case "search":
+		return "読む"
+	case "auth":
+		if pick("status") {
+			return "読む"
+		}
+	case "api":
+		for n, a := range args {
+			switch {
+			case (a == "-X" || a == "--method") && n+1 < len(args):
+				if !strings.EqualFold(args[n+1], "GET") {
+					return "外へ送る"
+				}
+			case strings.HasPrefix(a, "--method="):
+				if !strings.EqualFold(strings.TrimPrefix(a, "--method="), "GET") {
+					return "外へ送る"
+				}
+			case strings.HasPrefix(a, "-X") && len(a) > 2:
+				if !strings.EqualFold(a[2:], "GET") {
+					return "外へ送る"
+				}
+			case a == "-f" || a == "-F" || a == "--input" || a == "--field" || a == "--raw-field" || strings.HasPrefix(a, "--input=") || strings.HasPrefix(a, "--field=") || strings.HasPrefix(a, "--raw-field="):
+				return "外へ送る"
+			}
+		}
+		return "読む"
+	}
+	return "外へ送る"
 }
 
 func literalWord(w *syntax.Word) (string, bool) {

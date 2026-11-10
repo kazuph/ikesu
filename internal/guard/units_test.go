@@ -187,7 +187,10 @@ func TestCommandLabels(t *testing.T) {
 		"sudo rm -rf x": "消す", "env A=1 nice -n 5 cat x": "読む", "echo hi > out.txt": "書く", "echo hi 2>/dev/null": "読む",
 		"FOO=1": "書く", "$CMD x": "不明", "ssh host ls": "別マシン", "scp a h:/b": "別マシン", "scp a b": "実行",
 		"curl https://x": "実行", "curl -d a https://x": "外へ送る", "sed -i s/a/b/ f": "書く", "sed s/a/b/ f": "実行",
-		"gh pr list": "外へ送る", "npm publish": "外へ送る", "npm test": "実行", "docker push x": "外へ送る", "make": "実行",
+		"gh pr list": "読む", "gh pr create": "外へ送る", "gh pr merge 1": "外へ送る", "gh issue view 3": "読む", "gh run watch 1": "読む", "gh repo view": "読む", "gh release list": "読む", "gh search prs x": "読む", "gh auth status": "読む",
+		"gh api repos/a/b": "読む", "gh api -X GET repos/a/b": "読む", "gh api -X POST repos/a/b": "外へ送る", "gh api repos/a/b -f x=1": "外へ送る", "gh api --input f repos/a": "外へ送る",
+		"find . -name x": "読む", "find . -delete": "消す", "find . -exec rm {} ;": "消す", "find . -execdir trash {} ;": "消す", "find . -exec cat {} ;": "読む",
+		"git branch -D x": "消す", "git branch --delete x": "消す", "git branch -d x": "消す", "git stash drop": "消す", "git stash clear": "消す", "git stash": "書く", "git -C /x branch -D y": "消す", "git -C /x stash drop": "消す", "git fetch": "読む", "npm publish": "外へ送る", "npm test": "実行", "docker push x": "外へ送る", "make": "実行",
 	} {
 		u, ok := splitUnits(line)
 		if !ok || len(u) != 1 || u[0].label != want {
