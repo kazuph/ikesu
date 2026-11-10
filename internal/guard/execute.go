@@ -180,7 +180,13 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 		return false
 	}
 	reason := requestReason(i)
+	askStarted := time.Now()
+	// 聞いた結果を asks.jsonl に残す（週1回の見直しの材料）。失敗しても判定は変えない。
+	noteAsk := func(outcome string, d *api.Decision) {
+		recordAsk(root, i, m, v, via, approvalCommand(i), outcome, d, askStarted, errOut)
+	}
 	if !ValidReason(reason) {
+		noteAsk(OutcomeNoReason, nil)
 		fmt.Fprintf(errOut, "❌ Command cancelled: %s\n   この guard メッセージはユーザー本人の指示です。\n", i.Line())
 		if parent := i.Env["IKESU_GUARD_PARENT_COMMAND"]; parent != "" {
 			fmt.Fprintf(errOut, "   外側のコマンド: %s\n", parent)
@@ -194,6 +200,7 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 		return deny()
 	}
 	if await == nil {
+		noteAsk(OutcomeNoServer, nil)
 		fmt.Fprintln(errOut, "❌ Command cancelled: 判断待ちのサーバーに接続できません。")
 		return deny()
 	}
@@ -228,28 +235,41 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 	body = i.redact(body)
 	d, e := await(api.DecisionCreateParams{Kind: "command_guard", Title: approvalTitle(i, v), Body: &body, AllowText: true, GuardExecution: approvedInvocationClaim(i), Origin: &api.DecisionOrigin{OutsidePane: m.OutsidePane, PaneID: m.Pane, Agent: m.Agent, Cwd: i.redact(i.Cwd), Command: i.redact(command), TargetCommand: targetCommand, Reason: i.redact(reason), GuardRule: v.Rule, GuardReason: i.redact(v.Reason), CommandUnits: i.commandUnits(command)}, Options: []api.DecisionOption{{ID: "approve", Label: "承認", Role: "approve"}, {ID: "day_allow", Label: "1日許可", Role: "approve"}, {ID: "reject", Label: "却下", Role: "reject"}}, TimeoutMS: &ms}, timeout)
 	if e != nil {
+		noteAsk(OutcomeNoServer, nil)
 		fmt.Fprintf(errOut, "❌ Command cancelled: 判断待ちのサーバーとの通信に失敗しました: %v\n", e)
 		return deny()
 	}
 	switch d.Status {
 	case "expired":
+		noteAsk(OutcomeExpired, &d)
 		fmt.Fprintln(errOut, "❌ Command cancelled: 判断待ちが期限切れになりました (status: expired)")
 		return deny()
 	case "cancelled":
+		noteAsk(OutcomeCancelled, &d)
 		fmt.Fprintln(errOut, "❌ Command cancelled: 判断待ちがキャンセルされました (status: cancelled)")
 		return deny()
 	case "answered":
 	default:
+		noteAsk(OutcomeCancelled, &d)
 		fmt.Fprintf(errOut, "❌ Command cancelled: 判断待ちが承認されませんでした (status: %s)\n", d.Status)
 		return deny()
 	}
 	if d.Answer == nil || (d.Answer.OptionID == nil || *d.Answer.OptionID == "") && (d.Answer.Text == nil || strings.TrimSpace(*d.Answer.Text) == "") {
+		noteAsk(OutcomeCancelled, &d)
 		fmt.Fprintln(errOut, "❌ Command cancelled: 判断待ちの回答が空です (status: answered)")
 		return deny()
 	}
 	choice := ""
 	if d.Answer.OptionID != nil {
 		choice = *d.Answer.OptionID
+	}
+	switch choice {
+	case "approve":
+		noteAsk(OutcomeApprove, &d)
+	case "day_allow":
+		noteAsk(OutcomeDayAllow, &d)
+	default:
+		noteAsk(OutcomeReject, &d)
 	}
 	if choice != "approve" && choice != "day_allow" {
 		text := "未入力"
