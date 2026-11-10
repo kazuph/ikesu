@@ -1,0 +1,110 @@
+package guard
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+)
+
+// git の全体オプション（-C など）が前に付いても、git の決まりが効く。
+func TestGitGlobalOptionsKeepRules(t *testing.T) {
+	home := t.TempDir()
+	env := map[string]string{"HOME": home, "PATH": "/usr/bin:/bin:/opt/homebrew/bin"}
+	git, e := Resolve("git", environment(env))
+	if e != nil {
+		t.Fatal(e)
+	}
+	run := func(dir string, args ...string) {
+		c := exec.Command(git, args...)
+		c.Dir, c.Env = dir, environment(env)
+		if b, e := c.CombinedOutput(); e != nil {
+			t.Fatal(string(b), e)
+		}
+	}
+	mainRepo, featRepo, permitRepo := t.TempDir(), t.TempDir(), t.TempDir()
+	run(mainRepo, "init", "-q", "--initial-branch=main")
+	run(featRepo, "init", "-q", "--initial-branch=feature")
+	run(permitRepo, "init", "-q", "--initial-branch=main")
+	os.WriteFile(filepath.Join(permitRepo, ".allow-main"), nil, 0600)
+	elsewhere := t.TempDir()
+	judge := func(cwd string, args ...string) Verdict {
+		return Evaluate(Config{}, Input{Command: "git", Args: args, Cwd: cwd, LaunchCwd: cwd, Env: env})
+	}
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+		rule string
+	}{
+		{"-C main push", []string{"-C", mainRepo, "push", "origin", "main"}, "block", "git-main"},
+		{"-C main push HEAD", []string{"-C", mainRepo, "push"}, "block", "git-main"},
+		{"-C force", []string{"-C", featRepo, "push", "--force", "origin", "x"}, "block", "git-push-force"},
+		{"-C reset", []string{"-C", featRepo, "reset", "--hard"}, "block", "git-reset"},
+		{"-C amend", []string{"-C", featRepo, "commit", "--amend"}, "block", "git-commit-amend"},
+		{"-c -C main", []string{"-c", "user.name=x", "-C", mainRepo, "push", "origin", "main"}, "block", "git-main"},
+		{"no-pager -C main", []string{"--no-pager", "-C", mainRepo, "push"}, "block", "git-main"},
+		{"git-dir main", []string{"--git-dir=" + filepath.Join(mainRepo, ".git"), "push", "origin", "main"}, "block", "git-main"},
+		{"-C clean", []string{"-C", featRepo, "clean", "-fd"}, "ask", ""},
+		{"-C stash drop", []string{"-C", featRepo, "stash", "drop"}, "ask", ""},
+		{"-C permit", []string{"-C", permitRepo, "push"}, "allow", "main-permit"},
+		{"-C status", []string{"-C", featRepo, "status"}, "allow", ""},
+		{"-C log", []string{"-C", featRepo, "log"}, "allow", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := judge(elsewhere, tc.args...)
+			if v.Decision != tc.want || tc.rule != "" && v.Rule != tc.rule {
+				t.Fatalf("got %+v want %s %s", v, tc.want, tc.rule)
+			}
+		})
+	}
+	t.Run("-C feature push equals plain push in that directory", func(t *testing.T) {
+		got := judge(elsewhere, "-C", featRepo, "push", "origin", "feature")
+		want := judge(featRepo, "push", "origin", "feature")
+		if got.Decision != want.Decision || got.Rule != want.Rule {
+			t.Fatalf("got %+v want %+v", got, want)
+		}
+	})
+	t.Run("relative -C joins the current directory", func(t *testing.T) {
+		v := judge(filepath.Dir(mainRepo), "-C", filepath.Base(mainRepo), "push")
+		if v.Rule != "git-main" {
+			t.Fatalf("%+v", v)
+		}
+	})
+}
+
+func TestGitGlobalReviewFixes(t *testing.T) {
+	d := t.TempDir()
+	run := func(args ...string) {
+		c := exec.Command("git", args...)
+		c.Dir = d
+		c.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null")
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	run("init", "-q", "-b", "feature")
+	run("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "--allow-empty", "-m", "x")
+	if err := os.WriteFile(filepath.Join(d, ".allow-main"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	in := func(args ...string) Input {
+		return Input{Command: "git", Args: args, Cwd: d, LaunchCwd: d, Env: map[string]string{"PATH": os.Getenv("PATH"), "HOME": d}}
+	}
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"-C", unresolvedPlaceholder, "push", "origin", "main"}, "block"},
+		{[]string{"-C", unresolvedPlaceholder, "push", "origin", "feature"}, "ask"},
+		{[]string{"-c", "alias.p=push", "p", "origin", "main"}, "ask"},
+		{[]string{"--config-env=alias.p=X", "p", "origin", "main"}, "ask"},
+	} {
+		if v := classify(Config{}, in(tc.args...)); v.Decision != tc.want {
+			t.Errorf("%v: got %+v want %s", tc.args, v, tc.want)
+		}
+	}
+	if !mainBranch("+main") || !mainBranch("+refs/heads/master") {
+		t.Error("a forced refspec to main must count as main")
+	}
+}

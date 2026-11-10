@@ -435,23 +435,6 @@ func unresolvedFailure(e error) bool {
 	return errors.As(e, &unresolved)
 }
 
-// git の全体オプション（-C <dir> など）を外し、サブコマンドから判定できるようにする。
-func stripGitGlobalOptions(argv []string) []string {
-	n := 1
-	for n < len(argv) {
-		a := argv[n]
-		switch {
-		case a == "-C" || a == "-c" || a == "--git-dir" || a == "--work-tree" || a == "--namespace":
-			n += 2
-		case strings.HasPrefix(a, "--git-dir=") || strings.HasPrefix(a, "--work-tree=") || strings.HasPrefix(a, "--namespace="), a == "--no-pager" || a == "-P" || a == "--no-optional-locks" || a == "--bare":
-			n++
-		default:
-			return append([]string{argv[0]}, argv[n:]...)
-		}
-	}
-	return argv[:1]
-}
-
 const unresolvedPlaceholder = "UNRESOLVED_VALUE"
 
 // 未確定の語が混じる命令でも、外向きの規則・git の決まりは効かせる。
@@ -475,9 +458,6 @@ func unresolvedVerdict(c Config, command Input, judge func(Config, Input) Verdic
 		candidate.Command, candidate.Args = words[0], words[1:]
 		v := judge(c, candidate)
 		return v, blocksRun(v.Decision) || v.Decision == "ask"
-	}
-	if filepath.Base(argv[0]) == "git" {
-		argv = stripGitGlobalOptions(argv)
 	}
 	var found Verdict
 	have := false

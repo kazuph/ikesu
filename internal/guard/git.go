@@ -20,6 +20,9 @@ func probe(i Input, cmd string, a ...string) string {
 	if e != nil {
 		return ""
 	}
+	if cmd == "git" && len(i.gitOptions) > 0 {
+		a = append(append([]string{}, i.gitOptions...), a...)
+	}
 	c := childenv.CommandContext(ctx, p, a...)
 	c.Dir = i.Cwd
 	c.Env = childenv.Scrub(env)
@@ -38,6 +41,7 @@ func force(a []string) bool {
 	return false
 }
 func mainBranch(s string) bool {
+	s = strings.TrimPrefix(s, "+")
 	return has([]string{"main", "master", "refs/heads/main", "refs/heads/master"}, s)
 }
 func gitPush(i Input) Verdict {
@@ -70,6 +74,14 @@ func gitPush(i Input) Verdict {
 			v = branch
 		}
 		destMain = destMain || mainBranch(v)
+	}
+	if i.gitDirUnknown {
+		// The repository behind an unresolved -C is unknown, so neither the
+		// .allow-main permit nor ownership of the current directory applies.
+		if destMain {
+			return result("block", "git-main", "main/master への push は AI からは禁止です。必要なら人間が手動で実行してください。")
+		}
+		return result("ask", "ownership", "git -C の場所を確定できないため承認が必要です。")
 	}
 	if destMain {
 		root := probe(i, "git", "rev-parse", "--show-toplevel")
@@ -129,4 +141,74 @@ func ownerVerdict(i Input, repo, operation string) Verdict {
 		return result("block", "foreign-repo", "AI による他人所有リポ ("+repo+") への PR 作成は禁止です。")
 	}
 	return ask
+}
+
+// normalizeGit reads git's global options off the front of the arguments so the
+// rules see the real subcommand. -C accumulates into the working directory the
+// judgment probes run in; the other options are handed to every git probe.
+// It is idempotent: once the subcommand leads, nothing more is stripped.
+func normalizeGit(i Input) Input {
+	if filepath.Base(i.Command) != "git" {
+		return i
+	}
+	a := i.Args
+	n := 0
+	var opts []string
+	cwd := i.Cwd
+	for n < len(a) {
+		v := a[n]
+		switch {
+		case v == "-C":
+			if n+1 >= len(a) {
+				return i
+			}
+			if a[n+1] == unresolvedPlaceholder {
+				i.gitDirUnknown = true
+			}
+			if d := a[n+1]; d != "" && d != unresolvedPlaceholder {
+				if !filepath.IsAbs(d) {
+					d = filepath.Join(cwd, d)
+				}
+				cwd = d
+			}
+			n += 2
+		case v == "-c" || v == "--git-dir" || v == "--work-tree" || v == "--namespace" || v == "--config-env" || v == "--super-prefix":
+			if n+1 >= len(a) {
+				return i
+			}
+			// Only repository-locating options reach the probes: -c and the
+			// like could run configured commands before anyone approves.
+			if has([]string{"--git-dir", "--work-tree", "--namespace"}, v) {
+				opts = append(opts, v, a[n+1])
+			}
+			if (v == "-c" || v == "--config-env") && strings.HasPrefix(strings.ToLower(a[n+1]), "alias.") {
+				i.gitAlias = true
+			}
+			n += 2
+		case strings.HasPrefix(v, "--config-env="):
+			if strings.HasPrefix(strings.ToLower(strings.TrimPrefix(v, "--config-env=")), "alias.") {
+				i.gitAlias = true
+			}
+			n++
+		case strings.HasPrefix(v, "--git-dir=") || strings.HasPrefix(v, "--work-tree=") || strings.HasPrefix(v, "--namespace="):
+			opts = append(opts, v)
+			n++
+		case strings.HasPrefix(v, "--super-prefix=") || strings.HasPrefix(v, "--exec-path="):
+			// Not passed to probes: --exec-path picks which git programs run.
+			n++
+		case has([]string{"--no-pager", "-P", "-p", "--paginate", "--no-optional-locks", "--bare", "--no-replace-objects", "--literal-pathspecs", "--glob-pathspecs", "--noglob-pathspecs", "--icase-pathspecs", "--no-lazy-fetch", "--no-advice"}, v):
+			opts = append(opts, v)
+			n++
+		default:
+			if n == 0 {
+				return i
+			}
+			i.gitStripped = append(append([]string{}, i.gitStripped...), a[:n]...)
+			i.Args = append([]string{}, a[n:]...)
+			i.Cwd = cwd
+			i.gitOptions = append(append([]string{}, i.gitOptions...), opts...)
+			return i
+		}
+	}
+	return i
 }

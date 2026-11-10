@@ -53,6 +53,10 @@ type Input struct {
 	shellPID             string
 	shellArrays          map[string]map[int]string
 	probePrivate         bool
+	gitOptions           []string
+	gitStripped          []string
+	gitDirUnknown        bool
+	gitAlias             bool
 	OpaquePrefix         bool `json:"-"`
 	scriptVariables      map[string]bool
 	claudeBashEnv        string
@@ -132,6 +136,7 @@ func arg(a []string, n int) string {
 }
 func result(d, r, s string) Verdict { return Verdict{Decision: d, Rule: r, Reason: s} }
 func Evaluate(c Config, i Input) Verdict {
+	i = normalizeGit(i)
 	i.GuardCommands = c.Commands()
 	return evaluateVerdict(c, i, classify(c, i))
 }
@@ -152,11 +157,15 @@ func evaluateVerdict(c Config, i Input, v Verdict) Verdict {
 	return v
 }
 func classify(c Config, i Input) Verdict {
+	i = normalizeGit(i)
 	cmd, a := filepath.Base(i.Command), i.Args
 	for _, p := range defaults(c.ProtectedPatterns, []string{".allow-main", ".allow_main", "allow-main", "allow_main"}) {
-		if p != "" && strings.Contains(i.Line(), p) {
+		if p != "" && (strings.Contains(i.Line(), p) || strings.Contains(strings.Join(i.gitStripped, " "), p)) {
 			return result("block", "protected", "AIプロセスによる .allow-main 関連操作は完全に禁止されています")
 		}
+	}
+	if cmd == "git" && i.gitAlias {
+		return result("ask", "git-alias", "git の別名（-c alias.*）を付けた実行は、中身を確定できないため承認が必要です。")
 	}
 	if has([]string{"ikesu", "herdr"}, cmd) && wildcard(a) {
 		return result("block", "wildcard", "宛先 '*' は --room を付けても room 内に限定されず、全agentへ一斉配信されます。これは承認では解除できません。")
