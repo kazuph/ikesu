@@ -13,7 +13,7 @@ import (
 )
 
 // AskRecord は「聞かれた1件とその結果」。<root>/guard/asks.jsonl に1行ずつ追記し、
-// 週1回の見直し（ikesu guard audit）の材料にする。
+// 見直し（ikesu guard audit）の材料にする。
 type AskRecord struct {
 	TS         string    `json:"ts"`
 	TSEpoch    int64     `json:"ts_epoch"`

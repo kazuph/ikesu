@@ -18,9 +18,6 @@ type Config struct {
 	ProtectedPatterns []string `toml:"protected_patterns"`
 	WranglerAllow     []string `toml:"wrangler_allow"`
 	AskTimeoutSeconds *int     `toml:"ask_timeout_seconds"`
-	// AuditWeekly は週1回のコマンド承認の見直しを出す時刻。"mon 10:00" の形。"off" で止める。
-	// サーバーだけが読む設定なので、各 pane へ渡す方針（JSON）には含めない。
-	AuditWeekly string `toml:"audit_weekly" json:"-"`
 }
 
 func (c Config) Active() bool { return c.Enabled == nil || *c.Enabled }
