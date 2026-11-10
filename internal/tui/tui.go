@@ -87,11 +87,13 @@ const (
 	menuMachineRemove
 	menuMachineManage
 	menuOyagoiUnset
+	menuMove
 )
 
 // uiMenu is an open popup menu (TUI-owned state).
 type uiMenu struct {
 	unsetOyagoi   func()
+	actions       []func() // menuMove: one action per item
 	machines      []machine.Profile
 	worktreePaths []string
 	worktreeItems []api.WorktreeInfo
@@ -102,6 +104,7 @@ type uiMenu struct {
 	wsID          int
 	wsGeneration  string
 	tab           int // target tab (menuTab)
+	tabID         int // target tab id (menuTab), for actions resolved later
 	// justOpened suppresses the release event from the same click that
 	// opened the menu (the menu may clamp onto the pointer).
 	justOpened bool

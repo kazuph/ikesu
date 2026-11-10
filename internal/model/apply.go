@@ -76,6 +76,8 @@ func (s *AppState) Apply(cmd Command) (effects []Effect) {
 		return nil
 	case CmdMoveTab:
 		return s.moveTab(c)
+	case CmdMoveTabToWorkspace:
+		return s.moveTabToWorkspace(c)
 	case CmdMoveWorkspace:
 		return s.moveWorkspace(c.Index, c.InsertIndex)
 	case CmdNewWorkspace:
