@@ -154,14 +154,16 @@ func TestScriptFileAfterLiteralCd(t *testing.T) {
 				after := filepath.Join(a.Root, "after")
 				body := "printf ran\n"
 				if scenario == "danger" {
-					body = "/bin/rm " + shellQuote(target) + "\n"
+					// 2026-11-10: 未確定だけでは聞かないので、外向きの規則（HTTP 書き込み）に当たる中身で確かめる。
+					body = "/usr/bin/curl -X POST http://example.invalid/x\n"
 				}
 				if e := os.WriteFile(filepath.Join(dir, "render.sh"), []byte(body), 0600); e != nil {
 					t.Fatal(e)
 				}
-				// 2026-11-10: `;` で続く行は cd 後の場所が未確定になり、未確定だけでは聞かない。
-				// 危険なスクリプトが cd 先で判定される経路は && でつないだ行で確かめる。
-				line := "cd work/shorts && printf prep > prep.txt && /bin/bash render.sh 2>&1 | grep -E \"ran|Error\" && printf done > " + shellQuote(after)
+				line := "cd work/shorts && printf prep > prep.txt && /bin/bash render.sh 2>&1 | grep -E \"ran|Error\" ; printf done > " + shellQuote(after)
+				if scenario == "safe" {
+					line = "cd work/shorts && printf prep > prep.txt && /bin/bash render.sh 2>&1 | grep -E \"ran|Error\" && printf done > " + shellQuote(after)
+				}
 				var c *exec.Cmd
 				if agent == "claude" {
 					if scenario == "safe" {
