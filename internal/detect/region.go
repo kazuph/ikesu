@@ -217,9 +217,13 @@ func regionText(in Input, name string) string {
 		// A rule with only blank rows below closes the block above it rather
 		// than opening one: Claude draws "──── View teammates: … ─" under a
 		// question form while teammates exist. Read from the rule before it.
+		// When every rule only has blank rows below, read as if no rule.
 		last := len(rules) - 1
-		for last > 0 && strings.TrimSpace(span(rules[last]+1, len(lines))) == "" {
+		for last >= 0 && strings.TrimSpace(span(rules[last]+1, len(lines))) == "" {
 			last--
+		}
+		if last < 0 {
+			return screen
 		}
 		return span(rules[last]+1, len(lines))
 	}

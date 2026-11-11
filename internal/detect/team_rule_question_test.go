@@ -33,13 +33,55 @@ func TestClaudeQuestionUnderTeammateRuleIsBlocked(t *testing.T) {
 
 func TestTrailingEmptyRuleDoesNotHideBlockBelowPreviousRule(t *testing.T) {
 	t.Parallel()
-	in := Input{Screen: "text\n──────────\nEnter to confirm · Esc to cancel\n──────────\n\n"}
-	if got := regionText(in, "after_last_horizontal_rule"); got != "Enter to confirm · Esc to cancel\n──────────\n\n" && got != "Enter to confirm · Esc to cancel\n──────────\n" {
-		t.Fatalf("region = %q", got)
+	for _, tc := range []struct{ name, screen, want string }{
+		{"trailing rule", "text\n──────────\nEnter to confirm · Esc to cancel\n──────────\n\n", "Enter to confirm · Esc to cancel\n──────────\n"},
+		{"status below the last rule keeps the old meaning", "──────────\n❯ \n──────────\n  ⏵⏵ auto mode on\n", "  ⏵⏵ auto mode on"},
+		{"only rule has nothing below", "☐ x\nEnter to confirm · Esc to cancel\n──── View teammates: `tmux -L s a` ─\n\n", "☐ x\nEnter to confirm · Esc to cancel\n──── View teammates: `tmux -L s a` ─\n\n"},
+	} {
+		if got := regionText(Input{Screen: tc.screen}, "after_last_horizontal_rule"); got != tc.want {
+			t.Errorf("%s: region = %q, want %q", tc.name, got, tc.want)
+		}
 	}
-	// A last rule with content below keeps the old meaning.
-	in = Input{Screen: "──────────\n❯ \n──────────\n  ⏵⏵ auto mode on\n"}
-	if got := regionText(in, "after_last_horizontal_rule"); got != "  ⏵⏵ auto mode on\n" && got != "  ⏵⏵ auto mode on" {
-		t.Fatalf("region with status below = %q", got)
+}
+
+// The form's only rule is the teammate line (its top scrolled away).
+func TestClaudeQuestionWithOnlyTeammateRuleIsBlocked(t *testing.T) {
+	t.Parallel()
+	screen := " ☐ x\n\n❯ 1. A\n  2. B\n\nEnter to select · ↑/↓ to navigate · Esc to cancel\n" +
+		"──────────────────── View teammates: `tmux -L claude-swarm-8791 a` ─\n\n"
+	d := Detect("claude", Input{Screen: screen, OSCTitle: "✳ task"})
+	if d.State != Blocked || d.RuleID != "live_blocked_form" || !d.VisibleBlocker {
+		t.Fatalf("got %+v, want visible blocked from live_blocked_form", d)
+	}
+}
+
+// A permission dialog above the teammate line is a visible blocker too.
+func TestClaudePermissionUnderTeammateRuleIsBlocked(t *testing.T) {
+	t.Parallel()
+	screen := "⏺ Write(notes.txt)\n\n" +
+		"────────────────────────────────────────────────────────────\n" +
+		" Create file\n\n" +
+		" Do you want to proceed?\n" +
+		" ❯ 1. Yes\n   2. No, and tell Claude what to do differently (esc)\n\n" +
+		" Esc to cancel\n" +
+		"──────────────────── View teammates: `tmux -L claude-swarm-8791 a` ─\n\n"
+	d := Detect("claude", Input{Screen: screen, OSCTitle: "✳ task"})
+	if d.State != Blocked || d.RuleID != "generic_permission_prompt" || !d.VisibleBlocker {
+		t.Fatalf("got %+v, want visible blocked from generic_permission_prompt", d)
+	}
+}
+
+// Waiting for input with a rule at the very bottom must stay idle: the
+// back-off stops at the prompt box and never reaches an answered question.
+func TestClaudeIdleWithTrailingRuleAfterAnsweredQuestionStaysIdle(t *testing.T) {
+	t.Parallel()
+	screen := "Enter to select · ↑/↓ to navigate · Esc to cancel\n" +
+		"⏺ 回答を受け取ったよ。\n\n" +
+		"────────────────────────────────────────────────────────────\n" +
+		"❯ \n" +
+		"──────────────────── View teammates: `tmux -L claude-swarm-8791 a` ─\n\n"
+	d := Detect("claude", Input{Screen: screen, OSCTitle: "✳ task"})
+	if d.State != Idle {
+		t.Fatalf("got %+v, want idle", d)
 	}
 }
