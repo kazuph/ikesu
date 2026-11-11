@@ -7,6 +7,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/childenv"
+	"github.com/kazuph/ikesu/internal/claudeteam"
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/dispatch"
 	"github.com/kazuph/ikesu/internal/endpoint"
@@ -205,6 +206,10 @@ type App struct {
 	processPollRequests chan struct{}
 	processPollResults  chan []int
 	processPollPermit   chan struct{}
+	// claudeTeams tells a Claude lead waiting for input apart from one
+	// whose teammates work; both keep the busy title (claude_team.go).
+	claudeTeams     *claudeteam.Watcher
+	claudeTeamRoots map[int]claudeTeamRoot
 
 	navigator           *navigatorView
 	resizeMode          bool
@@ -416,6 +421,8 @@ func NewApp(st *model.AppState, sup *runtime.Supervisor, out io.Writer, cwd stri
 		processPollRequests: make(chan struct{}, 1),
 		processPollResults:  make(chan []int, 1),
 		processPollPermit:   make(chan struct{}, 1),
+		claudeTeams:         claudeteam.NewWatcher(),
+		claudeTeamRoots:     map[int]claudeTeamRoot{},
 		scroll:              map[int]int{},
 		trackers:            map[int]*status.Tracker{},
 		reported:            map[int]reportedPane{},
@@ -703,6 +710,7 @@ func (a *App) Run() {
 				}
 				changed := a.sup.PollPendingProcesses(time.Now())
 				a.processPollPermit <- struct{}{}
+				changed = append(changed, a.claudeTeams.Refresh(time.Now())...)
 				select {
 				case a.processPollResults <- changed:
 				case <-processCtx.Done():
