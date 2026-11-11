@@ -81,7 +81,7 @@ func TestIdleOnlyWhenEveryTeammateIsInactive(t *testing.T) {
 			writeTeam(t, root, "session-aaaa", 4242, host(t), 1, tc.teammates...)
 			w := NewWatcher()
 			now := time.Unix(1000, 0)
-			w.Watch(7, 4242, root, now)
+			w.Watch(7, 4242, root)
 			refresh(w, &now)
 			if got := w.Idle(4242); got != tc.want {
 				t.Fatalf("Idle = %v, want %v", got, tc.want)
@@ -97,7 +97,7 @@ func TestRefreshReportsPaneWhenTeammateStartsAndStops(t *testing.T) {
 	writeTeam(t, root, "session-aaaa", 4242, h, 1, flag(false))
 	w := NewWatcher()
 	now := time.Unix(1000, 0)
-	w.Watch(7, 4242, root, now)
+	w.Watch(7, 4242, root)
 	if got := refresh(w, &now); !slices.Equal(got, []int{7}) {
 		t.Fatalf("first refresh changed = %v, want [7]", got)
 	}
@@ -137,7 +137,7 @@ func TestRefreshIsThrottled(t *testing.T) {
 	writeTeam(t, root, "session-aaaa", 4242, host(t), 1, flag(false))
 	w := NewWatcher()
 	now := time.Unix(1000, 0)
-	w.Watch(7, 4242, root, now)
+	w.Watch(7, 4242, root)
 	refresh(w, &now)
 	path := writeTeam(t, root, "session-aaaa", 4242, host(t), 1, flag(true))
 	bump(t, path)
@@ -153,7 +153,7 @@ func TestOtherLeadsAndHostsDoNotCount(t *testing.T) {
 	writeTeam(t, root, "session-remote", 4242, "elsewhere.invalid", 1, flag(false))
 	w := NewWatcher()
 	now := time.Unix(1000, 0)
-	w.Watch(7, 4242, root, now)
+	w.Watch(7, 4242, root)
 	refresh(w, &now)
 	if w.Idle(4242) {
 		t.Fatal("a team led by another PID or another host made pid 4242 idle")
@@ -169,7 +169,7 @@ func TestNewestTeamForReusedPIDWins(t *testing.T) {
 	writeTeam(t, root, "session-new", 4242, h, 2, flag(true))
 	w := NewWatcher()
 	now := time.Unix(1000, 0)
-	w.Watch(7, 4242, root, now)
+	w.Watch(7, 4242, root)
 	refresh(w, &now)
 	if w.Idle(4242) {
 		t.Fatal("the stale team decided the state instead of the newest one")
@@ -184,7 +184,7 @@ func TestTeamCreatedAfterFirstScanIsFound(t *testing.T) {
 	}
 	w := NewWatcher()
 	now := time.Unix(1000, 0)
-	w.Watch(7, 4242, root, now)
+	w.Watch(7, 4242, root)
 	refresh(w, &now)
 	writeTeam(t, root, "session-aaaa", 4242, host(t), 1, flag(false))
 	bump(t, filepath.Join(root, "teams"))
@@ -193,19 +193,69 @@ func TestTeamCreatedAfterFirstScanIsFound(t *testing.T) {
 	}
 }
 
-func TestUnwatchedLeadExpires(t *testing.T) {
+func TestUnwatchStopsTracking(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	writeTeam(t, root, "session-aaaa", 4242, host(t), 1, flag(false))
 	w := NewWatcher()
 	now := time.Unix(1000, 0)
-	w.Watch(7, 4242, root, now)
+	w.Watch(7, 4242, root)
 	refresh(w, &now)
 	if !w.Idle(4242) {
 		t.Fatal("setup: want idle")
 	}
-	now = now.Add(watchTTL)
-	if got := refresh(w, &now); !slices.Equal(got, []int{7}) || w.Idle(4242) {
-		t.Fatalf("expired watch: changed = %v idle = %v, want [7] false", got, w.Idle(4242))
+	w.Unwatch(4242)
+	if w.Idle(4242) {
+		t.Fatal("Unwatch kept the idle state")
+	}
+	if got := refresh(w, &now); len(got) != 0 || w.Idle(4242) {
+		t.Fatalf("refresh after Unwatch: changed = %v idle = %v", got, w.Idle(4242))
+	}
+}
+
+// A lead that keeps being watched keeps its state however long its screen
+// stays quiet; nothing expires it behind detection's back.
+func TestWatchedLeadStaysIdleWithoutNewWatch(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeTeam(t, root, "session-aaaa", 4242, host(t), 1, flag(false))
+	w := NewWatcher()
+	now := time.Unix(1000, 0)
+	w.Watch(7, 4242, root)
+	refresh(w, &now)
+	now = now.Add(10 * time.Minute)
+	if got := refresh(w, &now); len(got) != 0 || !w.Idle(4242) {
+		t.Fatalf("quiet lead: changed = %v idle = %v, want none true", got, w.Idle(4242))
+	}
+}
+
+// Claude creates the team folder before it writes config.json. Writing the
+// file does not change the teams folder, so the lead must be found by the
+// periodic rescan for leads no team names yet.
+func TestConfigWrittenAfterFolderScanIsFound(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "teams", "session-aaaa"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	w := NewWatcher()
+	now := time.Unix(1000, 0)
+	w.Watch(7, 4242, root)
+	refresh(w, &now)
+	teams := filepath.Join(root, "teams")
+	before, err := os.Stat(teams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTeam(t, root, "session-aaaa", 4242, host(t), 1, flag(false))
+	if err := os.Chtimes(teams, before.ModTime(), before.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	if got := refresh(w, &now); len(got) != 0 {
+		t.Fatalf("found before the miss rescan was due: %v", got)
+	}
+	now = now.Add(missRescan)
+	if got := w.Refresh(now); !slices.Equal(got, []int{7}) || !w.Idle(4242) {
+		t.Fatalf("after the miss rescan: changed = %v idle = %v, want [7] true", got, w.Idle(4242))
 	}
 }

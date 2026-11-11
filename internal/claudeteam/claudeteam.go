@@ -21,8 +21,11 @@ import (
 // refreshInterval bounds how often Refresh touches the file system.
 const refreshInterval = time.Second
 
-// watchTTL drops a lead that detection has stopped asking about.
-const watchTTL = 30 * time.Second
+// missRescan is how often a watched lead that no team names triggers a
+// rescan. Claude creates the team folder before writing config.json, so a
+// scan can see the folder without the file, and writing the file does not
+// change the teams folder's mtime.
+const missRescan = 5 * time.Second
 
 type config struct {
 	LeadAgentID string `json:"leadAgentId"`
@@ -77,7 +80,6 @@ func stampOf(info os.FileInfo) fileStamp {
 type watch struct {
 	paneID int
 	root   string
-	seen   time.Time
 }
 
 type leadFile struct {
@@ -90,6 +92,7 @@ type leadFile struct {
 type rootIndex struct {
 	dirStamp fileStamp
 	scanned  bool
+	lastScan time.Time
 	// byPID maps a lead PID to the newest team config naming it.
 	byPID map[int]leadFile
 }
@@ -115,13 +118,25 @@ func NewWatcher() *Watcher {
 }
 
 // Watch asks Refresh to track the team led by pid, whose Claude config
-// directory is root (normally ~/.claude).
-func (w *Watcher) Watch(paneID, pid int, root string, now time.Time) {
+// directory is root (normally ~/.claude), until Unwatch.
+func (w *Watcher) Watch(paneID, pid int, root string) {
 	if w == nil || pid <= 0 || root == "" {
 		return
 	}
 	w.mu.Lock()
-	w.watches[pid] = watch{paneID: paneID, root: root, seen: now}
+	w.watches[pid] = watch{paneID: paneID, root: root}
+	w.mu.Unlock()
+}
+
+// Unwatch stops tracking pid: its pane closed or another process took the
+// foreground.
+func (w *Watcher) Unwatch(pid int) {
+	if w == nil {
+		return
+	}
+	w.mu.Lock()
+	delete(w.watches, pid)
+	delete(w.idle, pid)
 	w.mu.Unlock()
 }
 
@@ -148,28 +163,23 @@ func (w *Watcher) Refresh(now time.Time) []int {
 		return nil
 	}
 	w.last = now
-	var changed []int
-	watches := map[int]watch{}
+	watches := make(map[int]watch, len(w.watches))
 	for pid, wt := range w.watches {
-		if now.Sub(wt.seen) > watchTTL {
-			delete(w.watches, pid)
-			if w.idle[pid] {
-				changed = append(changed, wt.paneID)
-			}
-			delete(w.idle, pid)
-			continue
-		}
 		watches[pid] = wt
 	}
 	w.mu.Unlock()
 	if len(watches) == 0 {
-		return changed
+		return nil
 	}
 
 	next := map[int]bool{}
 	for pid, wt := range watches {
-		idx := w.index(wt.root)
+		idx := w.index(wt.root, now, false)
 		lf, ok := idx.byPID[pid]
+		if !ok && now.Sub(idx.lastScan) >= missRescan {
+			idx = w.index(wt.root, now, true)
+			lf, ok = idx.byPID[pid]
+		}
 		if !ok {
 			continue
 		}
@@ -190,6 +200,7 @@ func (w *Watcher) Refresh(now time.Time) []int {
 		next[pid] = lf.idle
 	}
 
+	var changed []int
 	w.mu.Lock()
 	for pid, wt := range watches {
 		if _, still := w.watches[pid]; !still {
@@ -209,8 +220,8 @@ func (w *Watcher) Refresh(now time.Time) []int {
 }
 
 // index returns root's lead-PID index, rescanning the teams directory when
-// a team was created or removed since the last scan.
-func (w *Watcher) index(root string) *rootIndex {
+// a team was created or removed since the last scan, or when force is set.
+func (w *Watcher) index(root string, now time.Time, force bool) *rootIndex {
 	idx := w.roots[root]
 	if idx == nil {
 		idx = &rootIndex{byPID: map[int]leadFile{}}
@@ -224,10 +235,10 @@ func (w *Watcher) index(root string) *rootIndex {
 		return idx
 	}
 	st := stampOf(info)
-	if idx.scanned && st == idx.dirStamp {
+	if idx.scanned && st == idx.dirStamp && !force {
 		return idx
 	}
-	idx.dirStamp, idx.scanned = st, true
+	idx.dirStamp, idx.scanned, idx.lastScan = st, true, now
 	byPID := map[int]leadFile{}
 	entries, _ := os.ReadDir(dir)
 	for _, e := range entries {

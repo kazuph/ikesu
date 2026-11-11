@@ -56,7 +56,10 @@ func isHorizontalRule(line string) bool {
 	}
 	// A labelled rule: Claude Code draws its prompt box top as
 	// "──── View teammates: `tmux -L …` ─" while split-pane teammates run.
-	return i >= 3*len("─") && strings.HasSuffix(rest, "─") && strings.HasPrefix(t[i:], " ")
+	// Only that shape counts: a label set off by spaces and closed by one
+	// dash, so "─── Section ───" headings in output stay text.
+	return i >= 3*len("─") && strings.HasPrefix(t[i:], " ") &&
+		strings.HasSuffix(rest, " ─") && !strings.HasSuffix(rest, "─ ─")
 }
 
 // isCodexPromptLine reports Codex's input marker: exactly `›` or a line

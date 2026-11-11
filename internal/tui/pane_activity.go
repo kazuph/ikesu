@@ -97,6 +97,7 @@ func (a *App) detectChanged(now time.Time) {
 			delete(a.blockerObservations, pid)
 			delete(a.trackers, pid)
 			delete(a.reported, pid)
+			a.forgetClaudeTeam(pid)
 			continue
 		}
 		if wi < 0 {

@@ -10,7 +10,8 @@ func TestLabelledRuleIsAHorizontalRule(t *testing.T) {
 	}{
 		{"────────────", true},
 		{"──── View teammates: `tmux -L claude-swarm-92227 a` ─", true},
-		{"  ──── label ────", true},
+		{"  ──── label ─", true},
+		{"─── Section ───", false},        // a heading in output, not Claude's labelled rule
 		{"── short label ─", false},       // fewer than three dashes before the label
 		{"──── label without end", false}, // the label must close with a dash
 		{"────label ─", false},            // the label is set off by a space

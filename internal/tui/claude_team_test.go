@@ -10,6 +10,7 @@ import (
 	"github.com/kazuph/ikesu/internal/claudeteam"
 	"github.com/kazuph/ikesu/internal/detect"
 	"github.com/kazuph/ikesu/internal/runtime"
+	"github.com/kazuph/ikesu/internal/status"
 )
 
 // Screens below follow Claude Code 2.1.32x: the agent panel sits under
@@ -84,18 +85,42 @@ func judgeClaudeTeam(t *testing.T, screen string, title string, active bool) det
 	}
 	sn := runtime.Snapshot{AgentID: "claude", FgPID: leadPID}
 	in := detect.Input{Screen: screen, OSCTitle: title}
-	now := time.Unix(1000, 0)
 	d := detect.Detect("claude", in)
-	a.claudeTeamIdle(9, nil, sn, in, d, now)
-	a.claudeTeams.Refresh(now.Add(time.Second))
-	return a.claudeTeamIdle(9, nil, sn, in, d, now.Add(time.Second))
+	a.claudeTeamIdle(9, nil, sn, in, d)
+	a.claudeTeams.Refresh(time.Unix(1001, 0))
+	return a.claudeTeamIdle(9, nil, sn, in, d)
 }
 
 func TestClaudeLeadWithIdleTeammatesIsIdle(t *testing.T) {
 	t.Parallel()
 	d := judgeClaudeTeam(t, claudeTeamPanelIdle, "◐ X投稿取得の無料APIスキル", false)
-	if d.State != detect.Idle || d.RuleID != "live_prompt_box" || !d.VisibleIdle {
-		t.Fatalf("got %v rule=%q visibleIdle=%v, want idle from live_prompt_box", d.State, d.RuleID, d.VisibleIdle)
+	if d.State != detect.Idle || d.RuleID != "claude_team_idle" || d.VisibleIdle {
+		t.Fatalf("got %v rule=%q visibleIdle=%v, want plain idle from claude_team_idle", d.State, d.RuleID, d.VisibleIdle)
+	}
+}
+
+// The team idle is plain idle, so a lead shown as working is held for the
+// tracker's usual confirmations before it turns idle (and rings done).
+func TestClaudeTeamIdleWaitsForTrackerConfirmation(t *testing.T) {
+	t.Parallel()
+	d := judgeClaudeTeam(t, claudeTeamPanelIdle, "◐ task", false)
+	tr := status.NewTracker()
+	now := time.Unix(2000, 0)
+	tr.Update(detect.Detection{State: detect.Working}, "claude", false, now)
+	now = now.Add(status.StartupGrace)
+	tr.Update(detect.Detection{State: detect.Working}, "claude", false, now)
+	if tr.State != detect.Working {
+		t.Fatalf("setup: state %v", tr.State)
+	}
+	if tr.Update(d, "claude", false, now) || tr.State != detect.Working {
+		t.Fatalf("first team-idle detection switched at once: %v", tr.State)
+	}
+	for i := 0; i < status.PendingIdleConfirmations && tr.State == detect.Working; i++ {
+		now = now.Add(tickInterval)
+		tr.Update(d, "claude", false, now)
+	}
+	if tr.State != detect.Idle {
+		t.Fatalf("team idle never confirmed: %v", tr.State)
 	}
 }
 
@@ -131,7 +156,7 @@ func TestClaudeTeamOverrideLeavesOtherVerdictsAlone(t *testing.T) {
 	a := &App{claudeTeams: claudeteam.NewWatcher(), claudeTeamRoots: map[int]claudeTeamRoot{9: {pid: 4242, root: root}}}
 	in := detect.Input{Screen: claudeTeamLeadWorking, OSCTitle: "✳ task"}
 	d := detect.Detect("claude", in)
-	got := a.claudeTeamIdle(9, nil, runtime.Snapshot{AgentID: "claude", FgPID: 4242}, in, d, time.Unix(1000, 0))
+	got := a.claudeTeamIdle(9, nil, runtime.Snapshot{AgentID: "claude", FgPID: 4242}, in, d)
 	if got != d {
 		t.Fatalf("override changed a non-title verdict: %+v → %+v", d, got)
 	}
@@ -147,5 +172,22 @@ func TestClaudeConfigRoot(t *testing.T) {
 	}
 	if got := claudeConfigRoot([]string{"CLAUDE_CONFIG_DIR=", "HOME=/h"}); got != "/h/.claude" {
 		t.Fatalf("HOME: got %q", got)
+	}
+}
+
+func TestForgetClaudeTeamStopsWatching(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeClaudeTeam(t, root, 4242, false)
+	a := &App{claudeTeams: claudeteam.NewWatcher(), claudeTeamRoots: map[int]claudeTeamRoot{9: {pid: 4242, root: root}}}
+	in := detect.Input{Screen: claudeTeamPanelIdle, OSCTitle: "◐ task"}
+	a.claudeTeamIdle(9, nil, runtime.Snapshot{AgentID: "claude", FgPID: 4242}, in, detect.Detect("claude", in))
+	a.claudeTeams.Refresh(time.Unix(1001, 0))
+	if !a.claudeTeams.Idle(4242) {
+		t.Fatal("setup: want idle")
+	}
+	a.forgetClaudeTeam(9)
+	if _, ok := a.claudeTeamRoots[9]; ok || a.claudeTeams.Idle(4242) {
+		t.Fatal("closed pane still tracked")
 	}
 }

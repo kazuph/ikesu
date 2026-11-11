@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/kazuph/ikesu/internal/detect"
 	"github.com/kazuph/ikesu/internal/runtime"
@@ -32,7 +31,7 @@ var claudeSubagentRunning = regexp.MustCompile(`(?m)^\s*◯\s+\S.*·\s+[↓↑]\
 // when the team config says every teammate is idle, no subagent row is
 // still counting tokens, and the screen without the title is the plain
 // input prompt; anything else keeps the title's verdict.
-func (a *App) claudeTeamIdle(pid int, p *runtime.Pane, sn runtime.Snapshot, in detect.Input, d detect.Detection, now time.Time) detect.Detection {
+func (a *App) claudeTeamIdle(pid int, p *runtime.Pane, sn runtime.Snapshot, in detect.Input, d detect.Detection) detect.Detection {
 	if sn.AgentID != "claude" || d.RuleID != "osc_title_working" || sn.FgPID <= 0 || a.claudeTeams == nil {
 		return d
 	}
@@ -41,6 +40,9 @@ func (a *App) claudeTeamIdle(pid int, p *runtime.Pane, sn runtime.Snapshot, in d
 	}
 	r, ok := a.claudeTeamRoots[pid]
 	if !ok || r.pid != sn.FgPID {
+		if ok {
+			a.claudeTeams.Unwatch(r.pid)
+		}
 		env := os.Environ()
 		if p != nil {
 			env = p.SessionEnvironment()
@@ -48,7 +50,7 @@ func (a *App) claudeTeamIdle(pid int, p *runtime.Pane, sn runtime.Snapshot, in d
 		r = claudeTeamRoot{pid: sn.FgPID, root: claudeConfigRoot(env)}
 		a.claudeTeamRoots[pid] = r
 	}
-	a.claudeTeams.Watch(pid, sn.FgPID, r.root, now)
+	a.claudeTeams.Watch(pid, sn.FgPID, r.root)
 	if !a.claudeTeams.Idle(sn.FgPID) || claudeSubagentRunning.MatchString(in.Screen) {
 		return d
 	}
@@ -56,7 +58,18 @@ func (a *App) claudeTeamIdle(pid int, p *runtime.Pane, sn runtime.Snapshot, in d
 	if bare.State != detect.Idle || bare.RuleID != "live_prompt_box" {
 		return d
 	}
-	return bare
+	// Plain (not visible) idle: the tracker then holds Working for its usual
+	// confirmations, so a lead between two spinner frames does not flash
+	// idle and ring the done notification.
+	return detect.Detection{State: detect.Idle, RuleID: "claude_team_idle"}
+}
+
+// forgetClaudeTeam drops the team tracking of a pane that went away.
+func (a *App) forgetClaudeTeam(pid int) {
+	if r, ok := a.claudeTeamRoots[pid]; ok {
+		a.claudeTeams.Unwatch(r.pid)
+		delete(a.claudeTeamRoots, pid)
+	}
 }
 
 // claudeConfigRoot resolves Claude Code's config directory the way Claude

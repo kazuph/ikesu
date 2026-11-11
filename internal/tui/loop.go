@@ -179,7 +179,7 @@ func (a *App) detectAll() {
 			delete(a.blockerObservations, pid)
 			delete(a.trackers, pid)
 			delete(a.reported, pid)
-			delete(a.claudeTeamRoots, pid)
+			a.forgetClaudeTeam(pid)
 			delete(state.deadlines, pid)
 			delete(state.confirming, pid)
 		}
@@ -206,7 +206,7 @@ func (a *App) detectPane(pid int, visible bool, now time.Time) {
 	}
 	before := a.glyph(pid).Key
 	d := detect.Detect(agentID, in)
-	d = a.claudeTeamIdle(pid, p, sn, in, d, now)
+	d = a.claudeTeamIdle(pid, p, sn, in, d)
 	d = a.applyFossilExpiry(pid, agentID, in.Screen, d, now)
 	a.observeBlocker(pid, agentID, d, now)
 	a.clearStaleReport(pid, agentID, d, now)
