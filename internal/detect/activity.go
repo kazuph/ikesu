@@ -126,3 +126,48 @@ func codexActivityFingerprint(content string) string {
 	}
 	return strings.Join(out, "\n")
 }
+
+// ClaudeLeadBusy reports Claude's own live-work lines next to its prompt
+// box: a spinner line among the last four non-empty lines above the box,
+// or an interrupt hint in the status block right below it.
+// Unlike the bottom-N-lines rules it does not lose these lines when a long
+// agent panel is drawn under the box, and unlike ActivityFingerprint it
+// ignores conversation text further up the screen.
+func ClaudeLeadBusy(screen string) bool {
+	in := Input{Screen: screen}
+	above := nonEmptyLines(regionText(in, "above_prompt_box"))
+	for i := len(above) - 1; i >= 0 && i >= len(above)-4; i-- {
+		if isClaudeSpinnerLine(above[i]) {
+			return true
+		}
+	}
+	// The status block under the box ends at its first blank line; the
+	// agent panel follows it.
+	below := regionText(in, "after_last_horizontal_rule")
+	started := false
+	for _, l := range splitLines(below) {
+		line := below[l.start:l.end]
+		if strings.TrimSpace(line) == "" {
+			if started {
+				break
+			}
+			continue
+		}
+		started = true
+		low := strings.ToLower(line)
+		if strings.Contains(low, "esc to interrupt") || strings.Contains(low, "ctrl+c to interrupt") {
+			return true
+		}
+	}
+	return false
+}
+
+func nonEmptyLines(text string) []string {
+	var out []string
+	for _, l := range splitLines(text) {
+		if line := text[l.start:l.end]; strings.TrimSpace(line) != "" {
+			out = append(out, line)
+		}
+	}
+	return out
+}
