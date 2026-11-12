@@ -438,6 +438,10 @@ func lineVerdictJudged(c Config, i Input, line string, j *lineJudgement) (Input,
 			if danger(c, command) {
 				j.add(command, best)
 				i.TriggerCommand = command.Line()
+				// The approval is for this command: keep its inline assignments
+				// (AI_GUARD_REQUEST_REASON='…' npx wrangler deploy), or the
+				// request reason is lost and the line is cancelled as reasonless.
+				i.Env, i.AuthorizationEnv = command.Env, command.AuthorizationEnv
 				break
 			}
 		}
