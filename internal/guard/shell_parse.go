@@ -433,19 +433,54 @@ func lineVerdictJudged(c Config, i Input, line string, j *lineJudgement) (Input,
 	}
 	if best.Rule == "danger-word-line" {
 		i.TriggerCommand = "入力行全体: " + line
+		var dangerous []Input
 		for _, command := range commands {
 			command.RawLine = ""
 			if danger(c, command) {
-				j.add(command, best)
-				i.TriggerCommand = command.Line()
-				break
+				if len(dangerous) == 0 {
+					j.add(command, best)
+					i.TriggerCommand = command.Line()
+				}
+				dangerous = append(dangerous, command)
 			}
 		}
+		i = withDangerRequestReason(i, dangerous)
 	}
 	if best.Decision == "allow" && best.Rule == "default" && len(undetermined) > 0 {
 		best.Reason = undeterminedPrefix + strings.Join(undetermined, " / ")
 	}
 	return i, best, nil
+}
+
+// withDangerRequestReason hands the line's approval the request reason
+// written on its deploy/publish commands (AI_GUARD_REQUEST_REASON='…' npx
+// wrangler deploy). Only the reason keys move: other inline assignments, such
+// as the temporary approval file, keep the line's own values. The reason is
+// used only when every dangerous command carries one.
+func withDangerRequestReason(i Input, dangerous []Input) Input {
+	if len(dangerous) == 0 {
+		return i
+	}
+	for _, command := range dangerous {
+		if !ValidReason(requestReason(command)) {
+			return i
+		}
+	}
+	first := dangerous[0]
+	keys := []string{"AI_GUARD_REQUEST_ENV_NAME", requestReasonEnvName(first), "AI_GUARD_REQUEST_REASON", "IKESU_GUARD_PARENT_REASON"}
+	i.Env = EnvMap(environment(i.Env))
+	if i.AuthorizationEnv != nil {
+		i.AuthorizationEnv = EnvMap(environment(i.AuthorizationEnv))
+	} else {
+		i.AuthorizationEnv = map[string]string{}
+	}
+	for _, key := range keys {
+		if value, ok := first.Env[key]; ok {
+			i.Env[key] = value
+			i.AuthorizationEnv[key] = value
+		}
+	}
+	return i
 }
 
 // 未確定を理由には聞かない。通したことは guard log の reason の印で区別する。
