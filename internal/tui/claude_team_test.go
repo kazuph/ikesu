@@ -41,6 +41,32 @@ const claudeTeamLeadWorking = `⏺ Bash(go test ./...)
   ◯ chromatic-short   Build zundamon Chromatic short        1d 5h 28m
 `
 
+// The lead works while a long agent panel pushes its spinner line out of
+// the bottom twelve lines (2026-11-12, space 61 showed idle while working).
+const claudeTeamLeadWorkingLongPanel = `⏺ Bash(python3 - <<'EOF')
+  ⎿  BUILD_OK
+     (5m 1s · timeout 20m)
+
+✻ Effecting… (6m 7s · ↓ 4.8k tokens)
+
+────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────
+  ⚠ compact-handoff: compact-handoff: 引き継ぎ文書なし
+  ⚠ cache-warm: ☕ cache 残り54分
+  Opus 5.5 |  main +3259/-178 | ~/s/g/g/m/./u/1111
+  ¥101171 / $674.48 ctx ▓▓▓░░░ 32%/1M
+  ⏵⏵ auto mode on · PR #345 · 1 shell · ← 4 agents
+
+  ⏺ main
+  ◯ pr4-fix          Fix stickman PASS failure
+  ◯ pr3-fix          Fix PR3 script-to-bubble test
+  ◯ pr1-fix          Fix PR1 nav disabled-steps test
+  ◯ quality-fix      Investigate quality-branch worker resets
+  ◯ review-plan-sn   Review script→name plan read-only
+  ↓ 16 more
+`
+
 const claudeTeamSubagentRunning = `⏺ 返事を書き終えたよ。
 
 ────────────────────────────────────────────────────────────
@@ -135,6 +161,7 @@ func TestClaudeLeadStaysWorking(t *testing.T) {
 		{"teammate still active", claudeTeamPanelIdle, "◑ task", true},
 		{"lead itself is working", claudeTeamLeadWorking, "◐ task", false},
 		{"subagent still counting tokens", claudeTeamSubagentRunning, "◐ task", false},
+		{"lead working above a long agent panel", claudeTeamLeadWorkingLongPanel, "◑ task", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -51,7 +51,10 @@ func (a *App) claudeTeamIdle(pid int, p *runtime.Pane, sn runtime.Snapshot, in d
 		a.claudeTeamRoots[pid] = r
 	}
 	a.claudeTeams.Watch(pid, sn.FgPID, r.root)
-	if !a.claudeTeams.Idle(sn.FgPID) || claudeSubagentRunning.MatchString(in.Screen) {
+	// The lead's own spinner line ("✻ Effecting… (6m 7s · ↓ 4.8k tokens)")
+	// sits right above the prompt box. A long agent panel below can push it
+	// out of the manifest's bottom-12-lines window, so look for it here.
+	if !a.claudeTeams.Idle(sn.FgPID) || claudeSubagentRunning.MatchString(in.Screen) || detect.ActivityFingerprint(sn.AgentID, in.Screen) != "" {
 		return d
 	}
 	bare := detect.Detect(sn.AgentID, detect.Input{Screen: in.Screen, OSCProgress: in.OSCProgress})
