@@ -63,16 +63,21 @@ test('a comment during grace without reselection saves only the comment',async t
  assert.deepEqual(ids(await f.saved()),[]);assert.equal((await f.saved()).answer.text,'コメントだけ');
 });
 
-test('multiple choices retain explicit check confirmation and reset grace after the last number removal',async t=>{
- const f=await fixture(t,{multi:true});await f.react('one');await f.clock.advance(REACTION_GRACE_MS);assert.equal((await f.saved()).status,'pending','numbers alone never confirm multi-select');
- await f.react('two');await f.react('white_check_mark');await f.clock.advance(REACTION_GRACE_MS/3);await f.react('one',{removed:true});
+test('multiple choices are sent after the grace period without a check, and the last number removal resets grace',async t=>{
+ const f=await fixture(t,{multi:true});await f.react('one');await f.clock.advance(REACTION_GRACE_MS-1);assert.equal((await f.saved()).status,'pending');
+ await f.react('two');await f.clock.advance(REACTION_GRACE_MS/3);await f.react('one',{removed:true});
  await f.clock.advance(REACTION_GRACE_MS-1);assert.equal((await f.saved()).status,'pending');await f.clock.advance(1);assert.deepEqual(ids(await f.saved()),['reject']);
 });
 
-test('multiple-choice comment wins during a pending confirmation; reselection plus check carries both',async t=>{
- const f=await fixture(t,{multi:true});await f.react('one');await f.react('white_check_mark');await f.clock.advance(REACTION_GRACE_MS/3);await f.reply('この条件で');
- assert.equal(f.entry.selection.size,0);await f.react('two');await f.react('white_check_mark',{removed:true});await f.react('white_check_mark');await f.clock.advance(REACTION_GRACE_MS);
+test('multiple-choice comment during grace clears the picks; reselection carries both',async t=>{
+ const f=await fixture(t,{multi:true});await f.react('one');await f.clock.advance(REACTION_GRACE_MS/3);await f.reply('この条件で');
+ assert.equal(f.entry.selection.size,0);await f.react('two');await f.clock.advance(REACTION_GRACE_MS);
  const saved=await f.saved();assert.deepEqual(ids(saved),['reject']);assert.equal(saved.answer.text,'この条件で');
+});
+
+test('an optional check and its removal do not change a multi-selection',async t=>{
+ const f=await fixture(t,{multi:true});await f.react('one');await f.react('two');await f.react('white_check_mark');await f.react('white_check_mark',{removed:true});
+ await f.clock.advance(REACTION_GRACE_MS);assert.deepEqual(ids(await f.saved()),['approve','reject']);
 });
 
 test('cancellation inside grace cancels the timer and never sends a saved approval',async t=>{
@@ -87,9 +92,9 @@ test('undelivered number removal at fourteen seconds is reconciled before expiry
  assert.equal((await f.saved()).status,'pending');assert.equal(f.entry.reactionDraft,null);
 });
 
-test('undelivered multi-select check removal before expiry cancels confirmation',async t=>{
- const f=await fixture(t,{multi:true});await f.react('one',{deliver:false});await f.react('white_check_mark',{deliver:false});await f.daemon.pollOnce();
- await f.clock.advance(REACTION_GRACE_MS-1000);await f.react('white_check_mark',{removed:true,deliver:false});await f.clock.advance(1000);
+test('undelivered removal of the only multi-select pick before expiry sends nothing',async t=>{
+ const f=await fixture(t,{multi:true});await f.react('one',{deliver:false});await f.daemon.pollOnce();
+ await f.clock.advance(REACTION_GRACE_MS-1000);await f.react('one',{removed:true,deliver:false});await f.clock.advance(1000);
  assert.equal((await f.saved()).status,'pending');assert.equal(f.entry.reactionDraft,null);
 });
 

@@ -1122,7 +1122,7 @@ test("kazuph but no credentials -> exits without posting", async () => {
   assert.match(result.stderr, /資格情報/);
 });
 
-test("multi_select reactions accumulate then white_check_mark submits option_ids", async () => {
+test("multi_select number reactions are sent together once the grace period ends", async () => {
   const fake = await new FakeSlack().start();
   const slack = new SlackClient({ token: "t", channel: "C1", apiBase: fake.base });
   const daemon = makeDaemon({ slack, glasses: null });
@@ -1152,10 +1152,10 @@ test("multi_select reactions accumulate then white_check_mark submits option_ids
       });
     await react("one");
     await react("three");
-    // Number reactions only stage the selection; nothing is answered yet.
+    // No :white_check_mark: needed (2026-11-13: picks were never sent).
+    await daemon.testClock.advance(REACTION_GRACE_MS - 1);
     assert.equal(daemon.testAnswers.length, 0);
-    await react("white_check_mark");
-    await daemon.testClock.advance(REACTION_GRACE_MS);
+    await daemon.testClock.advance(1);
     assert.equal(daemon.testAnswers.length, 1);
     assert.deepEqual(daemon.testAnswers[0], [
       "decision",

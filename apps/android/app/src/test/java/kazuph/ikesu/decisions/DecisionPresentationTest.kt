@@ -33,4 +33,15 @@ class DecisionPresentationTest {
         assertEquals("確認なし", unitAllowNote("allow")); assertEquals("未判定", unitAllowNote("unjudged"))
         assertEquals("⏎", unitJoiner("\n")); assertEquals("&&", unitJoiner("&&"))
     }
+    @Test fun multiSelectRowsShowCheckboxesAndACount() {
+        // 2026-11-13: multi-select looked like single-select (only ✓ on chosen rows).
+        assertEquals("☐ 1. 検索", optionHeading(0, "検索", multiSelect = true, checked = false))
+        assertEquals("☑ 2. 通知", optionHeading(1, "通知", multiSelect = true, checked = true))
+        assertEquals("✓ 1. 承認", optionHeading(0, "承認", multiSelect = false, checked = true))
+        assertEquals("2. 却下", optionHeading(1, "却下", multiSelect = false, checked = false))
+        assertEquals("複数選べます。選んだら「回答する」で送ります（2つ選択中）", multiSelectGuide(2))
+        assertEquals("回答する（2つ）", answerLabel(multiSelect = true, selected = 2))
+        assertEquals("回答する", answerLabel(multiSelect = true, selected = 0))
+        assertEquals("回答する", answerLabel(multiSelect = false, selected = 1))
+    }
 }

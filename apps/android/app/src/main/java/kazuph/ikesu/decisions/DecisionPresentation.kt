@@ -34,3 +34,15 @@ fun unitNotes(target: String, reason: String, rule: String): List<String> = buil
 }
 
 fun unitAllowNote(verdict: String): String = if (verdict == "unjudged") "未判定" else "確認なし"
+
+/** Option heading: multi-select rows carry a checkbox, single-select rows a check on the chosen one. */
+fun optionHeading(index: Int, label: String, multiSelect: Boolean, checked: Boolean): String =
+    if (multiSelect) "${if (checked) "☑" else "☐"} ${index + 1}. $label" else "${if (checked) "✓ " else ""}${index + 1}. $label"
+
+/** Shown above the options of a multi-select decision, so it is not mistaken for a single choice. */
+fun multiSelectGuide(selected: Int): String =
+    "複数選べます。選んだら「回答する」で送ります（${selected}つ選択中）"
+
+/** The answer button names how many choices a multi-select answer carries. */
+fun answerLabel(multiSelect: Boolean, selected: Int): String =
+    if (multiSelect && selected > 0) "回答する（${selected}つ）" else "回答する"

@@ -886,7 +886,7 @@ function buildDecisionBlocks({
       }
       const hints = decision.multi_select
         ? [
-            "複数選択: 番号リアクションで選んで :white_check_mark: で確定 or スレッドに「1,3」と番号を並べて返信",
+            "複数選択: 番号リアクションをいくつでも付ける（そのまま送られる） or スレッドに「1,3」と番号を並べて返信",
           ]
         : ["数字リアクションで選択 or スレッドに番号で返信"];
       if (decision.allow_text) {
@@ -2007,14 +2007,9 @@ export class SlackDecisionsDaemon {
 
   removeNumberReaction(entry, reactionName, user) {
     entry.seenReactions.delete(`${reactionName}:${user}`);
-    if (reactionName === "white_check_mark" && entry.decision.multi_select) {
-      const draft=entry.reactionDraft;
-      if (draft?.confirmed && !draft.closing) {
-        if (draft.text) this.stageReaction(entry,{...draft,optionIds:[],confirmed:false});
-        else this.clearReaction(entry);
-      }
-      return;
-    }
+    // The numbers carry a multi-select answer; removing an optional
+    // :white_check_mark: changes nothing.
+    if (reactionName === "white_check_mark" && entry.decision.multi_select) return;
     const index = NUMBER_EMOJIS.indexOf(reactionName);
     const id = entry.decision.options?.[index]?.id;
     if (!id || entry.reactionDraft?.closing || entry.answerPending || entry.resolved) return;
@@ -2108,15 +2103,18 @@ export class SlackDecisionsDaemon {
     entry.lastNumberAt = this.clock.now();
     entry.lastNumberEventTs = timestamp;
     if (multiSelect) {
+      // Every number counts; the whole selection is sent once the grace
+      // period after the last number change ends, as for a single choice.
       entry.selection.add(index);
-      if (entry.reactionDraft) this.stageReaction(entry,{...entry.reactionDraft,optionIds:entry.reactionDraft.confirmed?[...entry.selection].map(index=>options[index].id):[],deadline:entry.lastNumberAt+REACTION_GRACE_MS});
-      const picked = [...entry.selection]
-        .sort((a, b) => a - b)
+      const sorted = [...entry.selection].sort((a, b) => a - b);
+      const draft = entry.reactionDraft;
+      this.stageReaction(entry,{optionIds:sorted.map(index=>options[index].id),via:draft?.via||`slack reaction :${reactionName}: by ${user || "?"}`,deadline:entry.lastNumberAt+REACTION_GRACE_MS,after:draft?.after||timestamp});
+      const picked = sorted
         .map((pickedIndex) => `:${NUMBER_EMOJIS[pickedIndex]}:`)
         .join(" ");
       await this.postThreadNote(
         entry,
-        `選択中: ${picked} — :white_check_mark: で確定します。`,
+        `選択中: ${picked} — 最後の番号操作から${REACTION_GRACE_MS/1000}秒たつと、まとめて送ります。`,
       );
       return;
     }
