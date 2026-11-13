@@ -41,7 +41,7 @@ fun optionHeading(index: Int, label: String, multiSelect: Boolean, checked: Bool
 
 /** Shown above the options of a multi-select decision, so it is not mistaken for a single choice. */
 fun multiSelectGuide(selected: Int): String =
-    "複数選べます。選んだら「回答する」で送ります（${selected}つ選択中）"
+    "複数選べます。選んだら「回答する」で送ります" + if (selected > 0) "（${selected}つ選択中）" else ""
 
 /** The answer button names how many choices a multi-select answer carries. */
 fun answerLabel(multiSelect: Boolean, selected: Int): String =

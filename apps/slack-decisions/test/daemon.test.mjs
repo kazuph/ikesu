@@ -1174,7 +1174,7 @@ test("multi_select number reactions are sent together once the grace period ends
   }
 });
 
-test("multi_select white_check_mark without picks posts a note instead of answering", async () => {
+test("multi_select white_check_mark is optional: alone it does nothing, after numbers it keeps the answer", async () => {
   const fake = await new FakeSlack().start();
   const slack = new SlackClient({ token: "t", channel: "C1", apiBase: fake.base });
   const daemon = makeDaemon({ slack, glasses: null });
@@ -1182,25 +1182,64 @@ test("multi_select white_check_mark without picks posts a note instead of answer
     await feedAndSettle(daemon, {
       event: "created",
       machine: LOCAL,
-      decision: sampleDecision({ multi_select: true }),
+      decision: sampleDecision({
+        multi_select: true,
+        options: [
+          { id: "opt-a", label: "検索" },
+          { id: "opt-b", label: "追加" },
+        ],
+      }),
     });
     const ts = fake.posts[0].ts;
-    await deliver(daemon,fake,{
+    const react = (reaction, user = "UHUMAN") => deliver(daemon,fake,{
       type: "event_callback",
-      event: {
-        type: "reaction_added",
-        user: "UHUMAN",
-        reaction: "white_check_mark",
-        item: { type: "message", channel: "C1", ts },
-      },
+      event: { type: "reaction_added", user, reaction, item: { type: "message", channel: "C1", ts } },
     });
+    const notes = () => [...fake.threadReplies.values()].flat().map((reply) => reply.text).join("\n");
+    await react("white_check_mark");
     await daemon.testClock.advance(REACTION_GRACE_MS);
     assert.equal(daemon.testAnswers.length, 0);
-    const notes = [...fake.threadReplies.values()]
-      .flat()
-      .map((reply) => reply.text)
-      .join("\n");
-    assert.match(notes, /番号リアクション/);
+    assert.doesNotMatch(notes(), /:white_check_mark: で確定/);
+    await react("one", "UFIRST");
+    await react("two", "USECOND");
+    await react("white_check_mark", "UTHIRD");
+    // The staged answer records the last number operation, not the check mark.
+    assert.equal([...daemon.entries.values()][0].reactionDraft.via, "slack reaction :two: by USECOND");
+    await daemon.testClock.advance(REACTION_GRACE_MS);
+    assert.equal(daemon.testAnswers.length, 1);
+    assert.deepEqual(daemon.testAnswers[0].slice(3, 5), ["opt-a", "opt-b"]);
+    assert.doesNotMatch(notes(), /まだ選択肢が選ばれていません/);
+  } finally {
+    await daemon.stop();
+    await fake.stop();
+  }
+});
+
+test("multi_select numbered reply sets the picks so a later number adds to them", async () => {
+  const fake = await new FakeSlack().start();
+  const slack = new SlackClient({ token: "t", channel: "C1", apiBase: fake.base });
+  const daemon = makeDaemon({ slack, glasses: null });
+  try {
+    await feedAndSettle(daemon, {
+      event: "created",
+      machine: LOCAL,
+      decision: sampleDecision({
+        multi_select: true,
+        options: [
+          { id: "opt-a", label: "検索" },
+          { id: "opt-b", label: "追加" },
+          { id: "opt-c", label: "通知" },
+        ],
+      }),
+    });
+    const ts = fake.posts[0].ts;
+    // A number first, so the reply lands inside the grace period.
+    await deliver(daemon,fake,{type:"event_callback",event:{type:"reaction_added",user:"UHUMAN",reaction:"one",item:{type:"message",channel:"C1",ts}}});
+    await deliver(daemon,fake,{type:"event_callback",event:{type:"message",user:"UHUMAN",text:"1,3",ts:"1000.9001",thread_ts:ts,channel:"C1"}});
+    await deliver(daemon,fake,{type:"event_callback",event:{type:"reaction_added",user:"UHUMAN",reaction:"two",item:{type:"message",channel:"C1",ts}}});
+    await daemon.testClock.advance(REACTION_GRACE_MS);
+    assert.equal(daemon.testAnswers.length, 1);
+    assert.deepEqual(daemon.testAnswers[0].slice(3, 6), ["opt-a", "opt-b", "opt-c"]);
   } finally {
     await daemon.stop();
     await fake.stop();

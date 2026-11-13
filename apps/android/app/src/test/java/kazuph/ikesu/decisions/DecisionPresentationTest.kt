@@ -40,6 +40,7 @@ class DecisionPresentationTest {
         assertEquals("✓ 1. 承認", optionHeading(0, "承認", multiSelect = false, checked = true))
         assertEquals("2. 却下", optionHeading(1, "却下", multiSelect = false, checked = false))
         assertEquals("複数選べます。選んだら「回答する」で送ります（2つ選択中）", multiSelectGuide(2))
+        assertEquals("複数選べます。選んだら「回答する」で送ります", multiSelectGuide(0))
         assertEquals("回答する（2つ）", answerLabel(multiSelect = true, selected = 2))
         assertEquals("回答する", answerLabel(multiSelect = true, selected = 0))
         assertEquals("回答する", answerLabel(multiSelect = false, selected = 1))
