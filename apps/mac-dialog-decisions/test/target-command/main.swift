@@ -57,6 +57,20 @@ for row in rows {
    precondition(title.convert(title.bounds,to:content).midY > reason.convert(reason.bounds,to:content).midY && reason.convert(reason.bounds,to:content).midY > note.convert(note.bounds,to:content).midY && note.convert(note.bounds,to:content).midY > commandLabel.convert(commandLabel.bounds,to:content).midY && commandLabel.convert(commandLabel.bounds,to:content).midY > warning.convert(warning.bounds,to:content).midY, "permission field order")
   }
   precondition(title.string==decision["title"] as! String)
+  // 判断待ちの選択肢（承認・1日許可・却下）が、出た順の ⌘ 番号つきのボタンになる。1日許可は出された時だけ見える。
+  let optionIds=(decision["options"] as? [[String:Any]])?.compactMap {$0["id"] as? String} ?? []
+  let optionNames=["approve":"承認","day_allow":"1日許可","reject":"却下"]
+  if !optionIds.isEmpty && optionIds.allSatisfy({optionNames[$0] != nil}) {
+   let buttons=textFields(content).map(\.stringValue)
+   for (index,id) in optionIds.enumerated() {
+    let required="\(optionNames[id]!)  ⌘\(index+1)"
+    precondition(buttons.contains(required),"missing \(required) case=\(name)")
+   }
+   precondition(buttons.contains {$0.hasPrefix("1日許可")} == optionIds.contains("day_allow"),"1日許可 must appear only when offered case=\(name)")
+   let guardHints=buttons.filter {$0.contains("⌘") && $0.contains("送信") && $0.contains("選ん")}
+   precondition(guardHints.count == 1 && guardHints[0].contains("⌘1〜⌘\(optionIds.count)"),"guard instruction must be one line case=\(name)")
+   if name == "secret-env" {precondition(optionIds == ["approve","day_allow","reject"],"L2 ask must offer the day allowance: \(optionIds)")}
+  }
   for index in 0..<(title.string as NSString).length {precondition(title.attributedString().attribute(.foregroundColor,at:index,effectiveRange:nil) as? NSColor != .systemRed)}
   if name == "requested-example" {
    let commandLabel=bodyLabels[0]
@@ -64,10 +78,10 @@ for row in rows {
    precondition(title.convert(title.bounds,to:content).midY > commandLabel.convert(commandLabel.bounds,to:content).midY)
    precondition(commandLabel.convert(commandLabel.bounds,to:content).midY > firstField.convert(firstField.bounds,to:content).midY)
    let names=textFields(content).map(\.stringValue)
-   for required in ["対象","理由","内容","確認済み","戻し方","承認  ⌘1","1日許可  ⌘2","却下  ⌘3"] { precondition(names.contains(required),"missing \(required)") }
-   let hints=names.filter {$0.contains("⌘") && $0.contains("送信") && $0.contains("選ん")}
-   precondition(hints.count == 1 && hints[0].contains("⌘1〜⌘3"),"guard instruction must be one line")
-   print("ORDER title>command>request optionShortcuts=3 requestFields=5")
+   for required in ["対象","理由","内容","確認済み","戻し方"] { precondition(names.contains(required),"missing \(required)") }
+   // 外側の rm は L3 なので、選択肢は承認・却下の2つ（1日許可は出ない）。
+   precondition(optionIds == ["approve","reject"],"L3 ask must offer approve and reject only: \(optionIds)")
+   print("ORDER title>command>request optionShortcuts=\(optionIds.count) requestFields=5")
   }
   for card in controller.cards {precondition(content.bounds.contains(card.convert(card.bounds,to:content)))}
   precondition(content.bounds.contains(controller.submitButton.convert(controller.submitButton.bounds,to:content)))
