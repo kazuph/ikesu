@@ -157,7 +157,7 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 	if v.Decision == "ask" {
 		v.Tier = v.effectiveTier()
 	}
-	l1Default, oneShotUsed := false, false
+	l1Default := false
 	if v.Decision == "ask" && matchesApprovedInvocation(i, v.Rule) {
 		v.Decision = "allow"
 		v.Suppressed = "outer-command"
@@ -172,20 +172,6 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 	// 一時許可（180秒）と1日許可。L3 には効かせない。
 	if v.Decision == "ask" && v.Tier != TierL3 {
 		v = applyGrants(root, v, time.Now())
-	}
-	// L3 は、承認した1回だけ、別の段での同じコマンドの判定を通す。
-	if v.Decision == "ask" && v.Tier == TierL3 && takeOneShot(root, m, oneShotTargets(v, i), time.Now()) {
-		v.Decision = "allow"
-		v.Suppressed = "one-shot"
-		v.AllowedBy = "one-shot"
-		oneShotUsed = true
-	}
-	if oneShotUsed {
-		if e = Log(root, i, m, v, via); e != nil {
-			fmt.Fprintln(errOut, "guard log:", e)
-		}
-		recordAsk(root, i, m, v, via, approvalCommand(i), OutcomeOneShot, nil, time.Now(), errOut)
-		return true
 	}
 	if l1Default {
 		if !(i.runtimeLine && l1SeenRecently(root, m, i, v)) {
@@ -317,13 +303,6 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 		fmt.Fprintf(errOut, "❌ Command cancelled: %s\n   この guard メッセージはユーザー本人の指示です。\n   理由: %s\n", i.Line(), text)
 		return deny()
 	}
-	// L3 は一時許可・1日許可の代わりに、承認した1回だけ別の段で通す許可を書く。
-	if v.Tier == TierL3 {
-		if e = writeOneShot(root, m, oneShotTargets(v, i), time.Now()); e != nil {
-			fmt.Fprintln(errOut, "guard approval write:", e)
-			return false
-		}
-	}
 	// 承認の後の一時許可・1日許可は、L3 では書かない。
 	if v.TempKey != "" && v.Tier != TierL3 {
 		key := v.TempKey
@@ -344,15 +323,6 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 	}
 	return true
 }
-
-// oneShotTargets は、この判定で L3 になったコマンド。行の判定は材料を持ち、シムなどの単独の判定は入力そのもの。
-func oneShotTargets(v Verdict, i Input) []OneShotTarget {
-	if len(v.OneShot) > 0 {
-		return v.OneShot
-	}
-	return []OneShotTarget{oneShotTargetOf(i)}
-}
-
 func PrintBlock(w io.Writer, i Input, v Verdict) {
 	w = redactedWriter{w, i}
 	switch v.Rule {

@@ -100,8 +100,6 @@ type Verdict struct {
 	Dest      string `json:"-"`
 	TierRule  string `json:"-"`
 	AllowedBy string `json:"-"`
-	// この判定で L3 になったコマンド。人が承認したとき、別の段での同じ判定を1回だけ通す使い切りの許可の材料。
-	OneShot []OneShotTarget `json:"-"`
 }
 
 func (v Verdict) MarshalJSON() ([]byte, error) {

@@ -590,7 +590,7 @@ func fmtWait(ms int64) string {
 	return fmt.Sprintf("%.1f分", float64(ms)/60000)
 }
 
-var outcomeOrder = []string{OutcomeL1Allow, OutcomeOneShot, OutcomeApprove, OutcomeDayAllow, OutcomeReject, OutcomeExpired, OutcomeCancelled, OutcomeNoReason, OutcomeNoServer}
+var outcomeOrder = []string{OutcomeL1Allow, OutcomeApprove, OutcomeDayAllow, OutcomeReject, OutcomeExpired, OutcomeCancelled, OutcomeNoReason, OutcomeNoServer}
 
 func outcomeText(m map[string]int) string {
 	var parts []string
