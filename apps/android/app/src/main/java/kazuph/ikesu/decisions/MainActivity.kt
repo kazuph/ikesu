@@ -274,7 +274,7 @@ class MainActivity : Activity() {
             block(text("${items.length()} 件", 18f))
             for (i in 0 until items.length()) items.optJSONObject(i)?.let { entry ->
                 val id = entry.optString("id")
-                val row = optionRow(i, decisionHeading(entry.optString("raw_title"), entry.optString("raw_body"), entry.optString("kind")), entry.optString("location"), i == listCursor, false, entry.optString("question_label")) {
+                val row = optionRow(i, decisionHeading(entry.optString("raw_title"), entry.optString("raw_body"), entry.optString("kind")), entry.optString("location"), i == listCursor, false, supplement = entry.optString("question_label")) {
                     selectedId = id; showList = false; render()
                 }
                 block(row)
@@ -325,14 +325,16 @@ class MainActivity : Activity() {
         val allowText = item.optBoolean("allow_text")
         val slots = DetailCursor.slots(options.length(), allowText)
         val cursor = cursorOf(item, draft)
+        val multiSelect = item.optBoolean("multi_select")
+        if (multiSelect) block(text(multiSelectGuide(draft.selected.size), 18f), 4)
         for (i in 0 until options.length()) {
             val option = options.optJSONObject(i) ?: continue
             val optionId = option.optString("id")
             val description = optionSupplement(option.optString("description"), option.optString("preview"), option.optBoolean("preview_unavailable"))
-            val row = optionRow(i, option.optString("label"), description, cursor == i, optionId in draft.selected) {
+            val row = optionRow(i, option.optString("label"), description, cursor == i, optionId in draft.selected, multiSelect) {
                 if (draft.sequence == null) {
                     draft.cursor = CursorRef(Slot.OPTION, optionId)
-                    if (item.optBoolean("multi_select")) toggle(draft, optionId) else { draft.selected.clear(); draft.selected.add(optionId) }
+                    if (multiSelect) toggle(draft, optionId) else { draft.selected.clear(); draft.selected.add(optionId) }
                     render()
                 }
             }
@@ -365,15 +367,15 @@ class MainActivity : Activity() {
         val laterFocused = slots.getOrNull(cursor) == Slot.LATER
         val answerFocused = slots.getOrNull(cursor) == Slot.ANSWER
         pair(button("あとで", false, laterFocused) { if (DecisionState.send(JSONObject().put("type", "later").put("id", id))) { showList = true; render() } },
-             button(if (draft.uncertain) "保存状態を確認" else if (draft.sequence == null) "回答する" else "送信中", true, answerFocused) { send(item, draft) }.apply { isEnabled = draft.sequence == null || draft.uncertain }, footer)
+             button(if (draft.uncertain) "保存状態を確認" else if (draft.sequence == null) answerLabel(item.optBoolean("multi_select"), draft.selected.size) else "送信中", true, answerFocused) { send(item, draft) }.apply { isEnabled = draft.sequence == null || draft.uncertain }, footer)
     }
-    private fun optionRow(index: Int, label: String, description: String, focused: Boolean, checked: Boolean, supplement: String = "", action: () -> Unit): View {
+    private fun optionRow(index: Int, label: String, description: String, focused: Boolean, checked: Boolean, multiSelect: Boolean = false, supplement: String = "", action: () -> Unit): View {
         val color = if (focused) Color.BLACK else green
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL; minimumHeight = dp(64)
             background = frame(if (focused) green else Color.BLACK); setPadding(dp(16), dp(12), dp(16), dp(12))
             if (supplement.isNotBlank()) addView(text(supplement, 18f).apply { setTextIsSelectable(false); movementMethod = null; setTextColor(color) })
-            val heading = text("${if (checked) "✓ " else ""}${index + 1}. $label").apply { setTextIsSelectable(false); movementMethod = null; setTextColor(color) }
+            val heading = text(optionHeading(index, label, multiSelect, checked)).apply { setTextIsSelectable(false); movementMethod = null; setTextColor(color) }
             addView(heading)
             if (description.isNotEmpty()) addView(text(description, 18f).apply { setTextIsSelectable(false); movementMethod = null; setTextColor(if (focused) Color.BLACK else dim) })
             setOnClickListener { action() }

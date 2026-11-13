@@ -142,7 +142,7 @@ test("decision without labels omits those lines", () => {
   assert.doesNotMatch(all, /スペース|タブ\*|\*ペイン\*/);
 });
 
-test("multi_select hint explains number reactions plus white_check_mark confirm", () => {
+test("multi_select hint says number reactions are sent as they are", () => {
   const decision = pendingDecision({
     multi_select: true,
     allow_text: true,
@@ -156,7 +156,8 @@ test("multi_select hint explains number reactions plus white_check_mark confirm"
     .filter((block) => block.type === "context")
     .flatMap((block) => block.elements.map((el) => el.text))
     .join("\n");
-  assert.match(context, /:white_check_mark: で確定/);
+  assert.match(context, /番号リアクションをいくつでも付ける（そのまま送られる）/);
+  assert.doesNotMatch(context, /:white_check_mark:/);
   assert.match(context, /「1,3」/);
   assert.match(context, /自由記述はスレッドに文で返信/);
 });
