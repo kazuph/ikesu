@@ -67,9 +67,10 @@ async function run() {
     spawnWatch: () => spawnDecisionWatch(config, log),
     runAnswer: createRunAnswer(config, log), getDecision: createGetDecision(config, log), log });
   const socket = await listen({ address, port: config.port, token,
-    snapshot: () => daemon.snapshot(), answer: value => daemon.answer(value), later: id => daemon.later(id),
+    snapshot: () => daemon.snapshot(), answer: value => daemon.answer(value), later: id => daemon.later(id), shown: ids => daemon.shown(ids),
     videoPath: (id, key) => daemon.videoPath(id, key) });
   daemon.onSnapshot = value => socket.publish(value);
+  daemon.hasClients = () => socket.clientCount() > 0;
   await daemon.start();
   const watcher = fs.watch(configDir, async (_event, name) => {
     if (name !== 'token') return;

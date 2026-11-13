@@ -46,3 +46,7 @@ fun multiSelectGuide(selected: Int): String =
 /** The answer button names how many choices a multi-select answer carries. */
 fun answerLabel(multiSelect: Boolean, selected: Int): String =
     if (multiSelect && selected > 0) "回答する（${selected}つ）" else "回答する"
+
+/** 通知を出す判断待ち（notify=true）の id。通知が許可されていなければ空（届いたとは言えない）。 */
+fun notifiedIds(items: List<Pair<String, Boolean>>, notificationsEnabled: Boolean): List<String> =
+    if (!notificationsEnabled) emptyList() else items.filter { it.second && it.first.isNotEmpty() }.map { it.first }.distinct()
