@@ -59,6 +59,8 @@ func decisionResult(id string, d api.Decision) api.Response {
 func (s *Server) decisionChanged(kind string, d api.Decision) {
 	if d.Status != "pending" && !(d.Status == "answered" && d.Answer != nil && d.Answer.OptionID != nil && (*d.Answer.OptionID == "approve" || *d.Answer.OptionID == "day_allow")) {
 		delete(s.decisions.guardBindings, d.DecisionID)
+	} else {
+		s.markGuardLineApproved(d, time.Now())
 	}
 	s.syncDecisionAttention()
 	close(s.decisions.changed)

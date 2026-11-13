@@ -86,19 +86,19 @@ func TestScriptFileDecisionWithRealSession(t *testing.T) {
 					}
 				}
 				if choice == "approve" {
-					// The outer bash grant must not authorize the inner rm. Its independent
-					// DEBUG check asks again, after the first line has actually executed.
-					s.waitFor("inner approval", 5*time.Second, func(string) bool {
-						s.rpc(api.MethodDecisionList, api.DecisionListParams{Status: "pending"}, &pending)
-						return len(pending.Decisions) == 1
-					})
-					if _, e := os.Stat(before); e != nil {
-						grants, _ := os.ReadFile(filepath.Join(s.stateDir, "guard", "temp-approvals"))
-						t.Logf("grants: %s", grants)
-						t.Fatalf("first line did not run: %v; next decision: %+v body=%s", e, pending.Decisions[0], *pending.Decisions[0].Body)
+					// The approved script line carries a claim for each command asked inside it, so the
+					// runtime DEBUG check of exactly that rm (same cwd and argv) is not asked a second time.
+					// A different command would still be asked: see TestLineApproval* in internal/server.
+					select {
+					case e := <-done:
+						done <- e
+					case <-time.After(5 * time.Second):
+						t.Fatal("script did not run to completion after one approval: " + out.String())
 					}
-					if raw, e := s.cli("decision", "answer", pending.Decisions[0].DecisionID, "approve"); e != nil {
-						t.Fatal(raw, e)
+					var all api.DecisionListResult
+					s.rpc(api.MethodDecisionList, api.DecisionListParams{}, &all)
+					if len(all.Decisions) != 1 {
+						t.Fatalf("expected exactly one decision, got %d", len(all.Decisions))
 					}
 				}
 

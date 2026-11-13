@@ -158,7 +158,7 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 		v.Tier = v.effectiveTier()
 	}
 	l1Default := false
-	if v.Decision == "ask" && matchesApprovedInvocation(i, v.Rule) {
+	if v.Decision == "ask" && (matchesApprovedInvocation(i, v.Rule) || lineApproved(i, v)) {
 		v.Decision = "allow"
 		v.Suppressed = "outer-command"
 		v.AllowedBy = "outer-command"
@@ -259,7 +259,7 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 		body += reason
 	}
 	body = i.redact(body)
-	d, e := await(api.DecisionCreateParams{Kind: "command_guard", Title: approvalTitle(i, v), Body: &body, AllowText: true, GuardExecution: approvedInvocationClaim(i), Origin: &api.DecisionOrigin{OutsidePane: m.OutsidePane, PaneID: m.Pane, Agent: m.Agent, Cwd: i.redact(i.Cwd), Command: i.redact(command), TargetCommand: targetCommand, Reason: i.redact(reason), GuardRule: v.Rule, GuardReason: i.redact(v.Reason), CommandUnits: i.commandUnits(command)}, Options: decisionOptions(v), TimeoutMS: &ms}, timeout)
+	d, e := await(api.DecisionCreateParams{Kind: "command_guard", Title: approvalTitle(i, v), Body: &body, AllowText: true, GuardExecution: approvedInvocationClaim(i), GuardExecutions: lineApprovalClaims(i), Origin: &api.DecisionOrigin{OutsidePane: m.OutsidePane, PaneID: m.Pane, Agent: m.Agent, Cwd: i.redact(i.Cwd), Command: i.redact(command), TargetCommand: targetCommand, Reason: i.redact(reason), GuardRule: v.Rule, GuardReason: i.redact(v.Reason), CommandUnits: i.commandUnits(command)}, Options: decisionOptions(v), TimeoutMS: &ms}, timeout)
 	if e != nil {
 		noteAsk(OutcomeNoServer, nil)
 		fmt.Fprintf(errOut, "❌ Command cancelled: 判断待ちのサーバーとの通信に失敗しました: %v\n", e)
@@ -333,6 +333,14 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 		fmt.Fprintf(errOut, "承認時のコメント: %s\n", *d.Answer.Text)
 	}
 	return true
+}
+
+// lineApprovalClaims は、1段目の確認に付ける行の claim。guard exec（シム・関数）は最後の段なので付けない。
+func lineApprovalClaims(i Input) []api.GuardExecutionClaim {
+	if !lineClaimVia(i.LineVia) {
+		return nil
+	}
+	return lineClaims(i.judgement)
 }
 
 // decisionOptions は確認の選択肢。L3 には1日許可を出さない（サーバーは選択肢に無い id を拒否するので、

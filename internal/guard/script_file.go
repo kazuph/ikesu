@@ -34,6 +34,8 @@ type scriptResult struct {
 	verdict         Verdict
 	trigger         string
 	approvedCommand *Input
+	// スクリプトの中の ask のコマンドの claim（行の承認が通す）。
+	claims []string
 	// スクリプトの中で聞くことになった判定のうち、いちばん高いティア。
 	tier     int
 	dest     string
@@ -48,6 +50,7 @@ func (r scriptResult) merge(other scriptResult) scriptResult {
 	t := tierInfo{r.tier, r.dest, r.tierRule}
 	t.merge(tierInfo{other.tier, other.dest, other.tierRule})
 	best.tier, best.dest, best.tierRule = t.tier, t.dest, t.rule
+	best.claims = append(append([]string{}, r.claims...), other.claims...)
 	return best
 }
 
@@ -315,6 +318,11 @@ func (s *scriptScanner) body(i Input, data []byte, name string) scriptResult {
 			if line > 0 && line <= len(lines) {
 				r.trigger = fmt.Sprintf("%s の%d行目: %s", name, line, lines[line-1])
 				r.verdict.Reason = r.trigger + "\n" + r.verdict.Reason
+			}
+		}
+		if cmd.scriptResult == nil && r.verdict.Decision == "ask" && r.kind != scriptUnresolved {
+			if h, ok := lineClaimHash(cmd); ok {
+				r.claims = append(r.claims, h)
 			}
 		}
 		best = best.merge(r)

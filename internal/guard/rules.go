@@ -78,6 +78,7 @@ type Input struct {
 	GuardRoot            string            `json:"-"`
 	ClaudePrefixChanged  bool              `json:"-"`
 	ShellEnvChanged      bool              `json:"-"`
+	LineVia              string            `json:"-"` // guard line の --via（claude-prefix は "claude-prefix"）。行の承認を送る呼び出しの見分けに使う
 	Unresolved           bool              `json:"-"`
 	UnresolvedArg        bool              `json:"-"`
 	unknownWords         map[string]bool

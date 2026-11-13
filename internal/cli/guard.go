@@ -59,6 +59,7 @@ func (r *runner) guardCLI(a []string) int {
 	cwd, _ := os.Getwd()
 	launch := r.o.getenv("IKESU_GUARD_LAUNCH_CWD")
 	via := "shim"
+	viaGiven := false
 	i := guard.Input{Cwd: cwd, LaunchCwd: launch, Env: guard.EnvMap(os.Environ()), VerifiedOutside: outside}
 	// Generated entries pin the marker path. Keep diagnostics with that pane's
 	// assets even when its shell still carries the pre-handoff state directory.
@@ -139,6 +140,7 @@ func (r *runner) guardCLI(a []string) int {
 		return 0
 	}
 	if sub == "claude-prefix" {
+		i.LineVia = "claude-prefix"
 		if len(a) > 0 && a[0] == "--" {
 			a = a[1:]
 		}
@@ -295,6 +297,7 @@ func (r *runner) guardCLI(a []string) int {
 				i.LaunchCwd = a[1]
 			case "--via":
 				via = a[1]
+				viaGiven = true
 			case "--shell-pid":
 				shellPID = a[1]
 			}
@@ -313,6 +316,9 @@ func (r *runner) guardCLI(a []string) int {
 		return writeJSON(guard.Evaluate(c.Guard, i))
 	}
 	if sub == "line" {
+		if viaGiven {
+			i.LineVia = via
+		}
 		if via == "bash-debug" {
 			i = guard.WithShellVariables(i, os.Stdin)
 			i = guard.WithShellPID(i, shellPID)

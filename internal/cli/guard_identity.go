@@ -38,6 +38,23 @@ func decodeGuardPolicy(data []byte) (guard.Config, error) {
 
 // A nil marker means the server proved that this process belongs to its pane.
 // A non-nil marker carries the server's policy without the inherited origin.
+// guardLineStart は、対話の zsh の accept-line が新しい行の判定を始める呼び出しか。
+// 本人確認の最初の1回だけ真にし、確認を待った後の2回目（引数の無い入力）では偽になる。
+func guardLineStart(i guard.Input) bool {
+	if i.Command != "ikesu" || len(i.Args) < 3 || i.Args[0] != "guard" || i.Args[1] != "line" {
+		return false
+	}
+	for n := 2; n+1 < len(i.Args); n++ {
+		if i.Args[n] == "--" {
+			return false
+		}
+		if i.Args[n] == "--via" {
+			return i.Args[n+1] == "accept-line"
+		}
+	}
+	return false
+}
+
 func (r *runner) guardIdentity(i guard.Input) (*guard.Marker, *api.GuardIdentityContext, error) {
 	const maxAttempts = 40
 	const retryInterval = 25 * time.Millisecond
@@ -49,7 +66,7 @@ func (r *runner) guardIdentity(i guard.Input) (*guard.Marker, *api.GuardIdentity
 	deadline := time.Now().Add(requestTimeout)
 	var response api.Response
 	for attempt := 1; ; attempt++ {
-		data, err := r.requestBefore("cli:guard:identity", api.MethodGuardIdentity, api.GuardIdentityParams{PaneID: i.Env["IKESU_PANE_ID"], PID: pid, StartTime: start}, deadline)
+		data, err := r.requestBefore("cli:guard:identity", api.MethodGuardIdentity, api.GuardIdentityParams{PaneID: i.Env["IKESU_PANE_ID"], PID: pid, StartTime: start, LineStart: guardLineStart(i)}, deadline)
 		if err != nil {
 			return nil, nil, err
 		}

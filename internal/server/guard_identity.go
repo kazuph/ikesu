@@ -98,6 +98,12 @@ func (s *Server) guardIdentity(req *api.Request) api.Response {
 	if err != nil || n <= 0 || p.PaneID != "p"+strconv.Itoa(n) {
 		return api.Failure(req.ID, api.ErrInvalidRequest, "invalid guard pane")
 	}
+	if p.LineStart {
+		// 対話のシェルで新しい行が来た。その行より前に、このシェルが持ち主だった行の承認を消す。
+		if parent, _, err := guard.ApprovalProcess(p.PID); err == nil && parent > 1 {
+			s.clearGuardLineBindings(parent)
+		}
+	}
 	chain, err := guardAncestry(req.PeerPID)
 	if err != nil {
 		return api.Failure(req.ID, "guard_identity_unknown", err.Error())

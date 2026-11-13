@@ -22,6 +22,9 @@ type judgeEntry struct {
 	offset int
 	v      Verdict
 	target string
+	// 行の承認が通す claim（ask の命令自身のものと、スクリプトの中の ask のもの）。
+	claim        string
+	scriptClaims []string
 }
 
 func (j *lineJudgement) add(command Input, v Verdict) {
@@ -32,7 +35,14 @@ func (j *lineJudgement) add(command Input, v Verdict) {
 	if command.scriptResult != nil {
 		target = command.TriggerCommand
 	}
-	j.entries = append(j.entries, judgeEntry{command.callOffset, v, target})
+	entry := judgeEntry{offset: command.callOffset, v: v, target: target}
+	if v.Decision == "ask" {
+		entry.claim, _ = lineClaimHash(command)
+		if command.scriptResult != nil {
+			entry.scriptClaims = command.scriptResult.claims
+		}
+	}
+	j.entries = append(j.entries, entry)
 }
 
 type rawUnit struct {
