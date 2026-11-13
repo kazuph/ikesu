@@ -40,3 +40,15 @@ test('image discovery preserves prose and Markdown boundaries without adding pun
  assert.deepEqual(discoverRichContent({body:'"/tmp/日本語 空白.png"\n`https://example.com/image.png`\n[画像](https://example.com/linked.jpg)'}).images,['/tmp/日本語 空白.png','https://example.com/image.png','https://example.com/linked.jpg']);
  assert.equal(JSON.stringify(found).includes('***'),false);
 });
+
+test('paths after 【動画】-style labels and before （…） or 【…】 are found; local .html pages become links', () => {
+ const video='/Users/u/work/out/final.mp4', page='/Users/u/work/site/kcal.html';
+ const found=discoverRichContent({body:`【動画】${video} （59.5秒・縦）【確認ページ】${page}（各台詞。開いたままなら再読み込み）\n出典 https://commons.wikimedia.org/wiki/File:Gyuu-don_001.jpg`});
+ assert.deepEqual(found.videos,[video]);
+ assert.deepEqual(found.pages,[page]);
+ // A colon inside https:// is not a path boundary.
+ assert.deepEqual(found.images,['https://commons.wikimedia.org/wiki/File:Gyuu-don_001.jpg']);
+ assert.deepEqual(discoverRichContent({body:`画面: ${video}【補足】`}).videos,[video]);
+ // http(s) .html stays an ordinary link, not a local page.
+ assert.equal(discoverRichContent({body:'https://example.test/a.html'}).pages,undefined);
+});

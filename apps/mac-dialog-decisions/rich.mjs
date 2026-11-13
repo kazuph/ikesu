@@ -12,6 +12,8 @@ export const RICH_LIMITS = Object.freeze({cards:3, images:4, imageBytes:10*1024*
 const videoExtension=/\.(mp4|mov|m4v|webm|ogv|ogg)$/i;
 export function videoPath(value) { try { return videoExtension.test(new URL(value).pathname); } catch { return videoExtension.test(value); } }
 const imageExtension=/\.(png|jpe?g|gif|webp)$/i;
+const pageExtension=/\.html?$/i;
+export function localPagePath(value) { return typeof value==='string'&&value.startsWith('/')&&pageExtension.test(value); }
 export function imagePath(value) { try { return imageExtension.test(new URL(value).pathname); } catch { return imageExtension.test(value); } }
 function visibleURLs(text) {
   return (text.match(/https?:\/\/[^\s<>"'`「」『』]+/gu)||[]).map(s=>s.replace(/[.,;!?)）\]、。]+$/gu,'')).filter(s=>!s.includes('***'));
@@ -20,7 +22,8 @@ export function discoverRichContent(spec) {
   const text=[spec.title||'',spec.body||'',...(spec.options||[]).map(o=>o.description||'')].join('\n');
   const links=[...new Set(visibleURLs(text))].slice(0,RICH_LIMITS.cards);
   const images=[]; const videos=[];
-  const mediaPath = value => imagePath(value) || videoPath(value);
+  const pages=[];
+  const mediaPath = value => imagePath(value) || videoPath(value) || localPagePath(value);
   for(const line of (spec.body||'').split('\n')) {
     const candidates=[];
     // Code and ordinary file paths are literal; only Markdown destinations
@@ -32,20 +35,20 @@ export function discoverRichContent(spec) {
     plain=plain.replace(/!?\[[^\]\n]*\]\(\s*(?:<([^>\n]+)>|([^\s)]+))(?:\s+["'][^"'\n]*["'])?\s*\)/g,(match,angle,bare,index)=>{
       candidates.push({value:angle||bare,index,encoded:true});return ' '.repeat(match.length);
     });
-    const whole=plain.match(/^(?:画像|スクショ|添付画像|動画)[:：]\s*(\/.*\.(?:png|jpe?g|gif|webp|mp4|mov|m4v|webm|ogv|ogg))\s*$/i)||plain.match(/^\s*(\/.*\.(?:png|jpe?g|gif|webp|mp4|mov|m4v|webm|ogv|ogg))\s*$/i);
+    const whole=plain.match(/^(?:画像|スクショ|添付画像|動画)[:：]\s*(\/.*\.(?:png|jpe?g|gif|webp|mp4|mov|m4v|webm|ogv|ogg|html?))\s*$/i)||plain.match(/^\s*(\/.*\.(?:png|jpe?g|gif|webp|mp4|mov|m4v|webm|ogv|ogg|html?))\s*$/i);
     if(whole)candidates.push({value:whole[1],index:0,encoded:false});
     else {
-      for(const match of plain.matchAll(/["'「<](\/[^"'」>\n]+\.(?:png|jpe?g|gif|webp|mp4|mov|m4v|webm|ogv|ogg))["'」>]/gi))candidates.push({value:match[1],index:match.index,encoded:false});
-      for(const match of plain.matchAll(/(?:^|[\s(])((?:\/)[^\s<>"'`「」()[\]]+\.(?:png|jpe?g|gif|webp|mp4|mov|m4v|webm|ogv|ogg))(?=$|[\s)\]、。])/gi))candidates.push({value:match[1],index:match.index,encoded:false});
+      for(const match of plain.matchAll(/["'「<](\/[^"'」>\n]+\.(?:png|jpe?g|gif|webp|mp4|mov|m4v|webm|ogv|ogg|html?))["'」>]/gi))candidates.push({value:match[1],index:match.index,encoded:false});
+      for(const match of plain.matchAll(/(?:^|[\s(（】」』：])((?:\/)[^\s<>"'`「」()[\]]+\.(?:png|jpe?g|gif|webp|mp4|mov|m4v|webm|ogv|ogg|html?))(?=$|[\s)\]、。（）【「」』,，])/gi))candidates.push({value:match[1],index:match.index,encoded:false});
       for(const value of visibleURLs(plain).filter(mediaPath))candidates.push({value,index:plain.indexOf(value),encoded:false});
     }
     for(const candidate of candidates.sort((a,b)=>a.index-b.index)) {
       let source=candidate.value;
       if(candidate.encoded&&source.startsWith('/')) {try {source=decodeURIComponent(source);}catch {continue;}}
-      if(mediaPath(source)&&!source.includes('***')&&(source.startsWith('/')||/^https?:/.test(source))) { const list=videoPath(source)?videos:images;if(!list.includes(source))list.push(source); }
+      if(mediaPath(source)&&!source.includes('***')&&(source.startsWith('/')||/^https?:/.test(source))) { const list=localPagePath(source)?pages:videoPath(source)?videos:images;if(!list.includes(source))list.push(source); }
     }
   }
-  return {links,images:images.slice(0,RICH_LIMITS.images),...(videos.length?{videos:videos.slice(0,RICH_LIMITS.images)}:{})};
+  return {links,images:images.slice(0,RICH_LIMITS.images),...(videos.length?{videos:videos.slice(0,RICH_LIMITS.images)}:{}),...(pages.length?{pages:pages.slice(0,RICH_LIMITS.cards)}:{})};
 }
 export function publicAddress(address) {
   const version=net.isIP(address);

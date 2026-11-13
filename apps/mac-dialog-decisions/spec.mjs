@@ -191,7 +191,7 @@ export function buildDialogSpec(decision, machine, queueRemaining = 0, options =
   const units = approvalUnits(decision);
   const project = projectName(decision);
   return {
-    media_sources: (() => { const media = discoverRichContent(decision); return [...new Set([...media.links, ...media.images, ...(media.videos || [])])]; })(),
+    media_sources: (() => { const media = discoverRichContent(decision); return [...new Set([...media.links, ...media.images, ...(media.videos || []), ...(media.pages || [])])]; })(),
     kind: decision.kind || "",
     machine_id: machineId,
     window_title: project ? `ikesu 判断待ち — ${project}` : "ikesu 判断待ち",
