@@ -345,6 +345,10 @@ func BuildAudit(o AuditOptions) (*AuditReport, error) {
 	bundles := map[string]*Bundle{}
 	var order []string
 	for _, r := range all {
+		// 聞かずに通した L1 は、今までの件数・束・分類には入れない。ティアの表だけで数える。
+		if r.Outcome == OutcomeL1Allow {
+			continue
+		}
 		rep.Total++
 		rep.Outcomes[r.Outcome]++
 		name := CommandName(r.Command)

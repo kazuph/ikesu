@@ -235,6 +235,37 @@ func TestScriptFileDoesNotUseInnerApprovalKeys(t *testing.T) {
 	}
 }
 
+// 外向きの1行（L2）を含むスクリプトで、中のコマンドの一時許可では行が通らない。
+func TestScriptFileDoesNotUseInnerGrantInAuthorizeLine(t *testing.T) {
+	i, _ := scriptPane(t)
+	path := filepath.Join(i.Cwd, "post.sh")
+	os.WriteFile(path, []byte("curl -X POST https://example.com/x\n"), 0600)
+	inner := Evaluate(Config{}, Input{Command: "curl", Args: []string{"-X", "POST", "https://example.com/x"}, Cwd: i.Cwd, Env: i.Env})
+	if inner.Decision != "ask" || inner.Tier != TierL2 || inner.TempKey == "" {
+		t.Fatalf("precondition: %+v", inner)
+	}
+	if e := WriteApproval(tempApprovalFile(i.Cwd), inner.TempKey, time.Now().Add(time.Hour)); e != nil {
+		t.Fatal(e)
+	}
+	var out bytes.Buffer
+	if AuthorizeLine(Config{}, i.Cwd, i, "bash "+quote(path), &out, nil) {
+		t.Fatal("inner command's temporary grant authorized the script line")
+	}
+	// 外側の bash の鍵の許可なら通る（比べる相手が本当に許可を読んでいる証拠）。
+	_, v, _ := lineVerdict(Config{}, i, "bash "+quote(path))
+	if len(v.GrantKeys) == 0 {
+		t.Fatalf("no grant keys: %+v", v)
+	}
+	for _, k := range v.GrantKeys {
+		if e := WriteApproval(tempApprovalFile(i.Cwd), k.Temp, time.Now().Add(time.Hour)); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if !AuthorizeLine(Config{}, i.Cwd, i, "bash "+quote(path), &out, nil) {
+		t.Fatalf("outer grant was not read: %s", out.String())
+	}
+}
+
 func TestScriptFileAggregateOrder(t *testing.T) {
 	i, _ := scriptPane(t)
 	// Permutations exercise actual parsing/policy, including unknown expansion

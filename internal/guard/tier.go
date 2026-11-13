@@ -172,25 +172,31 @@ func loopbackURL(s string) bool {
 	return err == nil && ip.IsLoopback() && !ip.Is4In6()
 }
 
+// awsAsk は aws の確認。エミュレーター（L1）と見なすのは、そのコマンドの引数に正確に
+// --endpoint-url があり、値が全部ループバックの http(s) URL で、省略形（--endpoint など）が
+// 無いときだけ。環境変数 AWS_ENDPOINT_URL は見ない（サービス別の AWS_ENDPOINT_URL_<サービス> が
+// 優先され、AWS_IGNORE_CONFIGURED_ENDPOINT_URLS で無視もでき、行の中の unset・export も追えないため）。
 func awsAsk(i Input) Verdict {
 	const reason = "AWSコマンドには承認が必要です。"
+	const flag = "--endpoint-url"
 	var endpoints []string
 	args := i.Args
 	for n := 0; n < len(args); n++ {
-		if args[n] == "--endpoint-url" {
+		name, value, joined := strings.Cut(args[n], "=")
+		if len(name) >= 3 && name != flag && strings.HasPrefix(flag, name) && strings.HasPrefix(name, "--e") {
+			return askAt("aws", reason, TierL3, DestUnknown)
+		}
+		if name != flag {
+			continue
+		}
+		if !joined {
 			if n+1 >= len(args) {
 				return askAt("aws", reason, TierL3, DestUnknown)
 			}
-			endpoints = append(endpoints, args[n+1])
+			value = args[n+1]
 			n++
-		} else if v, ok := strings.CutPrefix(args[n], "--endpoint-url="); ok {
-			endpoints = append(endpoints, v)
 		}
-	}
-	if len(endpoints) == 0 {
-		if v, ok := i.Env["AWS_ENDPOINT_URL"]; ok {
-			endpoints = append(endpoints, v)
-		}
+		endpoints = append(endpoints, value)
 	}
 	if len(endpoints) == 0 {
 		return askAt("aws", reason, TierL3, DestUnknown)

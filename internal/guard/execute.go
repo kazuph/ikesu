@@ -175,8 +175,10 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 	}
 	if l1Default {
 		if !(i.runtimeLine && l1SeenRecently(root, m, i, v)) {
+			// 記録できないときは、今までの経路と同じく止める。
 			if e = Log(root, i, m, v, via); e != nil {
 				fmt.Fprintln(errOut, "guard log:", e)
+				return false
 			}
 			recordAsk(root, i, m, v, via, approvalCommand(i), OutcomeL1Allow, nil, time.Now(), errOut)
 		}
@@ -257,7 +259,7 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 		body += reason
 	}
 	body = i.redact(body)
-	d, e := await(api.DecisionCreateParams{Kind: "command_guard", Title: approvalTitle(i, v), Body: &body, AllowText: true, GuardExecution: approvedInvocationClaim(i), Origin: &api.DecisionOrigin{OutsidePane: m.OutsidePane, PaneID: m.Pane, Agent: m.Agent, Cwd: i.redact(i.Cwd), Command: i.redact(command), TargetCommand: targetCommand, Reason: i.redact(reason), GuardRule: v.Rule, GuardReason: i.redact(v.Reason), CommandUnits: i.commandUnits(command)}, Options: []api.DecisionOption{{ID: "approve", Label: "承認", Role: "approve"}, {ID: "day_allow", Label: "1日許可", Role: "approve"}, {ID: "reject", Label: "却下", Role: "reject"}}, TimeoutMS: &ms}, timeout)
+	d, e := await(api.DecisionCreateParams{Kind: "command_guard", Title: approvalTitle(i, v), Body: &body, AllowText: true, GuardExecution: approvedInvocationClaim(i), Origin: &api.DecisionOrigin{OutsidePane: m.OutsidePane, PaneID: m.Pane, Agent: m.Agent, Cwd: i.redact(i.Cwd), Command: i.redact(command), TargetCommand: targetCommand, Reason: i.redact(reason), GuardRule: v.Rule, GuardReason: i.redact(v.Reason), CommandUnits: i.commandUnits(command)}, Options: decisionOptions(v), TimeoutMS: &ms}, timeout)
 	if e != nil {
 		noteAsk(OutcomeNoServer, nil)
 		fmt.Fprintf(errOut, "❌ Command cancelled: 判断待ちのサーバーとの通信に失敗しました: %v\n", e)
@@ -303,18 +305,27 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 		fmt.Fprintf(errOut, "❌ Command cancelled: %s\n   この guard メッセージはユーザー本人の指示です。\n   理由: %s\n", i.Line(), text)
 		return deny()
 	}
-	// 承認の後の一時許可・1日許可は、L3 では書かない。
-	if v.TempKey != "" && v.Tier != TierL3 {
-		key := v.TempKey
-		expiry := time.Now().Add(tempApprovalDuration)
-		if choice == "day_allow" {
-			key = v.DayKey
-			now := time.Now()
-			expiry = time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
+	// 承認の後の一時許可・1日許可は、L3 では書かない。行の中の ask は、コマンドごとの鍵を全部書く。
+	if v.Tier != TierL3 {
+		keys := v.GrantKeys
+		if len(keys) == 0 {
+			keys = []grantKey{{v.TempKey, v.DayKey}}
 		}
-		if e = WriteApproval(tempApprovalFile(root), key, expiry); e != nil {
-			fmt.Fprintln(errOut, "guard approval write:", e)
-			return false
+		for _, k := range keys {
+			if k.Temp == "" {
+				continue
+			}
+			key := k.Temp
+			expiry := time.Now().Add(tempApprovalDuration)
+			if choice == "day_allow" {
+				key = k.Day
+				now := time.Now()
+				expiry = time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
+			}
+			if e = WriteApproval(tempApprovalFile(root), key, expiry); e != nil {
+				fmt.Fprintln(errOut, "guard approval write:", e)
+				return false
+			}
 		}
 	}
 
@@ -323,6 +334,17 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 	}
 	return true
 }
+
+// decisionOptions は確認の選択肢。L3 には1日許可を出さない（サーバーは選択肢に無い id を拒否するので、
+// サーバー側の1日許可の書き込みも起きない）。
+func decisionOptions(v Verdict) []api.DecisionOption {
+	options := []api.DecisionOption{{ID: "approve", Label: "承認", Role: "approve"}}
+	if v.Tier != TierL3 {
+		options = append(options, api.DecisionOption{ID: "day_allow", Label: "1日許可", Role: "approve"})
+	}
+	return append(options, api.DecisionOption{ID: "reject", Label: "却下", Role: "reject"})
+}
+
 func PrintBlock(w io.Writer, i Input, v Verdict) {
 	w = redactedWriter{w, i}
 	switch v.Rule {

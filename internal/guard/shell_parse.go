@@ -412,6 +412,7 @@ func lineVerdictJudged(c Config, i Input, line string, j *lineJudgement) (Input,
 		maxTier.takeVerdict(best)
 	}
 	var undetermined []string
+	var grants []grantKey
 	for _, command := range commands {
 		v := result("allow", "default", "")
 		if !(i.runtimeLine && has([]string{"eval", "source", "."}, filepath.Base(command.Command))) {
@@ -440,6 +441,11 @@ func lineVerdictJudged(c Config, i Input, line string, j *lineJudgement) (Input,
 		}
 		j.add(command, v)
 		maxTier.takeVerdict(v)
+		if v.Decision == "ask" {
+			own := command
+			own.RawLine = ""
+			grants = append(grants, grantKey{Temp: temporaryKey(c, own), Day: "day:" + physical(command.Cwd)})
+		}
 		if blocksRun(v.Decision) && !blocksRun(best.Decision) || v.Decision == "ask" && best.Decision == "allow" {
 			i, best = command, v
 		}
@@ -461,7 +467,9 @@ func lineVerdictJudged(c Config, i Input, line string, j *lineJudgement) (Input,
 		if et := errTier(err); et > maxTier.tier {
 			maxTier = tierInfo{et, "", "shell-line"}
 		}
-		return i, result("ask", "shell-line", err.Error()).withTier(maxTier), err
+		verdict := result("ask", "shell-line", err.Error()).withTier(maxTier)
+		verdict.GrantKeys = grants
+		return i, verdict, err
 	}
 	if best.Rule == "danger-word-line" {
 		i.TriggerCommand = "入力行全体: " + line
@@ -481,7 +489,9 @@ func lineVerdictJudged(c Config, i Input, line string, j *lineJudgement) (Input,
 	if best.Decision == "allow" && best.Rule == "default" && len(undetermined) > 0 {
 		best.Reason = undeterminedPrefix + strings.Join(undetermined, " / ")
 	}
-	return i, best.withTier(maxTier), nil
+	best = best.withTier(maxTier)
+	best.GrantKeys = grants
+	return i, best, nil
 }
 
 // withDangerRequestReason hands the line's approval the request reason

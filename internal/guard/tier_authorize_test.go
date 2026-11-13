@@ -193,7 +193,16 @@ func TestAuthorizeL3ApprovalWritesNoGrant(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	for _, option := range []string{"approve", "day_allow"} {
+	// L3 には1日許可の選択肢が無いので、答えようとしても受け付けられない。
+	{
+		var asked int
+		option := "day_allow"
+		await := answerAwaitOpts(t, root, option, &asked, nil)
+		if Authorize(Config{}, root, i, "shim", &bytes.Buffer{}, await) {
+			t.Fatal("day_allow was accepted for L3")
+		}
+	}
+	for _, option := range []string{"approve"} {
 		option := option
 		await := func(p api.DecisionCreateParams, timeout time.Duration) (api.Decision, error) {
 			d, err := store.CreateDecision(p, time.Now())
@@ -210,7 +219,7 @@ func TestAuthorizeL3ApprovalWritesNoGrant(t *testing.T) {
 		}
 	}
 	asks := readAskLines(t, root)
-	if len(asks) != 2 || asks[0].Tier != 3 || asks[0].AllowedBy != "approve" || asks[0].Dest != DestUnknown {
+	if len(asks) != 2 || asks[1].Tier != 3 || asks[1].AllowedBy != "approve" || asks[1].Dest != DestUnknown || asks[0].Outcome != OutcomeNoServer {
 		t.Fatalf("asks: %+v", asks)
 	}
 }
@@ -261,5 +270,152 @@ func TestAuditTierTable(t *testing.T) {
 		if _, ok := auditRuleKinds[rule]; !ok {
 			t.Errorf("rule kind missing: %s", rule)
 		}
+	}
+}
+
+// 一時許可は、行の中の ask 全部に有効な許可があるときだけ当てる。
+func TestTemporaryGrantMustCoverEveryAskInLine(t *testing.T) {
+	root, env := tierAuthorizeRoot(t)
+	reason := "外向きの確認を行うため"
+	key := func(cmd string, args ...string) string {
+		v := Evaluate(Config{}, Input{Command: cmd, Args: args, Cwd: root, Env: env})
+		if v.Decision != "ask" || v.TempKey == "" {
+			t.Fatalf("%s %v: %+v", cmd, args, v)
+		}
+		return v.TempKey
+	}
+	curlKey := key("curl", "-X", "POST", "https://example.com/a")
+	ghKey := key("gh", "workflow", "run", "ci.yml")
+	if err := WriteApproval(tempApprovalFile(root), curlKey, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range []string{
+		"curl -X POST https://example.com/a; gh workflow run ci.yml",
+		"gh workflow run ci.yml; curl -X POST https://example.com/a",
+	} {
+		i := Input{Cwd: root, Env: env}
+		i.Env["AI_GUARD_REQUEST_REASON"] = reason
+		asked := false
+		if AuthorizeLine(Config{}, root, i, line, &bytes.Buffer{}, cancelAwait(t, root, &asked)) || !asked {
+			t.Fatalf("%q was allowed by a grant that covers only one of its asks", line)
+		}
+	}
+	// 1つだけの行は今までどおり許可で通る。
+	i := Input{Cwd: root, Env: env}
+	i.Env["AI_GUARD_REQUEST_REASON"] = reason
+	asked := false
+	if !AuthorizeLine(Config{}, root, i, "curl -X POST https://example.com/a", &bytes.Buffer{}, cancelAwait(t, root, &asked)) || asked {
+		t.Fatal("single-ask line with a grant was asked")
+	}
+	// 両方に許可があれば通る。
+	if err := WriteApproval(tempApprovalFile(root), ghKey, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	asked = false
+	if !AuthorizeLine(Config{}, root, i, "gh workflow run ci.yml; curl -X POST https://example.com/a", &bytes.Buffer{}, cancelAwait(t, root, &asked)) || asked {
+		t.Fatal("line whose asks all have grants was asked")
+	}
+}
+
+// 行を承認すると、行の中の ask 全部の許可が書かれる。
+func TestApprovalWritesGrantForEveryAskInLine(t *testing.T) {
+	root, env := tierAuthorizeRoot(t)
+	i := Input{Cwd: root, Env: env}
+	i.Env["AI_GUARD_REQUEST_REASON"] = "外向きの確認を行うため"
+	line := "curl -X POST https://example.com/a; gh workflow run ci.yml"
+	asked := 0
+	if !AuthorizeLine(Config{}, root, i, line, &bytes.Buffer{}, answerAwaitOpts(t, root, "approve", &asked, nil)) || asked != 1 {
+		t.Fatal("not approved")
+	}
+	for _, args := range [][]string{{"curl", "-X", "POST", "https://example.com/a"}, {"gh", "workflow", "run", "ci.yml"}} {
+		v := Evaluate(Config{}, Input{Command: args[0], Args: args[1:], Cwd: root, Env: env})
+		if !validApproval(tempApprovalFile(root), v.TempKey, time.Now()) {
+			t.Fatalf("grant missing for %v", args)
+		}
+	}
+}
+
+func answerAwaitOpts(t *testing.T, root, option string, asked *int, got *[]api.DecisionOption) Await {
+	store, err := dispatch.Open(filepath.Join(root, "ledger.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	return func(p api.DecisionCreateParams, timeout time.Duration) (api.Decision, error) {
+		*asked++
+		if got != nil {
+			*got = p.Options
+		}
+		d, err := store.CreateDecision(p, time.Now())
+		if err != nil {
+			return d, err
+		}
+		return store.AnswerDecision(api.DecisionAnswerParams{DecisionID: d.DecisionID, Responder: "test", OptionID: &option}, time.Now())
+	}
+}
+
+// L3 の確認には1日許可の選択肢を出さない。L2 には出す。
+func TestL3AskHasNoDayAllowOption(t *testing.T) {
+	root, env := tierAuthorizeRoot(t)
+	ids := func(opts []api.DecisionOption) string {
+		var out []string
+		for _, o := range opts {
+			out = append(out, o.ID)
+		}
+		return strings.Join(out, ",")
+	}
+	for _, tc := range []struct {
+		name string
+		in   Input
+		want string
+	}{
+		{"L3", Input{Command: "aws", Args: []string{"s3", "ls"}, Cwd: root, Env: env}, "approve,reject"},
+		{"L2", Input{Command: "curl", Args: []string{"-X", "POST", "https://example.com/x"}, Cwd: root, Env: env}, "approve,day_allow,reject"},
+	} {
+		tc.in.Env["AI_GUARD_REQUEST_REASON"] = "確認のため"
+		var got []api.DecisionOption
+		asked := 0
+		if !Authorize(Config{}, root, tc.in, "shim", &bytes.Buffer{}, answerAwaitOpts(t, root, "approve", &asked, &got)) {
+			t.Fatalf("%s not approved", tc.name)
+		}
+		if ids(got) != tc.want {
+			t.Errorf("%s options=%s want %s", tc.name, ids(got), tc.want)
+		}
+	}
+}
+
+// L1 の経路でも、記録できないときは今までと同じく止める。
+func TestL1StopsWhenLogFails(t *testing.T) {
+	root, env := tierAuthorizeRoot(t)
+	if err := os.MkdirAll(filepath.Join(root, "guard", "decisions.jsonl"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	i := Input{Command: "git", Args: []string{"clean", "-fd"}, Cwd: root, Env: env}
+	var out bytes.Buffer
+	if Authorize(Config{}, root, i, "shim", &out, nil) {
+		t.Fatalf("L1 allowed although the log could not be written: %s", out.String())
+	}
+	if !strings.Contains(out.String(), "guard log:") {
+		t.Fatalf("no log error: %s", out.String())
+	}
+}
+
+// 聞かずに通した L1 は、今までの件数・束・分類に入れず、ティアの表だけで数える。
+func TestAuditExcludesL1AllowFromTotalsAndBundles(t *testing.T) {
+	now := time.Now()
+	mk := func(tier int, rule, outcome string) AskRecord {
+		return AskRecord{TSEpoch: now.Add(-time.Hour).Unix(), TS: now.Add(-time.Hour).UTC().Format(time.RFC3339), Rule: rule, Command: rule + " x", Tier: tier, Outcome: outcome}
+	}
+	rep, err := BuildAudit(AuditOptions{Now: now, Since: 24 * time.Hour, Asks: []AskRecord{
+		mk(1, "dangerous", OutcomeL1Allow), mk(1, "dangerous", OutcomeL1Allow), mk(3, "aws", OutcomeApprove),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Total != 1 || rep.Outcomes[OutcomeL1Allow] != 0 || rep.BundleCount != 1 || len(rep.Top) != 1 || rep.Top[0].Rule != "aws" {
+		t.Fatalf("l1_allow leaked into totals: %+v", rep)
+	}
+	if rep.TierTotals["L1"] != 2 || rep.TierTotals["L3"] != 1 {
+		t.Fatalf("tier table: %+v", rep.TierTotals)
 	}
 }

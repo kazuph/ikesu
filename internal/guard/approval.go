@@ -176,15 +176,31 @@ func tempApprovalFile(root string) string { return filepath.Join(root, "guard", 
 
 // applyGrants は、承認済みの一時許可・1日許可が残っている ask を allow にする。
 func applyGrants(root string, v Verdict, now time.Time) Verdict {
-	if v.Decision != "ask" || v.TempKey == "" {
+	if v.Decision != "ask" {
 		return v
 	}
-	f := tempApprovalFile(root)
-	if validApproval(f, v.DayKey, now) {
-		v.Decision, v.Suppressed, v.AllowedBy = "allow", "day", "day"
-	} else if validApproval(f, v.TempKey, now) {
-		v.Decision, v.Suppressed, v.AllowedBy = "allow", "temporary", "temporary"
+	keys := v.GrantKeys
+	if len(keys) == 0 {
+		keys = []grantKey{{v.TempKey, v.DayKey}}
 	}
+	f := tempApprovalFile(root)
+	by := ""
+	for _, k := range keys {
+		// 鍵の無いコマンドには許可を当てられない。行の中の ask は全部に有効な許可が要る。
+		switch {
+		case k.Temp == "":
+			return v
+		case validApproval(f, k.Day, now):
+			if by == "" {
+				by = "day"
+			}
+		case validApproval(f, k.Temp, now):
+			by = "temporary"
+		default:
+			return v
+		}
+	}
+	v.Decision, v.Suppressed, v.AllowedBy = "allow", by, by
 	return v
 }
 

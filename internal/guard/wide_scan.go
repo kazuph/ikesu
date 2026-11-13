@@ -29,7 +29,11 @@ func wideScan(i Input) (Verdict, bool) {
 		return Verdict{}, false
 	}
 	if strings.TrimSpace(requestReason(i)) != "" {
-		return askAt(wideScanRule, "大規模なスキャンを検知: "+target+"。起動した場所（"+i.LaunchCwd+"）より上を丸ごと探しています。", TierL1, ""), true
+		tier := TierL1
+		if wideScanActs(filepath.Base(i.Command), i.Args) {
+			tier = TierL3 // 見つけたものを消す・実行する
+		}
+		return askAt(wideScanRule, "大規模なスキャンを検知: "+target+"。起動した場所（"+i.LaunchCwd+"）より上を丸ごと探しています。", tier, ""), true
 	}
 	return result("deny", wideScanRule, "【警告】大規模なスキャンを検知: "+target+"。起動した場所（"+i.LaunchCwd+"）より上を丸ごと探しています。本当に必要なら、範囲を絞る（mdfind は -onlyin で場所を指定する）か、AI_GUARD_REQUEST_REASON='<なぜ必要かを日本語で1文>' を付けて、もう一度実行してください。"), true
 }
@@ -73,6 +77,24 @@ func wideScanTarget(i Input) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// wideScanActs は、探すだけでなく、見つけたものを消す・実行するスキャン。
+func wideScanActs(cmd string, args []string) bool {
+	for _, a := range args {
+		name, _, _ := strings.Cut(a, "=")
+		switch cmd {
+		case "find":
+			if has([]string{"-delete", "-exec", "-execdir", "-ok", "-okdir"}, a) {
+				return true
+			}
+		case "fd", "fdfind":
+			if has([]string{"-x", "-X", "--exec", "--exec-batch"}, name) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func recursiveFlag(cmd string, args []string) bool {

@@ -162,6 +162,18 @@ func TestGuardMarkerRoutingAfterRealHandoff(t *testing.T) {
 			if _, e := os.Stat(target); e != nil {
 				t.Fatal("executed before answer", e)
 			}
+			if choice == "day_allow" {
+				// L3 の確認には1日許可の選択肢が無い。選んでも受け付けられず、承認は通る。
+				for _, option := range d.Options {
+					if option.ID == "day_allow" {
+						t.Fatal("L3 ask offered day_allow", d.Options)
+					}
+				}
+				if out, e := s.cli("decision", "answer", d.DecisionID, "day_allow"); e == nil {
+					t.Fatal("day_allow was accepted for an L3 ask", out)
+				}
+				choice = "approve"
+			}
 			if choice != "timeout" {
 				if out, e := s.cli("decision", "answer", d.DecisionID, choice); e != nil {
 					t.Fatal(e, out)
@@ -181,21 +193,6 @@ func TestGuardMarkerRoutingAfterRealHandoff(t *testing.T) {
 				t.Logf("choice=%s exit=%d removed=%t stderr=%q", choice, cmd.ProcessState.ExitCode(), os.IsNotExist(fileErr), stderr.String())
 			case <-time.After(5 * time.Second):
 				t.Fatal("decision did not resolve")
-			}
-			if choice == "day_allow" {
-				// A distinct ask command in the same cwd is covered by the persisted day grant.
-				if e := os.WriteFile(target, []byte("test-only"), 0600); e != nil {
-					t.Fatal(e)
-				}
-				follow := exec.Command(shim, target)
-				follow.Env = cmd.Env
-				follow.Dir = cmd.Dir
-				if b, e := follow.CombinedOutput(); e != nil {
-					t.Fatal("day allowance lost", e, string(b))
-				}
-				if _, e := os.Stat(target); !os.IsNotExist(e) {
-					t.Fatal("day-allowed deletion not executed", e)
-				}
 			}
 		})
 	}

@@ -102,7 +102,6 @@ func TestTierTableL1(t *testing.T) {
 		askCase(`git cherry-pick --abort`, "dangerous", 1, ""),
 		askCase(`git commit -m "fix deploy script"`, "danger-word-line", 1, ""),
 		askCase(`aws --endpoint-url http://localhost:4566 s3 ls`, "aws", 1, "emulator"),
-		askCase(`AWS_ENDPOINT_URL=http://localhost:4566 aws dynamodb create-table --table-name t`, "aws", 1, "emulator"),
 		askCase(`aws --endpoint-url http://127.0.0.1:8000 s3 ls`, "aws", 1, "emulator"),
 		askCase(`cat <(aws --endpoint-url http://localhost:4566 s3 ls)`, "shell-line", 1, "emulator"),
 		askCase(`cd "$D" && mkdir -p out`, "guard-boundary", 1, ""),
@@ -126,6 +125,13 @@ func TestTierTableL1(t *testing.T) {
 // (B) L3 になること
 func TestTierTableL3(t *testing.T) {
 	runTierCases(t, []tierCase{
+		// 環境変数 AWS_ENDPOINT_URL は見ない。エミュレーターと見なすのは --endpoint-url（ループバック）だけ。
+		askCase(`AWS_ENDPOINT_URL=http://localhost:4566 aws dynamodb create-table --table-name t`, "aws", 3, "unknown"),
+		askCase(`AWS_IGNORE_CONFIGURED_ENDPOINT_URLS=true AWS_ENDPOINT_URL=http://localhost:4566 aws dynamodb delete-table --table-name t`, "aws", 3, "unknown"),
+		askCase(`AWS_ENDPOINT_URL_DYNAMODB=https://dynamodb.ap-northeast-1.amazonaws.com AWS_ENDPOINT_URL=http://localhost:4566 aws dynamodb delete-table --table-name t`, "aws", 3, "unknown"),
+		askCase(`aws --endpoint-url http://localhost:4566 --endpoint https://dynamodb.ap-northeast-1.amazonaws.com dynamodb delete-table --table-name t`, "aws", 3, "unknown"),
+		askCase(`aws --endpoint=https://dynamodb.ap-northeast-1.amazonaws.com dynamodb delete-table --table-name t`, "aws", 3, "unknown"),
+		askCase(`aws --endpoint-url http://localhost:4566 --endpoint-url https://dynamodb.ap-northeast-1.amazonaws.com dynamodb delete-table --table-name t`, "aws", 3, "unknown"),
 		askCase(`rm -rf /etc/hosts`, "rm-paths", 3, ""),
 		askCase(`rm -rf ../other`, "rm-paths", 3, ""),
 		askCase(`rm -rf .git`, "rm-paths", 3, ""),
@@ -294,4 +300,37 @@ func TestLoopbackURL(t *testing.T) {
 			t.Errorf("loopbackURL(%q)=%v want %v", url, got, want)
 		}
 	}
+}
+
+// deploy/publish の語が行にあっても、下の規則（削除・外向き・SQL など）が先に return されない。
+func TestTierTableDangerWordDoesNotHideOtherRules(t *testing.T) {
+	var cases []tierCase
+	for _, l := range []string{
+		`aws dynamodb delete-table --table-name t # deploy`,
+		`git log --grep publish; rm -rf /Users/nobody/Documents`,
+		`diskutil eraseDisk JHFS+ x disk9 # publish`,
+		`git commit -m "deploy"; aws dynamodb delete-table --table-name t`,
+		`curl -X DELETE https://example.com/x # deploy`,
+		`psql -h db.example.com -c "delete from x" # deploy`,
+		"bash <<'EOF'\naws s3 ls # deploy\nEOF",
+		`cat <(aws s3 ls) # deploy`,
+		`aws dynamodb delete-table --table-name deploy-x --profile dev`,
+		`rm -rf /Users/nobody/deploy-old -e dev`,
+		`curl -X DELETE https://example.com/deploy --env dev`,
+		`diskutil eraseDisk JHFS+ deploy disk9 --env dev`,
+	} {
+		cases = append(cases, tierCase{line: l, decision: "ask", tier: 3})
+	}
+	runTierCases(t, cases)
+}
+
+// 見つけたものを消す・実行する広いスキャンは L3。
+func TestTierTableWideScanActions(t *testing.T) {
+	runTierCases(t, []tierCase{
+		askCase(`AI_GUARD_REQUEST_REASON='探す' find / -name '*.log' -delete`, "wide-scan", 3, ""),
+		askCase(`AI_GUARD_REQUEST_REASON='探す' fd . / -x rm`, "wide-scan", 3, ""),
+		askCase(`AI_GUARD_REQUEST_REASON='探す' fd . / --exec-batch rm`, "wide-scan", 3, ""),
+		askCase(`AI_GUARD_REQUEST_REASON='探す' find / -name x`, "wide-scan", 1, ""),
+		askCase(`AI_GUARD_REQUEST_REASON='探す' fd x /`, "wide-scan", 1, ""),
+	})
 }

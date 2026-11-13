@@ -100,7 +100,11 @@ type Verdict struct {
 	Dest      string `json:"-"`
 	TierRule  string `json:"-"`
 	AllowedBy string `json:"-"`
+	// 行の中の ask のコマンドごとの許可の鍵。一時許可・1日許可は、全部に有効な許可があるときだけ当てる。
+	GrantKeys []grantKey `json:"-"`
 }
+
+type grantKey struct{ Temp, Day string }
 
 func (v Verdict) MarshalJSON() ([]byte, error) {
 	var key, suppressed *string
@@ -202,9 +206,6 @@ func classifyRules(c Config, i Input) Verdict {
 		return v
 	}
 	allow := result("allow", "default", "")
-	const dangerousReason = "実行前に承認が必要です。"
-	askL1 := askAt("dangerous", dangerousReason, TierL1, "")
-	askL3 := askAt("dangerous", dangerousReason, TierL3, "")
 	if cmd == "sqlite3" || localWrangler(i) {
 		return allow
 	}
@@ -214,15 +215,34 @@ func classifyRules(c Config, i Input) Verdict {
 		}
 		return destinationAsk(i, "d1-sql-write", "D1 への書き込み SQL は確認が必要です")
 	}
+	// deploy/publish の語があっても、下の規則（削除・外向き・SQL など）は必ず評価する。
+	rest := commandRules(c, i, cmd, a)
 	if danger(c, i) {
-		// 行の中の別のコマンドに deploy/publish の語があるだけで、このコマンド自身には無い時は、宛先を決められない L3 にはしない。
 		own := i
 		own.RawLine = ""
 		if !danger(c, own) {
+			// 行の中の別のコマンドに語があるだけ。下の規則が ask ならそれを返し、allow のときだけ L1。
+			if rest.Decision == "ask" {
+				return rest
+			}
 			return askAt("danger-word", "deploy/publish 系の操作は確認が必要です", TierL1, "")
 		}
-		return destinationAsk(i, "danger-word", "deploy/publish 系の操作は確認が必要です")
+		// 語があるときは、宛先から決めたティアと下の規則のティアの高いほうを採る（規則名は danger-word）。
+		v := destinationAsk(i, "danger-word", "deploy/publish 系の操作は確認が必要です")
+		if rest.Decision == "ask" && rest.effectiveTier() > v.Tier {
+			v.Tier, v.Dest, v.TierRule = rest.effectiveTier(), rest.Dest, rest.tierRuleName()
+		}
+		return v
 	}
+	return rest
+}
+
+// commandRules は、コマンド自身の引数だけで決まる削除・外向き・SQL などの規則。
+func commandRules(c Config, i Input, cmd string, a []string) Verdict {
+	allow := result("allow", "default", "")
+	const dangerousReason = "実行前に承認が必要です。"
+	askL1 := askAt("dangerous", dangerousReason, TierL1, "")
+	askL3 := askAt("dangerous", dangerousReason, TierL3, "")
 	switch cmd {
 	case "rm", "rmdir", "rimraf", "trash":
 		probes := map[string]string{}
