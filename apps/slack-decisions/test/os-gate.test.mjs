@@ -26,7 +26,7 @@ for (const mode of ["run", "deliver", "deliver-context"]) {
     const source = `import { main } from ${JSON.stringify(new URL("../slack-decisions.mjs", import.meta.url).href)}; await main({argv:['node','daemon',${JSON.stringify(mode)},'/missing'], userInfo:()=>({username:'someoneelse'})});`;
     try {
       const result = await run(process.execPath, ["--input-type=module", "-e", source], {
-        env: { ...process.env, SLACK_DECISIONS_CONFIG: config, SLACK_DECISIONS_OS_USER: "kazuph", SLACK_DECISIONS_ALLOWED_USER: "kazuph", SLACK_DECISIONS_STATE_DIR: dir }, timeout: 20000,
+        env: { ...process.env, SLACK_DECISIONS_CONFIG: config, SLACK_DECISIONS_OS_USER: "kazuph", SLACK_DECISIONS_ALLOWED_USER: "kazuph", SLACK_DECISIONS_STATE_DIR: dir }, timeout: 3000,
       });
       assert.match(result.stderr, /Slack 送信をしません.*whoami=someoneelse/);
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
