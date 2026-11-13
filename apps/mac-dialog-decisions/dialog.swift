@@ -757,6 +757,8 @@ final class DialogController: NSObject, NSWindowDelegate {
     if spec.allow_text {
       let caption = label(spec.options.isEmpty
         ? "回答（⌘↩ で送信）\n画像を⌘V・ドラッグで添付できます（4枚・1枚20MBまで）。画像内の秘密は伏せ字になりません。"
+        : spec.multi_select
+        ? "自由入力（選んだ選択肢と文を一緒に送ります）\n画像を⌘V・ドラッグで添付できます（4枚・1枚20MBまで）。画像内の秘密は伏せ字になりません。"
         : "自由入力（入力すると選択が外れます。その後に選び直すと選択と文を一緒に送ります）\n画像を⌘V・ドラッグで添付できます（4枚・1枚20MBまで）。画像内の秘密は伏せ字になりません。",
         size: Look.small, color: .secondaryLabelColor, selectable: false)
       bottom.addArrangedSubview(caption)
@@ -958,7 +960,9 @@ final class DialogController: NSObject, NSWindowDelegate {
 
 extension DialogController: NSTextViewDelegate {
   func textDidChange(_ notification: Notification) {
-    if !(textView?.string ?? "").isEmpty { for card in cards { card.checked = false } }
+    // Single choice: typing means "answer with text instead", so the chosen
+    // option is dropped. Multi-select sends the checks and the text together.
+    if !spec.multi_select && !(textView?.string ?? "").isEmpty { for card in cards { card.checked = false } }
     refreshSubmit(); saveDraft()
   }
   func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
