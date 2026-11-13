@@ -1013,6 +1013,30 @@ function guardRequestKey(machineId, decision) {
   return JSON.stringify([machineId, origin.pane_id || "", origin.cwd || "", origin.command || "", origin.target_command || "", origin.reason || "", (decision.options || []).map(o => [o.id, o.label, o.role, o.description, o.preview, o.preview_unavailable])]);
 }
 
+// --- 通知の振り分け（[notify]、ikesu config notify --json） -------------------
+export const NOTIFY_RELOAD_MS = 60_000;
+
+/**
+ * 設定とその判断待ちの reach から、Slack に投稿する時刻を求める。
+ * 設定が無効、slack が send="unanswered" でないときは null（今の動き: メガネの3分）。
+ * 時刻は判断待ちの created_unix_ms と reach の at から毎回計算するので、再起動しても残りの時間から続く。
+ */
+export function notifyPlan(cfg, decision, now) {
+  if (!cfg?.enabled) return null;
+  const slack = (cfg.channels || []).find(channel => channel.id === "slack");
+  if (!slack || slack.send !== "unanswered") return null;
+  const reach = decision?.reach || {};
+  const sources = slack.fallback_for || [];
+  if (sources.some(id => reach[id]?.state === "no_client")) return { at: now, reason: "no_client（アプリに届かない）" };
+  const shown = sources.map(id => reach[id]).filter(item => item?.state === "shown").map(item => Number(item.at_unix_ms) || 0);
+  if (shown.length) {
+    const after = Number(slack.after_ms) || 0;
+    return { at: Math.min(...shown) + after, reason: `shown+${Math.round(after / 1000)}秒（アプリに届いて未回答）` };
+  }
+  const timeout = Number(cfg.reach_timeout_ms) || 0;
+  return { at: (Number(decision?.created_unix_ms) || now) + timeout, reason: `届かない（${Math.round(timeout / 1000)}秒たっても届いた返事なし）` };
+}
+
 export class SlackDecisionsDaemon {
   constructor({
     config,
@@ -1024,10 +1048,15 @@ export class SlackDecisionsDaemon {
     clientViews,
     clock = reactionClock,
     glassesState, // () => Promise<string|null>
+    notifyConfig = null, // () => Promise<object>: ikesu config notify --json の中身
     log: logFn = log,
     postsFilePath = null,
   }) {
     this.config = config;
+    this.notifyConfig = notifyConfig;
+    this.notify = null; // 読み込んだ [notify]。null は今の動き
+    this._notifyKey = "";
+    this._notifyTimer = null;
     this.clientViews = clientViews;
     this.clock = clock;
     this.slack = slack;
@@ -1129,6 +1158,8 @@ export class SlackDecisionsDaemon {
   async start() {
     this.clientViews?.start(() => this.refreshVisibleDecisions());
     this.loadPostsFile();
+    await this.reloadNotify();
+    this._scheduleNotifyReload();
     this._watchDone = this.watchLoop();
     this._schedulePoll();
     if (this.config.socketMode && this.slack.appToken) {
@@ -1144,8 +1175,10 @@ export class SlackDecisionsDaemon {
     this.stopped = true;
     this.clientViews?.stop();
     if (this.pollTimer) clearTimeout(this.pollTimer);
+    if (this._notifyTimer) clearTimeout(this._notifyTimer);
     for (const entry of this.entries.values()) {
       if (entry.postTimer) clearTimeout(entry.postTimer);
+      if (entry.routeTimer) this.clock.clearTimeout(entry.routeTimer);
       this.clearReaction(entry);
     }
     for (const record of this.reusablePosts.values()) {
@@ -1209,6 +1242,93 @@ export class SlackDecisionsDaemon {
     }
   }
 
+  // ---- 通知の振り分け ------------------------------------------------------
+
+  _scheduleNotifyReload() {
+    if (!this.notifyConfig || this.stopped) return;
+    this._notifyTimer = setTimeout(async () => {
+      await this.reloadNotify();
+      this._scheduleNotifyReload();
+    }, NOTIFY_RELOAD_MS);
+    this._notifyTimer.unref?.();
+  }
+
+  /** 設定を読み直す。読めないときは今の動きに戻し、理由をログに残す。変わったら待機中の判断待ちを計算し直す。 */
+  async reloadNotify() {
+    if (!this.notifyConfig) return;
+    let next = null;
+    try { next = await this.notifyConfig(); }
+    catch (error) { if (this._notifyKey !== "error") this.log(`通知の設定を読めません（今の動きに戻します）: ${error.message}`); this._notifyKey = "error"; this.notify = null; return this.rerouteAll(); }
+    const key = JSON.stringify(next);
+    if (key === this._notifyKey) return;
+    this._notifyKey = key;
+    this.notify = next;
+    for (const warning of next?.warnings || []) this.log(`通知の設定: ${warning}`);
+    this.log(next?.enabled ? "通知の振り分けを有効にしました" : "通知の振り分けは無効（今の動き）");
+    await this.rerouteAll();
+  }
+
+  async rerouteAll() {
+    for (const entry of [...this.entries.values()]) {
+      if (this.canRoute(entry)) await this.routeOrLegacy(entry);
+    }
+  }
+
+  /** 振り分けの決まりがあればそれで、無くなっていて待機中だったなら今の動き（メガネの3分）に戻す。 */
+  async routeOrLegacy(entry) {
+    const wasRouting = !!entry.routeTimer;
+    if (await this.routeEntry(entry)) return;
+    if (wasRouting && this.canRoute(entry)) await this.armLegacy(entry);
+  }
+
+  /** 今の動き: メガネ接続中なら postDelayMs 後に、未接続ならすぐ投稿する。 */
+  async armLegacy(entry) {
+    if (entry.postTimer) return;
+    const glasses = await this.glassesState();
+    if (glasses === "connected") {
+      this.log(
+        `グラス接続中: ${entry.decision.decision_id} は ${Math.round(this.config.postDelayMs / 1000)}秒たっても未回答なら投稿`,
+      );
+      entry.postTimer = setTimeout(() => {
+        entry.postTimer = null;
+        void this.postDecision(entry);
+      }, this.config.postDelayMs);
+    } else {
+      this.log(`グラス未接続: ${entry.decision.decision_id} をすぐ投稿します`);
+      await this.postDecision(entry);
+    }
+  }
+
+  canRoute(entry) {
+    return !entry.resolved && !entry.superseded && !entry.post && !entry.posting && !this.stopped && !entry.machineDown &&
+      !this.machinesDown.has(entry.machineId) && (!entry.decision.status || entry.decision.status === "pending");
+  }
+
+  /** 振り分けの決まりで投稿の時刻を決める。決まりが無ければ false（呼び出し側が今の動きをする）。 */
+  async routeEntry(entry) {
+    const plan = notifyPlan(this.notify, entry.decision, this.clock.now());
+    if (!plan) {
+      if (entry.routeTimer) { this.clock.clearTimeout(entry.routeTimer); entry.routeTimer = null; }
+      return false;
+    }
+    if (!this.canRoute(entry)) return true;
+    if (entry.routeTimer) { this.clock.clearTimeout(entry.routeTimer); entry.routeTimer = null; }
+    // 振り分けの決まりがあるときは、メガネの3分の待ちで先に投稿しない。
+    if (entry.postTimer) { clearTimeout(entry.postTimer); entry.postTimer = null; }
+    const wait = plan.at - this.clock.now();
+    if (wait <= 0) {
+      this.log(`通知の振り分け: ${entry.decision.decision_id} を投稿します（${plan.reason}）`);
+      await this.postDecision(entry);
+      return true;
+    }
+    entry.routeTimer = this.clock.setTimeout(() => {
+      entry.routeTimer = null;
+      void this.routeEntry(entry);
+    }, Math.min(wait, 2 ** 31 - 1)); // setTimeout の上限。発火のたびに計算し直す
+    entry.routeTimer.unref?.();
+    return true;
+  }
+
   async onCreated(mid, machine, decision) {
     const key = decisionKey(mid, decisionIdOf(decision));
     const existing = this.entries.get(key);
@@ -1224,7 +1344,7 @@ export class SlackDecisionsDaemon {
         existing.decision = decision;
         if (existing.post) {
           await this.renderPending(existing);
-        } else {
+        } else if (!(await this.routeEntry(existing))) {
           await this.postDecision(existing);
         }
         if (existing.reactionDraft) this.armReaction(existing);
@@ -1280,19 +1400,9 @@ export class SlackDecisionsDaemon {
       return;
     }
 
-    const glasses = await this.glassesState();
-    if (glasses === "connected") {
-      this.log(
-        `グラス接続中: ${decision.decision_id} は ${Math.round(this.config.postDelayMs / 1000)}秒たっても未回答なら投稿`,
-      );
-      entry.postTimer = setTimeout(() => {
-        entry.postTimer = null;
-        void this.postDecision(entry);
-      }, this.config.postDelayMs);
-    } else {
-      this.log(`グラス未接続: ${decision.decision_id} をすぐ投稿します`);
-      await this.postDecision(entry);
-    }
+    if (await this.routeEntry(entry)) return;
+
+    await this.armLegacy(entry);
   }
 
   async onUpdated(mid, machine, decision) {
@@ -1320,6 +1430,7 @@ export class SlackDecisionsDaemon {
     entry.decision = decision;
     entry.machine = machine;
     if (entry.post) await this.renderPending(entry);
+    else if (this.canRoute(entry)) await this.routeOrLegacy(entry);
   }
 
   refreshVisibleDecisions() {
@@ -1602,6 +1713,7 @@ export class SlackDecisionsDaemon {
     entry.decision = decision;
     clearTimeout(entry.answerRetryTimer);
     if (entry.postTimer) clearTimeout(entry.postTimer);
+    if (entry.routeTimer) { this.clock.clearTimeout(entry.routeTimer); entry.routeTimer = null; }
     if (entry.superseded) { this.posts.delete(key); this.savePostsFile(); }
     entry.deliveryWork = (async () => {
       if (entry.renderWork) await entry.renderWork;
@@ -2754,6 +2866,11 @@ export async function main({ argv = process.argv, userInfo = os.userInfo } = {})
     runAnswer: createRunAnswer(config, log),
     getDecision: createGetDecision(config, log),
     glassesState: () => saberaGlassesState(config.saberaSocket),
+    notifyConfig: async () => {
+      const result = await createRunAnswer(config, log)(["config", "notify", "--json"]);
+      if (result.code !== 0) throw new Error(`ikesu config notify --json が失敗 (code ${result.code}): ${String(result.stderr || "").trim().slice(0, 200)}`);
+      return JSON.parse(result.stdout);
+    },
     log,
     postsFilePath: path.join(config.stateDir, POSTS_FILE),
   });

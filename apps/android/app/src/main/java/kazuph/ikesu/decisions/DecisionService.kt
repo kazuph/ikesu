@@ -32,6 +32,9 @@ object DecisionState : AnswerChannel {
     @Volatile var socket: WebSocket? = null
     val videos = mutableMapOf<String, File>()
     fun send(value: JSONObject): Boolean = socket?.send(value.toString()) == true
+    /** 通知を出した判断待ちの id を bridge に知らせる（届いた記録。同じ id を何度送ってもよい）。 */
+    fun shown(ids: List<String>): Boolean =
+        ids.isNotEmpty() && send(JSONObject().put("type", "shown").put("ids", JSONArray(ids)))
     override fun answer(decisionId: String, optionIds: List<String>, text: String, images: List<ByteArray>, sequence: String): Boolean =
         send(JSONObject().put("type", "answer").put("id", decisionId).put("sequence", sequence)
             .put("options", JSONArray(optionIds)).put("text", text)
@@ -159,6 +162,9 @@ class DecisionService : Service() {
                 .setStyle(Notification.BigTextStyle().bigText(item.optString("location", "判断を待っています")))
                 .setContentIntent(pending).setAutoCancel(true).build())
         }
+        // 通知を出している判断待ちを bridge に知らせる。つなぎ直した一覧でも同じ分をもう一度送る。
+        DecisionState.shown(notifiedIds((0 until items.length()).mapNotNull { items.optJSONObject(it) }
+            .map { it.optString("id") to it.optBoolean("notify") }, manager.areNotificationsEnabled()))
         changed()
     }
     private fun receiveVideo(message: JSONObject) {

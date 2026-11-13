@@ -42,3 +42,36 @@ func TestConfigCheckWithoutTerminalOrServer(t *testing.T) {
 		})
 	}
 }
+
+func TestConfigNotifyJSON(t *testing.T) {
+	teststate.Lock(t)
+	p := filepath.Join(t.TempDir(), "config.toml")
+	teststate.Setenv(t, config.EnvVar, p)
+	run := func(content string) (string, int) {
+		if err := os.WriteFile(p, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+		var out, stderr bytes.Buffer
+		code := Run([]string{"config", "notify", "--json"}, Options{Stdout: &out, Stderr: &stderr})
+		return out.String(), code
+	}
+	if out, code := run(""); code != 0 || out != `{"enabled":false,"reach_timeout_ms":30000,"channels":[],"warnings":[]}`+"\n" {
+		t.Fatal(code, out)
+	}
+	good := "[notify]\nreach_timeout=\"30s\"\n[[notify.channel]]\nid=\"android\"\nsend=\"now\"\n[[notify.channel]]\nid=\"slack\"\nsend=\"unanswered\"\nafter=\"5m\"\nfallback_for=[\"android\"]\n"
+	want := `{"enabled":true,"reach_timeout_ms":30000,"channels":[{"id":"android","send":"now","after_ms":0,"fallback_for":[]},{"id":"slack","send":"unanswered","after_ms":300000,"fallback_for":["android"]}],"warnings":[]}` + "\n"
+	if out, code := run(good); code != 0 || out != want {
+		t.Fatal(code, out)
+	}
+	if out, code := run("[ui\n"); code == 0 || out != "" {
+		t.Fatal(code, out)
+	}
+	// check も notify の警告を出す。
+	if err := os.WriteFile(p, []byte("[notify]\n[[notify.channel]]\nid=\"x\"\nsend=\"now\"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var out, stderr bytes.Buffer
+	if code := Run([]string{"config", "check"}, Options{Stdout: &out, Stderr: &stderr}); code != 1 || !strings.Contains(out.String(), "notify.channel[0].id") {
+		t.Fatal(code, out.String())
+	}
+}

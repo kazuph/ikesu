@@ -13,6 +13,8 @@ export class DecisionRegistry extends MacDialogDecisionsDaemon {
     this.publicIds = new Map();
     this.submissions = new Map();
     this.onSnapshot = () => {};
+    // 認証済みのスマホの接続があるか。main.mjs が socket につなぐ。
+    this.hasClients = () => true;
     this.snapshotRevision = 0;
     this.onStateChange = () => {
       const revision = ++this.snapshotRevision;
@@ -38,6 +40,22 @@ export class DecisionRegistry extends MacDialogDecisionsDaemon {
       }).catch(error => this.log(`表示素材の取得に失敗: ${error.message}`));
     }
     this.notify();
+    if (entry && !this.hasClients()) void this.reach(entry, 'no_client');
+  }
+  /** 「届いた」をその判断待ちのあるマシンのサーバーに記録する（回答と同じ ikesu decision の経路）。 */
+  async reach(entry, state) {
+    if (entry.reached === 'shown' || entry.reached === state || entry.reaching === state) return;
+    entry.reaching = state;
+    try {
+      const result = await this.runAnswer(['decision', 'reach', entry.decision.decision_id, '--channel', 'android', '--state', state, '--machine', entry.machineId]);
+      if (result.code === 0) { if (state === 'shown' || !entry.reached) entry.reached = state; }
+      else this.log(`届いた記録(${state})に失敗: ${String(result.stderr || result.stdout || '').trim().slice(0, 200)}`);
+    } catch (error) { this.log(`届いた記録(${state})に失敗: ${error.message}`); }
+    finally { entry.reaching = null; }
+  }
+  /** アプリが通知を出した判断待ち（アプリ用の id）を受け取る。 */
+  async shown(ids) {
+    await Promise.all([...new Set(ids)].map(id => { const entry = this.find(id); return entry && this.reach(entry, 'shown'); }));
   }
   async recordMedia(entry, event) {
     if (entry.mediaAbort.signal.aborted) return;

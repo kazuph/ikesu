@@ -17,6 +17,7 @@ const decisionHelp = `ikesu decision commands:
   ikesu decision list [--status pending|answered|expired|cancelled]
   ikesu decision get <id> [--machine <label-or-id>]
   ikesu decision cancel <id>
+  ikesu decision reach <id> --channel <mac-panel|android|slack> --state <shown|no_client> [--machine <label-or-id>]
 `
 
 func (r *runner) decisionCLI(args []string) int {
@@ -39,6 +40,33 @@ func (r *runner) decisionCLI(args []string) int {
 			return usageErr(r, decisionHelp)
 		}
 		return r.printResult("cli:decision:"+args[0], "decision."+args[0], api.DecisionTargetParams{DecisionID: args[1]})
+	case "reach":
+		if handled, code := r.decisionMachineCommand("reach", args[1:]); handled {
+			return code
+		}
+		if len(args) < 2 || strings.HasPrefix(args[1], "-") {
+			return usageErr(r, decisionHelp)
+		}
+		p := api.DecisionReachParams{DecisionID: args[1]}
+		for i := 2; i < len(args); {
+			flag := args[i]
+			if flag != "--channel" && flag != "--state" {
+				return usageErr(r, decisionHelp)
+			}
+			v, ok := flagValue(args, &i)
+			if !ok {
+				return usageErr(r, "missing value for "+flag)
+			}
+			if flag == "--channel" {
+				p.Channel = v
+			} else {
+				p.State = v
+			}
+		}
+		if p.Channel == "" || p.State == "" {
+			return usageErr(r, decisionHelp)
+		}
+		return r.printResult("cli:decision:reach", api.MethodDecisionReach, p)
 	case "list":
 		p := api.DecisionListParams{}
 		if len(args) == 3 && args[1] == "--status" {

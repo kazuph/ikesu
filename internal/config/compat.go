@@ -94,6 +94,13 @@ func Decode(data []byte) (Config, error) {
 			}
 		}
 	}
+	notifyRaw, hasNotify := raw["notify"]
+	delete(raw, "notify")
+	if hasNotify {
+		c.Notify = parseNotify(notifyRaw, &c.Warnings)
+	} else {
+		c.Notify = NotifyConfig{ReachTimeout: DefaultNotifyReachTimeout}
+	}
 	decodeTable(raw, reflect.ValueOf(&c).Elem(), "", &c.Warnings)
 	c.applyIndexedBindings()
 	if binding, legacy := c.Keys.Actions["fullscreen"]; legacy {
