@@ -25,6 +25,9 @@ type guardExecutionBinding struct {
 // 行の承認の claim が有効な長さ。
 const guardLineApprovalTTL = 10 * time.Minute
 
+// guardProcArgs はカーネルから argv を読む。試験で差し替える。
+var guardProcArgs = platform.ProcArgs
+
 // 行の判定を呼ぶ guard line の --via の種類。1段目の確認を出す側で、持ち主は guard の親（シェル）。
 var guardLineVia = map[string]bool{"accept-line": true, "exec-string": true, "zsh-debug": true, "bash-debug": true}
 
@@ -97,7 +100,7 @@ func (s *Server) bindGuardExecution(peer int, params api.DecisionCreateParams, d
 	if err != nil || !os.SameFile(actual, own) {
 		return
 	}
-	argv := guardArgv(platform.ProcArgs(peer))
+	argv := guardArgv(guardProcArgs(peer))
 	if len(argv) < 3 || argv[1] != "guard" || (argv[2] != "claude-prefix" && argv[2] != "line" && argv[2] != "exec") {
 		return
 	}
