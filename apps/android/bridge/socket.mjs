@@ -18,7 +18,16 @@ export function validateAnswer(message) {
   return message;
 }
 
-export async function listen({ address, port, token, snapshot, answer, later, videoPath = () => null }) {
+export const MAX_SHOWN_IDS = 200;
+export function validateShown(message) {
+  if (!ONLY(message, ['type', 'ids']) || message.type !== 'shown' || !Array.isArray(message.ids) || message.ids.length > MAX_SHOWN_IDS ||
+      !message.ids.every(value => typeof value === 'string' && value.length > 0 && value.length <= 128)) {
+    throw Error('通知済みの形式が不正です');
+  }
+  return message;
+}
+
+export async function listen({ address, port, token, snapshot, answer, later, shown = async () => {}, videoPath = () => null }) {
   const server = http.createServer((_request, response) => { response.writeHead(404); response.end(); });
   const sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES, perMessageDeflate: false });
   server.on('upgrade', (request, socket, head) => {
@@ -63,6 +72,8 @@ export async function listen({ address, port, token, snapshot, answer, later, vi
         if (message.type === 'answer') {
           const response = await answer(validateAnswer(message));
           if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'answer_result', sequence: message.sequence, ...response }));
+        } else if (message.type === 'shown') {
+          await shown(validateShown(message).ids);
         } else if (ONLY(message, ['type', 'id']) && message.type === 'later' && typeof message.id === 'string') {
           await later(message.id);
         } else { ws.close(1008); }
@@ -74,6 +85,7 @@ export async function listen({ address, port, token, snapshot, answer, later, vi
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, address, resolve); });
   return {
     address: server.address(),
+    clientCount() { let count = 0; for (const ws of sockets.clients) if (ws.readyState === WebSocket.OPEN && ws.authenticated) count++; return count; },
     publish(decisions) { for (const ws of sockets.clients) if (ws.readyState === WebSocket.OPEN && ws.authenticated) ws.sendSnapshot(decisions); },
     setToken(value) { token = value; for (const ws of sockets.clients) ws.terminate(); },
     close() { for (const ws of sockets.clients) ws.terminate(); return new Promise(resolve => server.close(resolve)); },

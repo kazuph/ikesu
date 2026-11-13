@@ -62,7 +62,7 @@ func (r *runner) decisionMachineCommand(command string, args []string) (bool, in
 			i++
 		} else {
 			clean = append(clean, args[i])
-			if args[i] == "--text" || args[i] == "--responder" {
+			if args[i] == "--text" || args[i] == "--responder" || args[i] == "--channel" || args[i] == "--state" {
 				if i+1 >= len(args) {
 					return true, usageErr(r, "missing option value")
 				}

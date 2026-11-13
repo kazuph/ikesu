@@ -17,7 +17,7 @@ const decisionHelp = `ikesu decision commands:
   ikesu decision list [--status pending|answered|expired|cancelled]
   ikesu decision get <id> [--machine <label-or-id>]
   ikesu decision cancel <id>
-  ikesu decision reach <id> --channel <mac-panel|android|slack> --state <shown|no_client>
+  ikesu decision reach <id> --channel <mac-panel|android|slack> --state <shown|no_client> [--machine <label-or-id>]
 `
 
 func (r *runner) decisionCLI(args []string) int {
@@ -41,6 +41,9 @@ func (r *runner) decisionCLI(args []string) int {
 		}
 		return r.printResult("cli:decision:"+args[0], "decision."+args[0], api.DecisionTargetParams{DecisionID: args[1]})
 	case "reach":
+		if handled, code := r.decisionMachineCommand("reach", args[1:]); handled {
+			return code
+		}
 		if len(args) < 2 || strings.HasPrefix(args[1], "-") {
 			return usageErr(r, decisionHelp)
 		}
