@@ -49,6 +49,10 @@ test('paths after 【動画】-style labels and before （…） or 【…】 ar
  // A colon inside https:// is not a path boundary.
  assert.deepEqual(found.images,['https://commons.wikimedia.org/wiki/File:Gyuu-don_001.jpg']);
  assert.deepEqual(discoverRichContent({body:`画面: ${video}【補足】`}).videos,[video]);
+ // Two paths on one line stay two paths; an ASCII-colon label works.
+ assert.deepEqual(discoverRichContent({body:'【A】/Users/x/a.html（y）【B】/Users/x/b.html（z）'}).pages,['/Users/x/a.html','/Users/x/b.html']);
+ assert.deepEqual(discoverRichContent({body:'参照：/Users/x/a.html、/Users/x/b.html'}).pages,['/Users/x/a.html','/Users/x/b.html']);
+ assert.deepEqual(discoverRichContent({body:'パス:/Users/x/a.png'}).images,['/Users/x/a.png']);
  // http(s) .html stays an ordinary link, not a local page.
  assert.equal(discoverRichContent({body:'https://example.test/a.html'}).pages,undefined);
 });

@@ -143,13 +143,16 @@ export class RichService {
  }
  async load(spec,machine,signal,publish) {
   const found=discoverRichContent(spec); const cached=[];
+  const linkCards=found.links.filter(url=>!videoPath(url)&&!imagePath(url));
+  // Cards are stored by index on Android, so image-turned-cards follow the link cards without gaps.
+  let nextCard=linkCards.length;
   const image=async(source,index)=>{
    let data;
    if(/^https?:/.test(source)) {
     const response=await fetchPublic(source,{...this.network,signal,maxBytes:RICH_LIMITS.imageBytes});
     // A URL ending in .jpg can be a page about the image (e.g. a Wikimedia
     // File: page). Show such a page as a link card instead of an image error.
-    if(/html/i.test(response.type)) {await this.card(source,response,RICH_LIMITS.cards+index,signal,cached,publish);return;}
+    if(/html/i.test(response.type)) {await this.card(source,response,nextCard++,signal,cached,publish);return;}
     data=response.data;
    } else data=await this.readImage(machine,source,signal);
    const file=await this.cache(data,'.image',signal);cached.push(file);signal.throwIfAborted();publish({status:'rich_image',index,path:file,source});
@@ -161,7 +164,7 @@ export class RichService {
       publish({status:'rich_video',index,path:file,source});
     }catch(error){if(!signal.aborted)publish({status:'rich_error',source,message:`動画を表示できません: ${error.message}`});}}),
     ...found.images.map(async(source,index)=>{try {await image(source,index);}catch(error){if(!signal.aborted)publish({status:'rich_error',message:`画像を表示できません: ${error.message}`});}}),
-    ...found.links.filter(url=>!videoPath(url)&&!imagePath(url)).map(async(url,index)=>{try {const response=await fetchPublic(url,{...this.network,signal});if(!/html/i.test(response.type)) return; await this.card(url,response,index,signal,cached,publish);
+    ...linkCards.map(async(url,index)=>{try {const response=await fetchPublic(url,{...this.network,signal});if(!/html/i.test(response.type)) return; await this.card(url,response,index,signal,cached,publish);
     }catch{}})
    ]);
   } finally { if(signal.aborted) await Promise.allSettled(cached.map(file=>fs.rm(file,{force:true})));else signal.addEventListener('abort',()=>{void Promise.allSettled(cached.map(file=>fs.rm(file,{force:true})));},{once:true}); }

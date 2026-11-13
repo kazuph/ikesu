@@ -112,6 +112,8 @@ test('an image URL that is really a page (Wikimedia File:) shows as a link card,
  await service.load({body:'・出典 http://public.test/wiki/File:Gyuu-don_001.jpg\n画像 http://public.test/wiki/photo.png'},'local',lifetime.signal,message=>published.push(message));
  assert.deepEqual(published.filter(m=>m.status==='rich_error'),[]);
  const card=published.find(m=>m.status==='rich_card');
+ // Android stores cards by index: the only card here comes first.
+ assert.equal(card?.index,0);
  assert.equal(card?.url,'http://public.test/wiki/File:Gyuu-don_001.jpg');
  assert.equal(card.title,'File:Gyuu-don 001.jpg');assert.equal(card.site,'Wikimedia Commons');
  const image=published.find(m=>m.status==='rich_image');

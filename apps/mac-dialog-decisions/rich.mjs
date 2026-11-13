@@ -39,7 +39,7 @@ export function discoverRichContent(spec) {
     if(whole)candidates.push({value:whole[1],index:0,encoded:false});
     else {
       for(const match of plain.matchAll(/["'「<](\/[^"'」>\n]+\.(?:png|jpe?g|gif|webp|mp4|mov|m4v|webm|ogv|ogg|html?))["'」>]/gi))candidates.push({value:match[1],index:match.index,encoded:false});
-      for(const match of plain.matchAll(/(?:^|[\s(（】」』：])((?:\/)[^\s<>"'`「」()[\]]+\.(?:png|jpe?g|gif|webp|mp4|mov|m4v|webm|ogv|ogg|html?))(?=$|[\s)\]、。（）【「」』,，])/gi))candidates.push({value:match[1],index:match.index,encoded:false});
+      for(const match of plain.matchAll(/(?:^|[\s(（】」』：、，,]|(?<![A-Za-z0-9]):)((?:\/)[^\s<>"'`「」()[\]（）【】、。，,]+\.(?:png|jpe?g|gif|webp|mp4|mov|m4v|webm|ogv|ogg|html?))(?=$|[\s)\]、。（）【「」』,，])/gi))candidates.push({value:match[1],index:match.index,encoded:false});
       for(const value of visibleURLs(plain).filter(mediaPath))candidates.push({value,index:plain.indexOf(value),encoded:false});
     }
     for(const candidate of candidates.sort((a,b)=>a.index-b.index)) {
