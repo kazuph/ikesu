@@ -45,4 +45,10 @@ class DecisionPresentationTest {
         assertEquals("回答する", answerLabel(multiSelect = true, selected = 0))
         assertEquals("回答する", answerLabel(multiSelect = false, selected = 1))
     }
+    @Test fun shownIdsAreOnlyThoseWithANotification() {
+        val items = listOf("a" to true, "b" to false, "" to true, "a" to true, "c" to true)
+        assertEquals(listOf("a", "c"), notifiedIds(items, true))
+        assertEquals(emptyList<String>(), notifiedIds(items, false))
+        assertEquals(emptyList<String>(), notifiedIds(emptyList(), true))
+    }
 }
