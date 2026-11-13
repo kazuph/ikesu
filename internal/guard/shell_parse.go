@@ -423,6 +423,19 @@ func lineVerdictJudged(c Config, i Input, line string, j *lineJudgement) (Input,
 				v = uv
 			}
 		}
+		if v.Decision == "ask" && v.Rule == "danger-word" && !i.runtimeLine {
+			// 行の語で danger-word になったコマンドも、語を外した判定で、未確定のコマンド名・未確定の削除を見る。
+			// 出た ask と danger-word のティアの高いほうを採る（規則名はそのまま）。
+			var extra Verdict
+			if uv, ok := unresolvedVerdict(c, command, Evaluate); ok && uv.Decision == "ask" {
+				extra = uv
+			} else if command.UnresolvedArg && has([]string{"rm", "rmdir", "rimraf", "trash"}, filepath.Base(command.Command)) {
+				extra = askAt("rm-paths", "削除操作は確認が必要です", TierL3, "")
+			}
+			if extra.Decision == "ask" && extra.effectiveTier() > v.effectiveTier() {
+				v.Tier, v.Dest, v.TierRule = extra.effectiveTier(), extra.Dest, extra.tierRuleName()
+			}
+		}
 		if command.scriptResult != nil {
 			r := command.scriptResult
 			if r.kind == scriptSafe {

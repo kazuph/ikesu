@@ -318,6 +318,13 @@ func TestTierTableDangerWordDoesNotHideOtherRules(t *testing.T) {
 		`rm -rf /Users/nobody/deploy-old -e dev`,
 		`curl -X DELETE https://example.com/deploy --env dev`,
 		`diskutil eraseDisk JHFS+ deploy disk9 --env dev`,
+		// 未確定の削除・未確定のコマンド名は、行に語があっても L3。
+		`rm -rf "$X" # deploy`,
+		`git commit -m deploy; rm -rf "$X"`,
+		`/bin/rm -rf "$X" # publish`,
+		`"$TOOL" aws s3 rb s3://b # deploy`,
+		`git log --grep publish; "$TOOL" diskutil eraseDisk JHFS+ x disk9`,
+		`rm -rf "$X/deploy" --env dev`,
 	} {
 		cases = append(cases, tierCase{line: l, decision: "ask", tier: 3})
 	}

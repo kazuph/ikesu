@@ -419,3 +419,22 @@ func TestAuditExcludesL1AllowFromTotalsAndBundles(t *testing.T) {
 		t.Fatalf("tier table: %+v", rep.TierTotals)
 	}
 }
+
+// ペインの中・申請文なしでも、未確定の削除・未確定のコマンド名は deploy/publish の語で L1 にならず通らない。
+func TestUnresolvedDeleteWithDangerWordIsNotAutoAllowed(t *testing.T) {
+	root, env := tierAuthorizeRoot(t)
+	for _, line := range []string{
+		`rm -rf "$X" # deploy`,
+		`git commit -m deploy; rm -rf "$X"`,
+		`/bin/rm -rf "$X" # publish`,
+		`"$TOOL" aws s3 rb s3://b # deploy`,
+		`git log --grep publish; "$TOOL" diskutil eraseDisk JHFS+ x disk9`,
+		`rm -rf "$X/deploy" --env dev`,
+	} {
+		i := Input{Cwd: root, Env: env}
+		var out bytes.Buffer
+		if AuthorizeLine(Config{}, root, i, line, &out, nil) {
+			t.Errorf("%q was allowed in the pane without a reason", line)
+		}
+	}
+}
