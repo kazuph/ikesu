@@ -54,6 +54,7 @@ const (
 	OutcomeNoReason  = "no_reason"
 	OutcomeNoServer  = "no_server"
 	OutcomeL1Allow   = "l1_allow" // L1 でペインの中だったので、聞かずに通した
+	OutcomeOneShot   = "one_shot" // L3 を承認した直後の、別の段での同じコマンドの判定を1回だけ通した
 )
 
 const answerTextLimit = 500
@@ -126,6 +127,8 @@ func recordAsk(root string, i Input, m Marker, v Verdict, via, command, outcome 
 	switch outcome {
 	case OutcomeL1Allow:
 		r.AllowedBy = "l1-default"
+	case OutcomeOneShot:
+		r.AllowedBy = "one-shot"
 	case OutcomeApprove, OutcomeDayAllow:
 		r.AllowedBy = "approve"
 	}

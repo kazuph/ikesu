@@ -263,3 +263,156 @@ func TestAuditTierTable(t *testing.T) {
 		}
 	}
 }
+
+func answerAwait(t *testing.T, root, option string, asked *int) Await {
+	store, err := dispatch.Open(filepath.Join(root, "ledger.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	return func(p api.DecisionCreateParams, timeout time.Duration) (api.Decision, error) {
+		*asked++
+		d, err := store.CreateDecision(p, time.Now())
+		if err != nil {
+			return d, err
+		}
+		return store.AnswerDecision(api.DecisionAnswerParams{DecisionID: d.DecisionID, Responder: "test", OptionID: &option}, time.Now())
+	}
+}
+
+func awsCall(root string, env map[string]string, sub string) Input {
+	i := Input{Command: "aws", Args: []string{"dynamodb", sub, "--table-name", "t"}, Cwd: root, Env: env}
+	i.Env["AI_GUARD_REQUEST_REASON"] = "対象のテーブルを確認するため"
+	return i
+}
+
+// 承認した1回だけ、別の段（シム）での同じコマンドの判定を通す。2回目は聞く。
+func TestOneShotApprovalPassesSecondStageOnce(t *testing.T) {
+	root, env := tierAuthorizeRoot(t)
+	asked := 0
+	await := answerAwait(t, root, "approve", &asked)
+	// 1つ目の段（行の判定）で承認する。
+	line := "aws dynamodb create-table --table-name t"
+	i := awsCall(root, env, "create-table")
+	if !AuthorizeLine(Config{}, root, i, line, &bytes.Buffer{}, await) || asked != 1 {
+		t.Fatalf("first stage: asked=%d", asked)
+	}
+	// 2つ目の段（シムで argv が来る形）は聞かずに1回通る。
+	if !Authorize(Config{}, root, awsCall(root, env, "create-table"), "shim", &bytes.Buffer{}, await) || asked != 1 {
+		t.Fatalf("second stage was asked again: asked=%d", asked)
+	}
+	recs := readDecisionRecords(t, root)
+	last := recs[len(recs)-1]
+	if last.Decision != "allow" || last.AllowedBy != "one-shot" || last.Tier != TierL3 {
+		t.Fatalf("one-shot record: %+v", last)
+	}
+	asks := readAskLines(t, root)
+	if got := asks[len(asks)-1]; got.Outcome != OutcomeOneShot || got.AllowedBy != "one-shot" {
+		t.Fatalf("one-shot ask record: %+v", got)
+	}
+	// 使ったあとの2回目は聞く。
+	if !Authorize(Config{}, root, awsCall(root, env, "create-table"), "shim", &bytes.Buffer{}, await) || asked != 2 {
+		t.Fatalf("third stage: asked=%d", asked)
+	}
+}
+
+// 別の L3 のコマンド（create-table を承認して delete-table）・別の cwd は聞く。使わなかった許可は残る。
+func TestOneShotApprovalDoesNotCoverOtherCommands(t *testing.T) {
+	root, env := tierAuthorizeRoot(t)
+	asked := 0
+	await := answerAwait(t, root, "approve", &asked)
+	if !Authorize(Config{}, root, awsCall(root, env, "create-table"), "shim", &bytes.Buffer{}, await) || asked != 1 {
+		t.Fatal("approval failed")
+	}
+	if !Authorize(Config{}, root, awsCall(root, env, "delete-table"), "shim", &bytes.Buffer{}, await) || asked != 2 {
+		t.Fatalf("delete-table passed on create-table's approval: asked=%d", asked)
+	}
+	other := t.TempDir()
+	if !Authorize(Config{}, root, awsCall(other, env, "create-table"), "shim", &bytes.Buffer{}, await) || asked != 3 {
+		t.Fatalf("another cwd passed: asked=%d", asked)
+	}
+	// 最初の承認は、使われなかったのでまだ残っている。
+	if !Authorize(Config{}, root, awsCall(root, env, "create-table"), "shim", &bytes.Buffer{}, await) || asked != 3 {
+		t.Fatalf("unused approval was lost: asked=%d", asked)
+	}
+}
+
+// キーはペイン・シェルの PID・cwd・コマンドの文字列。30秒を過ぎると照合しない。1回照合したら消える。
+func TestOneShotKeyAndExpiry(t *testing.T) {
+	root := t.TempDir()
+	m := Marker{Pane: "p1"}
+	target := OneShotTarget{Cwd: "/work", Cmd: oneShotCommand("/usr/local/bin/aws", []string{"s3", "ls"})}
+	t0 := time.Now()
+	if err := writeOneShot(root, m, []OneShotTarget{target}, t0); err != nil {
+		t.Fatal(err)
+	}
+	if target.Cmd != oneShotCommand("aws", []string{"s3", "ls"}) {
+		t.Fatal("command string depends on how the command was spelled")
+	}
+	for name, other := range map[string]struct {
+		m Marker
+		t OneShotTarget
+	}{
+		"pane":    {Marker{Pane: "p2"}, target},
+		"outside": {Marker{Pane: "p1", OutsidePane: true}, target},
+		"cwd":     {m, OneShotTarget{Cwd: "/elsewhere", Cmd: target.Cmd}},
+		"command": {m, OneShotTarget{Cwd: "/work", Cmd: oneShotCommand("aws", []string{"s3", "rm"})}},
+	} {
+		if takeOneShot(root, other.m, []OneShotTarget{other.t}, t0.Add(time.Second)) {
+			t.Errorf("%s: matched a different key", name)
+		}
+	}
+	saved := parentPID
+	parentPID = func() int { return saved() + 1 }
+	if takeOneShot(root, m, []OneShotTarget{target}, t0.Add(time.Second)) {
+		t.Error("shell PID: matched a different shell")
+	}
+	parentPID = saved
+	if takeOneShot(root, m, []OneShotTarget{target}, t0.Add(oneShotDuration+time.Second)) {
+		t.Fatal("expired approval matched")
+	}
+	if err := writeOneShot(root, m, []OneShotTarget{target}, t0); err != nil {
+		t.Fatal(err)
+	}
+	if !takeOneShot(root, m, []OneShotTarget{target}, t0.Add(oneShotDuration-time.Second)) {
+		t.Fatal("approval within 30 seconds did not match")
+	}
+	if takeOneShot(root, m, []OneShotTarget{target}, t0.Add(time.Second)) {
+		t.Fatal("approval matched twice")
+	}
+}
+
+// 行全体を承認したときは、行の中の L3 のコマンドそれぞれの許可が書かれる。
+func TestOneShotWholeLineWritesEachL3Command(t *testing.T) {
+	root, env := tierAuthorizeRoot(t)
+	asked := 0
+	await := answerAwait(t, root, "approve", &asked)
+	line := "aws dynamodb create-table --table-name t; aws dynamodb delete-table --table-name t"
+	i := awsCall(root, env, "create-table")
+	i.Command, i.Args = "", nil
+	if !AuthorizeLine(Config{}, root, i, line, &bytes.Buffer{}, await) || asked != 1 {
+		t.Fatalf("line approval: asked=%d", asked)
+	}
+	for _, sub := range []string{"create-table", "delete-table"} {
+		if !Authorize(Config{}, root, awsCall(root, env, sub), "shim", &bytes.Buffer{}, await) || asked != 1 {
+			t.Fatalf("%s was asked again: asked=%d", sub, asked)
+		}
+	}
+	if !Authorize(Config{}, root, awsCall(root, env, "delete-table"), "shim", &bytes.Buffer{}, await) || asked != 2 {
+		t.Fatalf("reuse: asked=%d", asked)
+	}
+}
+
+// 一時許可・1日許可は L3 では今までどおり書かない。L1・L2 は使い切りの対象外。
+func TestOneShotNotWrittenForL2(t *testing.T) {
+	root, env := tierAuthorizeRoot(t)
+	i := Input{Command: "curl", Args: []string{"-X", "POST", "https://example.com/x"}, Cwd: root, Env: env}
+	i.Env["AI_GUARD_REQUEST_REASON"] = "外向きの確認のため"
+	asked := 0
+	if !Authorize(Config{}, root, i, "shim", &bytes.Buffer{}, answerAwait(t, root, "approve", &asked)) {
+		t.Fatal("not approved")
+	}
+	if _, err := os.Stat(oneShotFile(root)); !os.IsNotExist(err) {
+		t.Fatalf("one-shot file written for L2: %v", err)
+	}
+}
