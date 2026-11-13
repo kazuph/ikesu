@@ -93,7 +93,7 @@ func TestScriptFileDecisionWithRealSession(t *testing.T) {
 						return len(pending.Decisions) == 1
 					})
 					if _, e := os.Stat(before); e != nil {
-						grants, _ := os.ReadFile(filepath.Join(root, ".ai_guard_temp_approval"))
+						grants, _ := os.ReadFile(filepath.Join(s.stateDir, "guard", "temp-approvals"))
 						t.Logf("grants: %s", grants)
 						t.Fatalf("first line did not run: %v; next decision: %+v body=%s", e, pending.Decisions[0], *pending.Decisions[0].Body)
 					}

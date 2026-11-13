@@ -215,7 +215,6 @@ async function main() {
       cwd: tmp, encoding: "utf8", env: { ...process.env, ...ikesuEnv,
         HOME: tmp, IKESU_GUARD_MARKER: marker, IKESU_PANE_ID: "p1",
         AI_GUARD_REQUEST_REASON: "対象プロジェクトのSlack承認試験。無害なechoだけを実行するため。",
-        AI_GUARD_TEMP_APPROVAL_FILE: path.join(tmp, scenario.name + "-approval"),
       },
     }, (err, stdout, stderr) => { output = stdout + stderr; code = err?.code ?? 0; });
     cleanup.push(() => guard.kill("SIGTERM"));

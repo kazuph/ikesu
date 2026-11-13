@@ -76,7 +76,7 @@ func TestGuardMarkerRoutingAfterRealHandoff(t *testing.T) {
 			t.Fatal(e)
 		}
 		status := filepath.Join(dir, "status")
-		s.send(fmt.Sprintf("AI_GUARD_REQUEST_REASON=古い画面の承認動作を確認する AI_GUARD_TEMP_APPROVAL_FILE=%q IKESU_GUARD_MARKER= IKESU_SOCKET_PATH=/missing.sock IKESU_PANE_ID=p999 %s %q; printf '%%s' $? > %q\r", filepath.Join(dir, "approval"), command, target, status))
+		s.send(fmt.Sprintf("AI_GUARD_REQUEST_REASON=古い画面の承認動作を確認する IKESU_GUARD_MARKER= IKESU_SOCKET_PATH=/missing.sock IKESU_PANE_ID=p999 %s %q; printf '%%s' $? > %q\r", command, target, status))
 		var pending api.DecisionListResult
 		s.waitFor("old shell pending", 5*time.Second, func(string) bool {
 			s.rpc(api.MethodDecisionList, api.DecisionListParams{Status: "pending"}, &pending)
@@ -133,8 +133,7 @@ func TestGuardMarkerRoutingAfterRealHandoff(t *testing.T) {
 			}
 			shim := filepath.Join(s.stateDir, "guard", "bin", "p_1", "rm")
 			cmd := exec.Command("/bin/zsh", "-c", `IKESU_GUARD_MARKER= IKESU_PANE_ID=p999 IKESU_SOCKET_PATH=/missing.sock "$1" "$2"`, "guard-test", shim, target)
-			approval := filepath.Join(dir, "approval")
-			cmd.Env = append(os.Environ(), "IKESU_CONFIG="+cfg, "IKESU_STATE_DIR="+s.stateDir, "AI_GUARD_TEMP_APPROVAL_FILE="+approval, "AI_GUARD_REQUEST_REASON=隔離した検査用ファイルの削除を確認する")
+			cmd.Env = append(os.Environ(), "IKESU_CONFIG="+cfg, "IKESU_STATE_DIR="+s.stateDir, "AI_GUARD_REQUEST_REASON=隔離した検査用ファイルの削除を確認する")
 			var stdout, stderr bytes.Buffer
 			cmd.Stdout, cmd.Stderr = &stdout, &stderr
 			if e := cmd.Start(); e != nil {

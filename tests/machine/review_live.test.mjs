@@ -21,14 +21,14 @@ test('review failures use real isolated servers, CLI transports and native panel
  fs.mkdirSync(evidence,{recursive:true});const root=fs.mkdtempSync(path.join(os.tmpdir(),'gmd-review-'));
  let remoteRoot,localServer,remoteServer,daemon;const requests=[],logs=[],events=[],results={};
  const save=()=>fs.writeFileSync(evidence+'/review-live.json',JSON.stringify({root,remoteRoot,results,events,logs},null,2));
- const env={...isolatedEnv(process.env),HOME:root+'/home',IKESU_STATE_DIR:root+'/state',IKESU_DB_PATH:root+'/dispatch.db',IKESU_CONFIG:root+'/config.toml',AI_GUARD_TEMP_APPROVAL_FILE:root+'/approval'};
+ const env={...isolatedEnv(process.env),HOME:root+'/home',IKESU_STATE_DIR:root+'/state',IKESU_DB_PATH:root+'/dispatch.db',IKESU_CONFIG:root+'/config.toml'};
  fs.mkdirSync(env.HOME);fs.writeFileSync(env.IKESU_CONFIG,configText);
  const local=async args=>(await exec(bin,['--session','review-proof',...args],{env,timeout:15_000})).stdout;
  const remote=async args=>(await exec('ssh',[target,[remoteRoot+'/ikesu','--session','review-proof',...args].map(quote).join(' ')],{timeout:15_000})).stdout;
  const cleanup=[async()=>{await daemon?.stop();},async()=>{for(const request of requests){request.kill('SIGTERM');await waitExit(request);}},async()=>{if(localServer){try{await local(['server','stop']);}finally{localServer.kill('SIGTERM');await waitExit(localServer);}}},async()=>{if(remoteServer){try{await remote(['server','stop']);}finally{remoteServer.kill('SIGTERM');await waitExit(remoteServer);}}},()=>save(),async()=>{if(remoteRoot)await exec('ssh',[target,'rm -r -- '+quote(remoteRoot)]);},()=>{fs.rmSync(root,{recursive:true,force:true});}];
  t.after(()=>cleanupSteps(cleanup));
  remoteRoot=(await exec('ssh',[target,'mktemp -d /tmp/gmd-review-XXXXXX'])).stdout.trim();env.IKESU_MACHINE_REMOTE_BINARY=remoteRoot+'/ikesu';
- const wrapper=`#!/bin/sh\nexport HOME=${quote(remoteRoot+'/home')}\nexport IKESU_STATE_DIR=${quote(remoteRoot+'/state')}\nexport IKESU_DB_PATH=${quote(remoteRoot+'/dispatch.db')}\nexport IKESU_CONFIG=${quote(remoteRoot+'/config.toml')}\nexport AI_GUARD_TEMP_APPROVAL_FILE=${quote(remoteRoot+'/approval')}\nexec ${quote(remoteBin)} "$@"\n`;
+ const wrapper=`#!/bin/sh\nexport HOME=${quote(remoteRoot+'/home')}\nexport IKESU_STATE_DIR=${quote(remoteRoot+'/state')}\nexport IKESU_DB_PATH=${quote(remoteRoot+'/dispatch.db')}\nexport IKESU_CONFIG=${quote(remoteRoot+'/config.toml')}\nexec ${quote(remoteBin)} "$@"\n`;
  await exec('ssh',[target,`mkdir ${quote(remoteRoot+'/home')}; cat > ${quote(remoteRoot+'/config.toml')} <<'CONFIG'\n${configText}CONFIG\ncat > ${quote(remoteRoot+'/ikesu')} <<'WRAPPER'\n${wrapper}WRAPPER\nchmod +x ${quote(remoteRoot+'/ikesu')}`]);
  const startRemote=()=>{remoteServer=spawn('ssh',[target,[remoteRoot+'/ikesu','--session','review-proof','server'].map(quote).join(' ')]);remoteServer.stderr.on('data',b=>logs.push('remote: '+b));};
  localServer=spawn(bin,['--session','review-proof','server'],{env});localServer.stderr.on('data',b=>logs.push('local: '+b));startRemote();

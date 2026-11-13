@@ -16,7 +16,7 @@ for(const failure of ['ENOENT','EACCES'])test(`実runの${failure}は停止・�
  const bin=process.env.MAC_DIALOG_TEST_CLI,native=process.env.MAC_DIALOG_TEST_NATIVE_BINARY,evidence=process.env.IKESU_PANEL_EVIDENCE_DIR;
  assert.ok(bin&&native&&evidence,'explicit CLI, native and evidence paths required');
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'panel-fatal-'));const state=root+'/plugin';let server,daemon,request;let output='';
- const env={...isolatedEnv(process.env),HOME:root+'/home',IKESU_STATE_DIR:root+'/state',IKESU_CONFIG:root+'/config.toml',IKESU_DB_PATH:root+'/dispatch.db',AI_GUARD_TEMP_APPROVAL_FILE:root+'/approval'};
+ const env={...isolatedEnv(process.env),HOME:root+'/home',IKESU_STATE_DIR:root+'/state',IKESU_CONFIG:root+'/config.toml',IKESU_DB_PATH:root+'/dispatch.db'};
  fs.mkdirSync(env.HOME);fs.writeFileSync(env.IKESU_CONFIG,'onboarding=false\n[experimental]\nallow_nested=true\n[ui.sound]\nenabled=false\n[session]\nresume_agents_on_restore=false\n');
  const cli=async args=>(await exec(bin,['--session','spawn-proof',...args],{env,timeout:5000})).stdout;
  t.after(()=>cleanupSteps([async()=>{daemon?.kill('SIGTERM');await wait(daemon);},async()=>{request?.kill('SIGTERM');await wait(request);},async()=>{if(server){try{await cli(['server','stop']);}finally{server.kill('SIGTERM');await wait(server);}}},()=>fs.rmSync(root,{recursive:true,force:true})]));
