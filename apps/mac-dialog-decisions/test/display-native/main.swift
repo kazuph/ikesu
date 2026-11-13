@@ -84,6 +84,27 @@ for theme in [NSAppearance.Name.aqua, .darkAqua] {
   controller.close()
  }
 }
+// Multi-select keeps the checks while the comment is typed, and sends both.
+do {
+ let input:[String:Any] = ["window_title":"複数選択試験","title":"足す工程","options":[["id":"pen","label":"ペン入れ"],["id":"finish","label":"仕上げ"],["id":"letter","label":"写植"]],"allow_text":true,"multi_select":true,"draft_directory":root]
+ let file=root+"/multi.json"
+ let data=try JSONSerialization.data(withJSONObject:input)
+ try data.write(to:URL(fileURLWithPath:file))
+ let controller=DialogController(spec:try JSONDecoder().decode(DialogSpec.self,from:data),specPath:file)
+ controller.build();controller.panel.orderBack(nil);await drain()
+ controller.cardClicked(controller.cards[0]);controller.cardClicked(controller.cards[1])
+ controller.textView!.insertText("写植はやらなくても良い",replacementRange:NSRange(location:NSNotFound,length:0))
+ precondition(controller.checkedIds()==["pen","finish"],"multi-select typing must keep checks")
+ controller.cardClicked(controller.cards[2])
+ precondition(controller.checkedIds()==["pen","finish","letter"] && controller.currentText()=="写植はやらなくても良い","multi-select adds a check after typing")
+ controller.textView!.selectAll(nil);controller.textView!.insertText("",replacementRange:NSRange(location:0,length:(controller.textView!.string as NSString).length))
+ precondition(controller.checkedIds()==["pen","finish","letter"],"multi-select clearing comment keeps checks")
+ func fields(_ view: NSView) -> [String] { view.subviews.flatMap { child in (child as? NSTextField).map {[$0.stringValue]} ?? fields(child) } }
+ let captions=fields(controller.panel.contentView!)
+ precondition(captions.contains {$0.hasPrefix("自由入力（選んだ選択肢と文を一緒に送ります）")},"multi-select caption says checks and text are sent together")
+ precondition(!captions.contains {$0.contains("入力すると選択が外れます")},"multi-select caption must not say typing clears")
+ controller.close()
+}
 // Decode and advance actual video data silently through each native player.
 for ext in ["mp4", "mov", "m4v", "webm"] {
  let file=root+"/sample."+ext
