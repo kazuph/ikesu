@@ -25,7 +25,7 @@ func lineClaimsOf(t *testing.T, i Input, line string) (entries []judgeEntry) {
 
 func claimOf(t *testing.T, cwd, command string, args ...string) string {
 	t.Helper()
-	h, ok := lineClaimHash(Input{Command: command, Args: args, Cwd: cwd})
+	h, ok := lineClaimHash(Input{Command: command, Args: args, Cwd: cwd, Env: map[string]string{"PATH": "/usr/bin:/bin"}})
 	if !ok {
 		t.Fatalf("no claim for %s %v", command, args)
 	}
@@ -189,6 +189,78 @@ func TestLineApprovalClaimsOnlyFromFirstStages(t *testing.T) {
 		out.LineVia = via
 		if got := len(lineApprovalClaims(out)); got != want {
 			t.Errorf("via=%q claims=%d want %d", via, got, want)
+		}
+	}
+}
+
+// 実行ファイルの身元が claim に入る: 置き換え・上書き・リンクの付け替えで変わり、変えなければ同じ。組み込みは実行ファイルなしで作れる。
+func TestLineClaimIncludesExecutableIdentity(t *testing.T) {
+	dir := t.TempDir()
+	tool := filepath.Join(dir, "mytool")
+	write := func(path, body string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(body), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(tool, "#!/bin/sh\nexit 0\n")
+	in := Input{Command: "mytool", Args: []string{"x"}, Cwd: dir, Env: map[string]string{"PATH": dir + ":/usr/bin:/bin"}}
+	hash := func() string {
+		t.Helper()
+		h, ok := lineClaimHash(in)
+		if !ok {
+			t.Fatal("no claim")
+		}
+		return h
+	}
+	first := hash()
+	if hash() != first {
+		t.Fatal("the hash changed although nothing changed")
+	}
+	// 置き換え（別ファイルを rename で重ねる）
+	write(tool+".new", "#!/bin/sh\nexit 1\n")
+	if err := os.Rename(tool+".new", tool); err != nil {
+		t.Fatal(err)
+	}
+	replaced := hash()
+	if replaced == first {
+		t.Error("replacing the executable did not change the hash")
+	}
+	// 上書き（同じファイルへ追記）
+	f, err := os.OpenFile(tool, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.WriteString("# changed\n")
+	f.Close()
+	overwritten := hash()
+	if overwritten == replaced {
+		t.Error("overwriting the executable did not change the hash")
+	}
+	// リンクの付け替え
+	other := filepath.Join(dir, "other")
+	write(other, "#!/bin/sh\nexit 2\n")
+	if err := os.Remove(tool); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(other, tool); err != nil {
+		t.Fatal(err)
+	}
+	linked := hash()
+	if linked == overwritten {
+		t.Error("pointing the link at another file did not change the hash")
+	}
+	third := filepath.Join(dir, "third")
+	write(third, "#!/bin/sh\nexit 2\n")
+	os.Remove(tool)
+	os.Symlink(third, tool)
+	if hash() == linked {
+		t.Error("retargeting the link did not change the hash")
+	}
+	// 組み込み・見つからないコマンドは、実行ファイルなしで作れる。
+	for _, name := range []string{"trap", "unfunction", "no-such-command-xyz"} {
+		if _, ok := lineClaimHash(Input{Command: name, Args: []string{"x"}, Cwd: dir, Env: map[string]string{"PATH": "/usr/bin:/bin"}}); !ok {
+			t.Errorf("no claim for %s", name)
 		}
 	}
 }

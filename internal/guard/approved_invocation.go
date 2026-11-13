@@ -94,9 +94,11 @@ func immutableInvocation(i Input) bool {
 	return true
 }
 
-// lineClaimHash は、行の承認が通す claim。cwd と引数の並びだけのハッシュで、外側の承認のような
-// 実行ファイルの置き場所の条件は付けない（Homebrew・mise の置き場所では偽になるため）。
+// lineClaimHash は、行の承認が通す claim。cwd・引数の並び・実際に走る実行ファイルの身元のハッシュ。
+// 書き換えられない場所にあることは条件にしない（Homebrew・mise の置き場所では偽になるため）。
 // 引数は配列のまま入れ、空白でつながない。スクリプトを走らせる shell は、スクリプトのファイルの身元も入れる。
+// 実行ファイルは Resolve で決め（シムのフォルダは飛ばす）、見つかれば physical のパスと Stat の身元を入れる。
+// 見つからないもの（組み込み）は実行ファイルなしで作る。見つかったのに Stat できないときは作らない。
 // コマンド名が空・未確定の語がある・cd の後で cwd が決まらないときは作らない。
 func lineClaimHash(i Input) (string, bool) {
 	if i.Command == "" || i.Unresolved || i.CwdUncertain {
@@ -116,12 +118,34 @@ func lineClaimHash(i Input) (string, bool) {
 			script = &identity
 		}
 	}
+	var program *struct {
+		Path     string
+		Identity executableIdentity
+	}
+	if path, err := Resolve(i.Command, environment(i.Env)); err == nil {
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			return "", false
+		}
+		info, err := os.Stat(abs)
+		if err != nil {
+			return "", false
+		}
+		program = &struct {
+			Path     string
+			Identity executableIdentity
+		}{physical(abs), executableFileIdentity(info)}
+	}
 	data, err := json.Marshal(struct {
-		Kind   string
-		Cwd    string
-		Argv   []string
-		Script *executableIdentity `json:",omitempty"`
-	}{"line-v1", physical(i.Cwd), append([]string{i.Command}, i.Args...), script})
+		Kind    string
+		Cwd     string
+		Argv    []string
+		Script  *executableIdentity `json:",omitempty"`
+		Program *struct {
+			Path     string
+			Identity executableIdentity
+		} `json:",omitempty"`
+	}{"line-v2", physical(i.Cwd), append([]string{i.Command}, i.Args...), script, program})
 	if err != nil {
 		return "", false
 	}
