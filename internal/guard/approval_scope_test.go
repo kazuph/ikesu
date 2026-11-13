@@ -30,7 +30,7 @@ func TestDayApprovalDirectoryTree(t *testing.T) {
 	if err := os.Symlink(child, alias); err != nil {
 		t.Fatal(err)
 	}
-	file := filepath.Join(base, "approval")
+	file := tempApprovalFile(base)
 	if err := WriteApproval(file, "day:"+physical(approved), time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
@@ -41,8 +41,8 @@ func TestDayApprovalDirectoryTree(t *testing.T) {
 		{"same", approved, true}, {"descendant-worktree", child, true}, {"other-folder", elsewhere, false}, {"prefix-only", sibling, false}, {"symlink-outside", escape, false}, {"symlink-prefix-only", prefixEscape, false}, {"physical-descendant-alias", alias, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			input := Input{Command: "curl", Args: []string{"-X", "POST", "https://example.test"}, Cwd: tc.cwd, Env: map[string]string{"AI_GUARD_TEMP_APPROVAL_FILE": file, "PATH": "/usr/bin:/bin"}}
-			verdict := Evaluate(Config{}, input)
+			input := Input{Command: "curl", Args: []string{"-X", "POST", "https://example.test"}, Cwd: tc.cwd, Env: map[string]string{"PATH": "/usr/bin:/bin"}}
+			verdict := applyGrants(base, Evaluate(Config{}, input), time.Now())
 			if (verdict.Decision == "allow") != tc.allow {
 				t.Fatalf("verdict=%+v wantAllow=%v", verdict, tc.allow)
 			}

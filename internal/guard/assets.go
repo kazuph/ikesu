@@ -170,7 +170,7 @@ func (a *Assets) lineHook() string {
 if [[ -o interactive ]]; then
  _ikesu_guard_accept_line() {
   if [[ %s ]]; then
-   %s guard line -- "$BUFFER" || { zle redisplay; return 0; }
+   %s guard line --via accept-line -- "$BUFFER" || { zle redisplay; return 0; }
   fi
   zle .accept-line
  }

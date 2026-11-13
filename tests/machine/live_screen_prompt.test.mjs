@@ -21,7 +21,7 @@ test('real remote Claude question screen reaches the decision API', {timeout:360
  t.after(()=>cleanupSteps(cleanups));
  root=(await exec('ssh',[target,'mktemp -d /tmp/gmd-screen-XXXXXX'])).stdout.trim();
  const config='onboarding=false\n[experimental]\nallow_nested=true\n[ui.sound]\nenabled=false\n[session]\nresume_agents_on_restore=false\n';
- const script=`mkdir -p ${quote(root+'/home')}\ncat > ${quote(root+'/config.toml')} <<'CONFIG'\n${config}CONFIG\ncat > ${quote(root+'/ikesu')} <<'WRAPPER'\n#!/bin/sh\nexport HOME=${quote(remoteHome)}\nexport AI_GUARD_TEMP_APPROVAL_FILE=${quote(root+'/approval')}\nexport IKESU_DB_PATH=${quote(root+'/dispatch.db')}\nexport IKESU_STATE_DIR=${quote(root+'/state')}\nexport IKESU_CONFIG=${quote(root+'/config.toml')}\nexec ${quote(remoteBin)} "$@"\nWRAPPER\nchmod +x ${quote(root+'/ikesu')}`;
+ const script=`mkdir -p ${quote(root+'/home')}\ncat > ${quote(root+'/config.toml')} <<'CONFIG'\n${config}CONFIG\ncat > ${quote(root+'/ikesu')} <<'WRAPPER'\n#!/bin/sh\nexport HOME=${quote(remoteHome)}\nexport IKESU_DB_PATH=${quote(root+'/dispatch.db')}\nexport IKESU_STATE_DIR=${quote(root+'/state')}\nexport IKESU_CONFIG=${quote(root+'/config.toml')}\nexec ${quote(remoteBin)} "$@"\nWRAPPER\nchmod +x ${quote(root+'/ikesu')}`;
  await exec('ssh',[target,script]);
  const command=args=>[root+'/ikesu','--session','screen-proof',...args].map(quote).join(' ');
  const cli=async args=>(await exec('ssh',[target,command(args)],{timeout:30_000})).stdout;
@@ -29,7 +29,7 @@ test('real remote Claude question screen reaches the decision API', {timeout:360
  cleanups.unshift(async()=>cleanupSteps([async()=>{if(localServer){try{await local(['server','stop']);}finally{localServer.kill('SIGTERM');}}},async()=>{if(server){try{await cli(['server','stop']);}finally{server.kill('SIGTERM');}}}]));
  server=spawn('ssh',[target,command(['server'])]);
  let serverLog='';server.stderr.on('data',b=>serverLog+=b);
- const localEnv={...isolatedEnv(process.env),AI_GUARD_TEMP_APPROVAL_FILE:localRoot+'/approval',HOME:localRoot+'/home',IKESU_STATE_DIR:localRoot+'/state',IKESU_DB_PATH:localRoot+'/dispatch.db',IKESU_CONFIG:localRoot+'/config.toml',IKESU_MACHINE_REMOTE_BINARY:root+'/ikesu'};
+ const localEnv={...isolatedEnv(process.env),HOME:localRoot+'/home',IKESU_STATE_DIR:localRoot+'/state',IKESU_DB_PATH:localRoot+'/dispatch.db',IKESU_CONFIG:localRoot+'/config.toml',IKESU_MACHINE_REMOTE_BINARY:root+'/ikesu'};
  for(const key of ['IKESU_SOCKET_PATH','IKESU_PANE_ID','IKESU_TAB_ID','IKESU_WORKSPACE_ID','CODEX_THREAD_ID','CLAUDECODE'])delete localEnv[key];
  fs.mkdirSync(localRoot+'/home');fs.writeFileSync(localRoot+'/config.toml',config);
  localServer=spawn(bin,['--session','screen-proof','server'],{env:localEnv});

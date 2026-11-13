@@ -76,7 +76,7 @@ func TestGuardMarkerRoutingAfterRealHandoff(t *testing.T) {
 			t.Fatal(e)
 		}
 		status := filepath.Join(dir, "status")
-		s.send(fmt.Sprintf("AI_GUARD_REQUEST_REASON=古い画面の承認動作を確認する AI_GUARD_TEMP_APPROVAL_FILE=%q IKESU_GUARD_MARKER= IKESU_SOCKET_PATH=/missing.sock IKESU_PANE_ID=p999 %s %q; printf '%%s' $? > %q\r", filepath.Join(dir, "approval"), command, target, status))
+		s.send(fmt.Sprintf("AI_GUARD_REQUEST_REASON=古い画面の承認動作を確認する IKESU_GUARD_MARKER= IKESU_SOCKET_PATH=/missing.sock IKESU_PANE_ID=p999 %s %q; printf '%%s' $? > %q\r", command, target, status))
 		var pending api.DecisionListResult
 		s.waitFor("old shell pending", 5*time.Second, func(string) bool {
 			s.rpc(api.MethodDecisionList, api.DecisionListParams{Status: "pending"}, &pending)
@@ -133,8 +133,7 @@ func TestGuardMarkerRoutingAfterRealHandoff(t *testing.T) {
 			}
 			shim := filepath.Join(s.stateDir, "guard", "bin", "p_1", "rm")
 			cmd := exec.Command("/bin/zsh", "-c", `IKESU_GUARD_MARKER= IKESU_PANE_ID=p999 IKESU_SOCKET_PATH=/missing.sock "$1" "$2"`, "guard-test", shim, target)
-			approval := filepath.Join(dir, "approval")
-			cmd.Env = append(os.Environ(), "IKESU_CONFIG="+cfg, "IKESU_STATE_DIR="+s.stateDir, "AI_GUARD_TEMP_APPROVAL_FILE="+approval, "AI_GUARD_REQUEST_REASON=隔離した検査用ファイルの削除を確認する")
+			cmd.Env = append(os.Environ(), "IKESU_CONFIG="+cfg, "IKESU_STATE_DIR="+s.stateDir, "AI_GUARD_REQUEST_REASON=隔離した検査用ファイルの削除を確認する")
 			var stdout, stderr bytes.Buffer
 			cmd.Stdout, cmd.Stderr = &stdout, &stderr
 			if e := cmd.Start(); e != nil {
@@ -163,6 +162,18 @@ func TestGuardMarkerRoutingAfterRealHandoff(t *testing.T) {
 			if _, e := os.Stat(target); e != nil {
 				t.Fatal("executed before answer", e)
 			}
+			if choice == "day_allow" {
+				// L3 の確認には1日許可の選択肢が無い。選んでも受け付けられず、承認は通る。
+				for _, option := range d.Options {
+					if option.ID == "day_allow" {
+						t.Fatal("L3 ask offered day_allow", d.Options)
+					}
+				}
+				if out, e := s.cli("decision", "answer", d.DecisionID, "day_allow"); e == nil {
+					t.Fatal("day_allow was accepted for an L3 ask", out)
+				}
+				choice = "approve"
+			}
 			if choice != "timeout" {
 				if out, e := s.cli("decision", "answer", d.DecisionID, choice); e != nil {
 					t.Fatal(e, out)
@@ -182,21 +193,6 @@ func TestGuardMarkerRoutingAfterRealHandoff(t *testing.T) {
 				t.Logf("choice=%s exit=%d removed=%t stderr=%q", choice, cmd.ProcessState.ExitCode(), os.IsNotExist(fileErr), stderr.String())
 			case <-time.After(5 * time.Second):
 				t.Fatal("decision did not resolve")
-			}
-			if choice == "day_allow" {
-				// A distinct ask command in the same cwd is covered by the persisted day grant.
-				if e := os.WriteFile(target, []byte("test-only"), 0600); e != nil {
-					t.Fatal(e)
-				}
-				follow := exec.Command(shim, target)
-				follow.Env = cmd.Env
-				follow.Dir = cmd.Dir
-				if b, e := follow.CombinedOutput(); e != nil {
-					t.Fatal("day allowance lost", e, string(b))
-				}
-				if _, e := os.Stat(target); !os.IsNotExist(e) {
-					t.Fatal("day-allowed deletion not executed", e)
-				}
 			}
 		})
 	}

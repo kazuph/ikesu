@@ -309,7 +309,7 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 							if text, err := s.cli("decision", "answer", decision.DecisionID, "approve"); err != nil {
 								t.Fatal(text, err)
 							}
-							if tc.name == "outer-approval" {
+							if tc.name == "outer-approval" || tc.name == "approved-binary-unchanged" || tc.name == "approved-binary-symlink-unchanged" || tc.name == "approved-binary-readonly-file" {
 								if err := <-done; err != nil {
 									t.Fatalf("approved exact command did not run: %v %s", err, output.String())
 								}
@@ -331,7 +331,7 @@ func TestRuntimeReasonFromOriginalEnvironment(t *testing.T) {
 							s.waitRuntimeReasonState("runtime decision after outer approval", 5*time.Second, func(string) bool {
 								select {
 								case err := <-done:
-									approval, _ := os.ReadFile(filepath.Join(root, ".ai_guard_temp_approval"))
+									approval, _ := os.ReadFile(filepath.Join(s.stateDir, "guard", "temp-approvals"))
 									t.Fatalf("script exited after outer approval: %v output=%s approval=%s", err, output.String(), approval)
 								default:
 								}

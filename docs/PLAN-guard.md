@@ -19,10 +19,10 @@
 
 ## 1. やること
 
-1. **判定部品**（残項目26）: `ikesu guard check`・`ikesu guard exec`。コマンド名・引数・cwd・起動ディレクトリ・環境から `allow`/`block`/`ask` と理由。`[guard]` の `targets`・`danger_words`・`protected_patterns`・`wrangler_allow` で調整。1日許可と一時許可のキーは ai_guard と同じ。
+1. **判定部品**（残項目26）: `ikesu guard check`・`ikesu guard exec`。コマンド名・引数・cwd・起動ディレクトリ・環境から `allow`/`block`/`ask` と理由。`[guard]` の `targets`・`danger_words`・`protected_patterns`・`wrangler_allow` で調整。1日許可と一時許可のキーは ai_guard と同じ。（L3 の確認は承認・却下の2つで、1日許可は出さない（2026-11-13））
 2. **ペインへの差し込み**（残項目27）: pane ごとの `<state>/guard/bin/<p_N>` を PATH の先頭に置き、印が無い間は空。zsh の ZDOTDIR と bash の BASH_ENV の連鎖（利用者の起動ファイルと HISTFILE の場所を変えない、利用者の同名の関数・エイリアスを上書きしない）。`[guard].enabled = false` では何も差し込まない。pane 識別の無い spawn（popup など）には差し込まない。
 3. **エージェントペインだけの判定と記録のみモード**（残項目28）: `<state>/guard/agent-panes/<p_N>.json` の印をエージェントの開始・解除・pane 終了・close に同期。人の pane では判定も記録もしない。`decisions.jsonl` の1行1JSON。`mode = "record"` は判定と記録だけでコマンドを止めない。
-4. **既定の enforce モード**: `block` は ai_guard と同じ文言で止める（終了 code 1）。`ask` は申請文（`AI_GUARD_REQUEST_REASON` など、ai_guard と同じ検査）を確かめてから、前の段階で作った判断待ち（`command_guard`、選択肢 承認・1日許可・却下、自由記述、`[guard].ask_timeout_seconds` 既定300秒）を作って待つ。承認・1日許可は実行して許可キーを書く、却下・期限切れ・取消・サーバー不通は実行しない（終了 code 1）。enforce の pane には `IKESU_GUARD_ENFORCING=1`。
+4. **既定の enforce モード**: `block` は ai_guard と同じ文言で止める（終了 code 1）。`ask` は申請文（`AI_GUARD_REQUEST_REASON` など、ai_guard と同じ検査）を確かめてから、前の段階で作った判断待ち（`command_guard`、選択肢 承認・1日許可・却下（L3 の確認は承認・却下の2つで、1日許可は出さない（2026-11-13））、自由記述、`[guard].ask_timeout_seconds` 既定300秒）を作って待つ。承認・1日許可は実行して許可キーを書く、却下・期限切れ・取消・サーバー不通は実行しない（終了 code 1）。enforce の pane には `IKESU_GUARD_ENFORCING=1`。
 5. **ai_guard との突合**（残項目29）: `ikesu guard compare`。`decisions.jsonl` と ai_guard のログを時刻窓で突き合わせ、AGREE/DIVERGE/IKESU-ONLY/AI-GUARD-ONLY/OUT-OF-WINDOW、DIVERGE があれば終了 code 1。
 6. **dotfiles の変更案**: `load-ai-guard.sh` が `IKESU_GUARD_ENFORCING` と `IKESU_GUARD_MARKER` でも自分を読み込まないようにする差分を RESULT.md に書く（適用しない）。
 

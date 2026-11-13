@@ -109,6 +109,13 @@ type DecisionReachParams struct {
 	Channel    string `json:"channel"`
 	State      string `json:"state"`
 }
+
+// GuardLineApprovedRule は、行の承認が通す claim の規則名。
+const GuardLineApprovedRule = "line-approved"
+
+// GuardLineApprovalLimit は、1つの判断待ちに付けられる行の claim の上限。
+const GuardLineApprovalLimit = 64
+
 type GuardExecutionClaim struct {
 	CommandHash string `json:"command_hash"`
 	Rule        string `json:"rule"`
@@ -124,15 +131,17 @@ type GuardApprovedResult struct {
 type DecisionCreateParams struct {
 	GuardContext   *GuardIdentityContext `json:"guard_context,omitempty"`
 	GuardExecution *GuardExecutionClaim  `json:"guard_execution,omitempty"`
-	Kind           string                `json:"kind"`
-	Title          string                `json:"title"`
-	Body           *string               `json:"body,omitempty"`
-	Options        []DecisionOption      `json:"options"`
-	AllowText      bool                  `json:"allow_text"`
-	MultiSelect    bool                  `json:"multi_select"`
-	QuestionLabel  *string               `json:"-"`
-	Origin         *DecisionOrigin       `json:"origin,omitempty"`
-	TimeoutMS      *uint64               `json:"timeout_ms,omitempty"`
+	// 行の承認が通す、行の中の ask のコマンドごとの claim（規則名は GuardLineApprovedRule）。
+	GuardExecutions []GuardExecutionClaim `json:"guard_executions,omitempty"`
+	Kind            string                `json:"kind"`
+	Title           string                `json:"title"`
+	Body            *string               `json:"body,omitempty"`
+	Options         []DecisionOption      `json:"options"`
+	AllowText       bool                  `json:"allow_text"`
+	MultiSelect     bool                  `json:"multi_select"`
+	QuestionLabel   *string               `json:"-"`
+	Origin          *DecisionOrigin       `json:"origin,omitempty"`
+	TimeoutMS       *uint64               `json:"timeout_ms,omitempty"`
 }
 type DecisionTargetParams struct {
 	DecisionID string `json:"decision_id"`

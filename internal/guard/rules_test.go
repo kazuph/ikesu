@@ -56,8 +56,8 @@ func TestRules(t *testing.T) {
 }
 func TestApprovalKeysAndSuppression(t *testing.T) {
 	d := physical(t.TempDir())
-	f := filepath.Join(d, "approvals")
-	i := Input{Command: "npx", Args: []string{"wrangler", "deploy", "--env", "staging"}, Cwd: d, Env: map[string]string{"HOME": d, "PATH": "/usr/bin:/bin", "AI_GUARD_TEMP_APPROVAL_FILE": f}}
+	f := tempApprovalFile(d)
+	i := Input{Command: "npx", Args: []string{"wrangler", "deploy", "--env", "staging"}, Cwd: d, Env: map[string]string{"HOME": d, "PATH": "/usr/bin:/bin"}}
 	v := Evaluate(Config{}, i)
 	if v.TempKey != "danger:npx:stg:"+d || v.DayKey != "day:"+d {
 		t.Fatal(v)
@@ -65,12 +65,12 @@ func TestApprovalKeysAndSuppression(t *testing.T) {
 	if e := WriteApproval(f, v.TempKey, time.Now().Add(180*time.Second)); e != nil {
 		t.Fatal(e)
 	}
-	if v = Evaluate(Config{}, i); v.Decision != "allow" || v.Suppressed != "temporary" {
+	if v = applyGrants(d, Evaluate(Config{}, i), time.Now()); v.Decision != "allow" || v.Suppressed != "temporary" {
 		t.Fatal(v)
 	}
 	i.Command = "dd"
 	i.Args = nil
-	if v = Evaluate(Config{}, i); v.TempKey != "" || v.Decision != "ask" {
+	if v = applyGrants(d, Evaluate(Config{}, i), time.Now()); v.TempKey != "" || v.Decision != "ask" {
 		t.Fatal(v)
 	}
 	if e := WriteApproval(f, "day:"+d, time.Now().Add(time.Hour)); e != nil {
@@ -78,7 +78,7 @@ func TestApprovalKeysAndSuppression(t *testing.T) {
 	}
 	i.Command = "dd"
 	i.Args = nil
-	if v = Evaluate(Config{}, i); v.Decision != "ask" || v.TempKey != "" {
+	if v = applyGrants(d, Evaluate(Config{}, i), time.Now()); v.Decision != "ask" || v.TempKey != "" {
 		t.Fatal("day approval suppressed keyless command", v)
 	}
 	i.Command = "git"
@@ -96,8 +96,17 @@ func TestConfigOverridesAndACK(t *testing.T) {
 	if v := Evaluate(Config{DangerWords: []string{"release"}}, i); v.Decision != "ask" {
 		t.Fatal(v)
 	}
+	// ACK は判定を変えない。結果が ask で L1 のときだけ allow にする。
 	i.Env["AI_GUARD_DANGER_WORD_ACK"] = "1"
-	if v := Evaluate(Config{DangerWords: []string{"release"}}, i); v.Decision != "allow" {
+	if v := Evaluate(Config{DangerWords: []string{"release"}}, i); v.Decision != "ask" || v.Tier != TierL3 {
+		t.Fatal(v)
+	}
+	l1 := Input{Command: "git", Args: []string{"clean", "-fd"}, Cwd: t.TempDir(), Env: map[string]string{}}
+	if v := Evaluate(Config{}, l1); v.Decision != "ask" || v.Tier != TierL1 {
+		t.Fatal(v)
+	}
+	l1.Env["AI_GUARD_DANGER_WORD_ACK"] = "1"
+	if v := Evaluate(Config{}, l1); v.Decision != "allow" {
 		t.Fatal(v)
 	}
 	if v := Evaluate(Config{ProtectedPatterns: []string{"release"}}, i); v.Decision != "block" {

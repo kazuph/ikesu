@@ -17,7 +17,7 @@ func (a *Assets) debugHook(shell string) string {
 		}
 		return fmt.Sprintf(`if [[ $- != *i* ]]; then
 if [[ %s ]] && [[ -n "${BASH_EXECUTION_STRING:-}" ]]; then
- %s guard line -- "$BASH_EXECUTION_STRING" || exit $?
+ %s guard line --via exec-string -- "$BASH_EXECUTION_STRING" || exit $?
 fi
 %s%s_ikesu_guard_needs_check() {
  local _ikesu_guard_line="$1" _ikesu_guard_word
@@ -74,13 +74,13 @@ fi
 	}
 	return fmt.Sprintf(`if [[ ! -o interactive ]]; then
 if [[ %s ]] && [[ -n "${ZSH_EXECUTION_STRING:-}" ]]; then
- %s guard line -- "$ZSH_EXECUTION_STRING" || exit $?
+ %s guard line --via exec-string -- "$ZSH_EXECUTION_STRING" || exit $?
 fi
 setopt DEBUG_BEFORE_CMD
 TRAPDEBUG() {
  case "${funcstack[2]:-}" in _ikesu_guard_forward|_ikesu_guard_command) return 0;; esac
  if [[ %s ]]; then
-  %s guard line -- "$ZSH_DEBUG_CMD" || exit $?
+  %s guard line --via zsh-debug -- "$ZSH_DEBUG_CMD" || exit $?
  fi
  return 0
 }

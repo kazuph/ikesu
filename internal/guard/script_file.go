@@ -34,16 +34,47 @@ type scriptResult struct {
 	verdict         Verdict
 	trigger         string
 	approvedCommand *Input
+	// スクリプトの中の ask のコマンドの claim（行の承認が通す）。
+	claims []string
+	// スクリプトの中で聞くことになった判定のうち、いちばん高いティア。
+	tier     int
+	dest     string
+	tierRule string
 }
 
 func (r scriptResult) merge(other scriptResult) scriptResult {
+	best := r
 	if other.kind > r.kind {
-		return other
+		best = other
+	}
+	t := tierInfo{r.tier, r.dest, r.tierRule}
+	t.merge(tierInfo{other.tier, other.dest, other.tierRule})
+	best.tier, best.dest, best.tierRule = t.tier, t.dest, t.rule
+	best.claims = append(append([]string{}, r.claims...), other.claims...)
+	return best
+}
+
+// scriptIssue は確定できないスクリプトの問題。通すだけの未確定（scriptUnresolved）にティアは付かない。
+func scriptIssue(k scriptKind, reason string) scriptResult {
+	return scriptIssueTier(k, reason, TierL3)
+}
+func scriptIssueTier(k scriptKind, reason string, tier int) scriptResult {
+	r := scriptResult{kind: k, verdict: askAt("shell-script", reason, tier, "")}
+	if k != scriptUnresolved {
+		r.tier, r.tierRule = tier, "shell-script"
+	} else {
+		r.verdict.Tier = 0
 	}
 	return r
 }
-func scriptIssue(k scriptKind, reason string) scriptResult {
-	return scriptResult{kind: k, verdict: result("ask", "shell-script", reason)}
+
+// scriptVerdict は規則の判定をスクリプトの結果にする。
+func scriptVerdict(k scriptKind, v Verdict) scriptResult {
+	r := scriptResult{kind: k, verdict: v}
+	if v.Decision == "ask" && k != scriptUnresolved {
+		r.tier, r.dest, r.tierRule = v.effectiveTier(), v.Dest, v.tierRuleName()
+	}
+	return r
 }
 
 type scriptScanner struct {
@@ -60,7 +91,7 @@ func scriptError(e error) scriptResult {
 	if errors.As(e, &unresolved) {
 		return scriptIssue(scriptUnresolved, e.Error())
 	}
-	return scriptIssue(scriptUnparseable, e.Error())
+	return scriptIssueTier(scriptUnparseable, e.Error(), errTier(e))
 }
 
 // Read options only before the program operand. The remainder belongs to it.
@@ -236,7 +267,7 @@ func (s *scriptScanner) body(i Input, data []byte, name string) scriptResult {
 	commands, e := lineCommands(i, string(data))
 	best := scriptResult{}
 	if v := classify(s.config, Input{RawLine: string(data)}); blocksRun(v.Decision) {
-		best = scriptResult{kind: scriptBlocked, verdict: v}
+		best = scriptVerdict(scriptBlocked, v)
 	}
 	if e != nil {
 		best = best.merge(scriptError(e))
@@ -251,9 +282,9 @@ func (s *scriptScanner) body(i Input, data []byte, name string) scriptResult {
 			v := classify(s.config, cmd)
 			switch v.Decision {
 			case "block", "deny":
-				r = scriptResult{kind: scriptBlocked, verdict: v}
+				r = scriptVerdict(scriptBlocked, v)
 			case "ask":
-				r = scriptResult{kind: scriptDanger, verdict: v}
+				r = scriptVerdict(scriptDanger, v)
 				if !cmd.Unresolved && !cmd.CwdUncertain {
 					selected := cmd
 					selected.scriptResult = nil
@@ -272,10 +303,10 @@ func (s *scriptScanner) body(i Input, data []byte, name string) scriptResult {
 					if blocksRun(uv.Decision) {
 						kind = scriptBlocked
 					}
-					r = scriptResult{kind: kind, verdict: uv}
+					r = scriptVerdict(kind, uv)
 				} else if has([]string{"rm", "rmdir", "rimraf", "trash"}, filepath.Base(cmd.Command)) && !cmd.scriptUnknownCommand {
 					// 削除の対象が未確定な間は聞く（サンドボックスを入れるまでの例外）。
-					r = scriptResult{kind: scriptDeleteUnresolved, verdict: result("ask", "rm-paths", "削除操作は確認が必要です")}
+					r = scriptVerdict(scriptDeleteUnresolved, askAt("rm-paths", "削除操作は確認が必要です", TierL3, ""))
 				} else if cmd.scriptUnknownCommand || classify(s.config, known).Decision != "ask" {
 					r = scriptIssue(scriptUnresolved, "変数展開後のコマンドを確定できません")
 				}
@@ -287,6 +318,11 @@ func (s *scriptScanner) body(i Input, data []byte, name string) scriptResult {
 			if line > 0 && line <= len(lines) {
 				r.trigger = fmt.Sprintf("%s の%d行目: %s", name, line, lines[line-1])
 				r.verdict.Reason = r.trigger + "\n" + r.verdict.Reason
+			}
+		}
+		if cmd.scriptResult == nil && r.verdict.Decision == "ask" && r.kind != scriptUnresolved {
+			if h, ok := lineClaimHash(cmd); ok {
+				r.claims = append(r.claims, h)
 			}
 		}
 		best = best.merge(r)

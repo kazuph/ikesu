@@ -127,6 +127,12 @@ func logUndetermined(root string, i Input, m Marker, v Verdict, line string, err
 	}
 }
 
+// L1 で通した記録は、実行時の見張りが同じ行を何度も判定するので、同じ pane・行・規則を60秒に1回だけ残す。
+func l1SeenRecently(root string, m Marker, i Input, v Verdict) bool {
+	sum := sha256.Sum256([]byte("l1\x00" + m.Pane + "\x00" + i.Line() + "\x00" + v.Rule))
+	return undeterminedSeenRecently(root, hex.EncodeToString(sum[:]))
+}
+
 func undeterminedSeenRecently(root, key string) bool {
 	d := filepath.Join(root, "guard")
 	if os.MkdirAll(d, 0700) != nil {

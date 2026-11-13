@@ -42,7 +42,7 @@ func TestGuardExecutionBindingCleanup(t *testing.T) {
 	}
 	s.decisions.guardBindings = map[string]guardExecutionBinding{"live": live, "ended": {Owner: cmd.Process.Pid}, "reused": {Owner: os.Getpid(), ProcessStart: "wrong-start"}}
 	s.pruneGuardExecutions()
-	if len(s.decisions.guardBindings) != 1 || s.decisions.guardBindings["live"] != live {
+	if len(s.decisions.guardBindings) != 1 || s.decisions.guardBindings["live"].Owner != live.Owner || s.decisions.guardBindings["live"].ProcessStart != live.ProcessStart {
 		t.Fatal("owner cleanup", s.decisions.guardBindings)
 	}
 }

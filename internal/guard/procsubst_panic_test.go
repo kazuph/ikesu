@@ -31,8 +31,11 @@ print(type(a).__name__, list(a)[:6] if isinstance(a,dict) else len(a))
 	if payload != line {
 		t.Fatal("fixture did not exercise the reported Claude payload")
 	}
+	// プロセス置換は L1。ペインの外では今までどおり確認になり、ペインの中では任せる。
+	outside := i
+	outside.VerifiedOutside = &Marker{OutsidePane: true, Pane: "p1", Agent: "claude", Cwd: root, Socket: root + "/no-server", Mode: "enforce", Policy: &Config{}}
 	var output bytes.Buffer
-	if AuthorizeLine(Config{}, root, i, payload, &output, nil) {
+	if AuthorizeLine(Config{}, root, outside, payload, &output, nil) {
 		t.Fatal("process substitution must require approval")
 	}
 	if !strings.Contains(output.String(), "プロセス置換") {

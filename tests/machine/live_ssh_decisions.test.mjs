@@ -23,7 +23,7 @@ test('real SSH saved machine, pane operation, remote run, ask and guard answers'
  remoteRoot=(await exec('ssh',[target,'mktemp -d /tmp/gmd-XXXXXX'])).stdout.trim();
  fs.mkdirSync(path.join(root,'home'));
  const cfg=path.join(root,'config.toml'); fs.writeFileSync(cfg,configText);
- const env={...isolatedEnv(process.env),HOME:path.join(root,'home'),AI_GUARD_TEMP_APPROVAL_FILE:path.join(root,'approval'),IKESU_STATE_DIR:path.join(root,'state'),IKESU_DB_PATH:path.join(root,'dispatch.db'),IKESU_CONFIG:cfg,IKESU_MACHINE_REMOTE_BINARY:remoteRoot+'/ikesu'};
+ const env={...isolatedEnv(process.env),HOME:path.join(root,'home'),IKESU_STATE_DIR:path.join(root,'state'),IKESU_DB_PATH:path.join(root,'dispatch.db'),IKESU_CONFIG:cfg,IKESU_MACHINE_REMOTE_BINARY:remoteRoot+'/ikesu'};
  for(const k of ['IKESU_SOCKET_PATH','IKESU_PANE_ID','IKESU_TAB_ID','IKESU_WORKSPACE_ID','HERDR_PANE_ID','CODEX_THREAD_ID','CLAUDECODE']) delete env[k];
  const transcript=[];
  const run=async(args,allowFail=false)=>{
@@ -42,7 +42,7 @@ test('real SSH saved machine, pane operation, remote run, ask and guard answers'
   fs.writeFileSync(path.join(evidence,'guard.json'),JSON.stringify({guardOutput,guardErr},null,2));
   fs.writeFileSync(path.join(evidence,'live-ssh.json'),JSON.stringify({root,remoteRoot,transcript,localLog,remoteLog},null,2));
  });
- const setup=spawn('ssh',[target,`mkdir -p ${quote(remoteRoot+'/home')} && cat > ${quote(remoteRoot+'/config.toml')} && cat > ${quote(remoteRoot+'/ikesu')} <<'WRAPPER'\n#!/bin/sh\nexport HOME=${quote(remoteRoot+'/home')}\nexport AI_GUARD_TEMP_APPROVAL_FILE=${quote(remoteRoot+'/approval')}\nexport IKESU_STATE_DIR=${quote(remoteRoot+'/state')}\nexport IKESU_DB_PATH=${quote(remoteRoot+'/dispatch.db')}\nexport IKESU_CONFIG=${quote(remoteRoot+'/config.toml')}\nexec ${quote(remoteBin)} "$@"\nWRAPPER\nchmod +x ${quote(remoteRoot+'/ikesu')}`]);
+ const setup=spawn('ssh',[target,`mkdir -p ${quote(remoteRoot+'/home')} && cat > ${quote(remoteRoot+'/config.toml')} && cat > ${quote(remoteRoot+'/ikesu')} <<'WRAPPER'\n#!/bin/sh\nexport HOME=${quote(remoteRoot+'/home')}\nexport IKESU_STATE_DIR=${quote(remoteRoot+'/state')}\nexport IKESU_DB_PATH=${quote(remoteRoot+'/dispatch.db')}\nexport IKESU_CONFIG=${quote(remoteRoot+'/config.toml')}\nexec ${quote(remoteBin)} "$@"\nWRAPPER\nchmod +x ${quote(remoteRoot+'/ikesu')}`]);
  setup.stdin.end(configText); await new Promise((r,j)=>setup.on('exit',c=>c===0?r():j(Error('remote setup '+c))));
  local=spawn(bin,['--session','proof','server'],{env,stdio:['ignore','pipe','pipe']});
  remote=spawn('ssh',[target,`${quote(remoteRoot+'/ikesu')} --session proof server`],{stdio:['ignore','pipe','pipe']});

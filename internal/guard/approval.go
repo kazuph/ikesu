@@ -168,23 +168,51 @@ func EnvMap(env []string) map[string]string {
 	return m
 }
 
+// 一時許可・1日許可の置き場所と長さ。コマンドの環境変数からは取らない。置き場所は guard の
+// 状態のフォルダの下で、AI が書こうとすると guard-boundary の確認（L3）になる。
+const tempApprovalDuration = 180 * time.Second
+
+func tempApprovalFile(root string) string { return filepath.Join(root, "guard", "temp-approvals") }
+
+// applyGrants は、承認済みの一時許可・1日許可が残っている ask を allow にする。
+func applyGrants(root string, v Verdict, now time.Time) Verdict {
+	if v.Decision != "ask" {
+		return v
+	}
+	keys := v.GrantKeys
+	if len(keys) == 0 {
+		keys = []grantKey{{v.TempKey, v.DayKey}}
+	}
+	f := tempApprovalFile(root)
+	by := ""
+	for _, k := range keys {
+		// 鍵の無いコマンドには許可を当てられない。行の中の ask は全部に有効な許可が要る。
+		switch {
+		case k.Temp == "":
+			return v
+		case validApproval(f, k.Day, now):
+			if by == "" {
+				by = "day"
+			}
+		case validApproval(f, k.Temp, now):
+			by = "temporary"
+		default:
+			return v
+		}
+	}
+	v.Decision, v.Suppressed, v.AllowedBy = "allow", by, by
+	return v
+}
+
 // RecordDayApproval stores a "1日許可" for cwd until the next local
 // midnight. The server calls it when the answer arrives, so the approval
 // holds even when the command that asked was gone by then (2026-11-09: test
 // processes that asked were killed before they could store it, and the same
-// question kept coming back).
-func RecordDayApproval(cwd string) error {
-	if cwd == "" {
+// question kept coming back). root is the guard state root (api.StateDir()).
+func RecordDayApproval(root, cwd string) error {
+	if cwd == "" || root == "" {
 		return nil
 	}
-	file := os.Getenv("AI_GUARD_TEMP_APPROVAL_FILE")
-	if file == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return err
-		}
-		file = filepath.Join(home, ".ai_guard_temp_approval")
-	}
 	now := time.Now()
-	return WriteApproval(file, "day:"+physical(cwd), time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location()))
+	return WriteApproval(tempApprovalFile(root), "day:"+physical(cwd), time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location()))
 }
