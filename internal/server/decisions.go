@@ -296,6 +296,22 @@ func (s *Server) decisionRequest(req *api.Request) api.Response {
 		}
 		_ = s.expireDecisions(store)
 		return decisionResult(req.ID, d)
+	case api.MethodDecisionReach:
+		var p api.DecisionReachParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		d, changed, err := store.RecordDecisionReach(p.DecisionID, p.Channel, p.State, time.Now())
+		if err != nil {
+			return decisionFailure(req.ID, err)
+		}
+		if changed {
+			// 判断待ちを見ているプラグイン（watch は1秒ごとに内容を比べる）と待ち手に知らせる。
+			close(s.decisions.changed)
+			s.decisions.changed = make(chan struct{})
+			s.pushDecisionProjection()
+		}
+		return decisionResult(req.ID, s.withLateDelivery(d))
 	case api.MethodDecisionGet, api.MethodDecisionCancel:
 		var p api.DecisionTargetParams
 		if err := req.DecodeParams(&p); err != nil {

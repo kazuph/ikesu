@@ -8,6 +8,7 @@ const (
 	MethodDecisionWait          = "decision.wait"
 	MethodDecisionAnswer        = "decision.answer"
 	MethodDecisionCancel        = "decision.cancel"
+	MethodDecisionReach         = "decision.reach"
 	ErrDecisionResolved         = "decision_already_resolved"
 	ErrDecisionNotFound         = "decision_not_found"
 	ErrDecisionStale            = "decision_stale"
@@ -84,6 +85,26 @@ type Decision struct {
 	Answer        *DecisionAnswer   `json:"answer"`
 	Delivery      *DecisionDelivery `json:"delivery,omitempty"`
 	LateAnswer    bool              `json:"late_answer,omitempty"`
+	// Reach は送り先ごとの「届いた」記録（channel は mac-panel・android・slack）。
+	Reach map[string]DecisionReach `json:"reach,omitempty"`
+}
+
+// DecisionReach は1つの送り先の到達状態。State は "shown"（通知を出した）か
+// "no_client"（送り先の端末がつながっていない）。AtUnixMS は最初に記録した時刻。
+type DecisionReach struct {
+	State    string `json:"state"`
+	AtUnixMS int64  `json:"at_unix_ms"`
+}
+
+const (
+	ReachShown    = "shown"
+	ReachNoClient = "no_client"
+)
+
+type DecisionReachParams struct {
+	DecisionID string `json:"decision_id"`
+	Channel    string `json:"channel"`
+	State      string `json:"state"`
 }
 type GuardExecutionClaim struct {
 	CommandHash string `json:"command_hash"`

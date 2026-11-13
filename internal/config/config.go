@@ -43,6 +43,7 @@ type Config struct {
 	Decisions struct {
 		ScreenPrompts *bool `toml:"screen_prompts"`
 	} `toml:"decisions"`
+	Notify     NotifyConfig   `toml:"-"`
 	Guard      guard.Config   `toml:"guard"`
 	Warnings   []string       `toml:"-"`
 	Onboarding *bool          `toml:"onboarding"`

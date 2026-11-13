@@ -399,3 +399,42 @@ func (s *Store) UpdatePendingScreenDecision(id string, p api.DecisionCreateParam
 	err = s.execLocked(`UPDATE decisions SET record=? WHERE decision_id=? AND status='pending'`, string(raw), id)
 	return updated, err == nil && s.db.Changes() > 0, err
 }
+
+// RecordDecisionReach は送り先ごとの到達状態を判断待ちの記録に残す。pending でないときは何もしない。
+// 同じ送り先へ何度来てもよく、最初の時刻を残し、状態は shown を優先する。
+func (s *Store) RecordDecisionReach(id, channel, state string, now time.Time) (api.Decision, bool, error) {
+	if state != api.ReachShown && state != api.ReachNoClient {
+		return api.Decision{}, false, decisionError(api.ErrInvalidRequest, "invalid reach state")
+	}
+	if strings.TrimSpace(channel) == "" {
+		return api.Decision{}, false, decisionError(api.ErrInvalidRequest, "reach channel is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d, err := s.decisionLocked(id)
+	if err != nil || d.Status != "pending" {
+		return d, false, err
+	}
+	cur, had := d.Reach[channel]
+	if had && (cur.State == state || cur.State == api.ReachShown) {
+		return d, false, nil
+	}
+	reach := map[string]api.DecisionReach{}
+	for k, v := range d.Reach {
+		reach[k] = v
+	}
+	at := now.UnixMilli()
+	if had {
+		at = cur.AtUnixMS
+	}
+	reach[channel] = api.DecisionReach{State: state, AtUnixMS: at}
+	d.Reach = reach
+	raw, err := json.Marshal(d)
+	if err != nil {
+		return d, false, err
+	}
+	if err = s.execLocked(`UPDATE decisions SET record=? WHERE decision_id=? AND status='pending'`, string(raw), id); err != nil {
+		return d, false, err
+	}
+	return d, s.db.Changes() > 0, nil
+}
