@@ -128,7 +128,7 @@ func TestShimRequestReasonWithRealServer(t *testing.T) {
 							pending := listPending()
 							if len(pending) == 1 {
 								d := pending[0]
-								if d.Kind != "command_guard" || d.Status != "pending" || d.Origin == nil || d.Origin.Reason != reason || len(d.Options) != 3 {
+								if d.Kind != "command_guard" || d.Status != "pending" || d.Origin == nil || d.Origin.Reason != reason || len(d.Options) != 2 || d.Options[0].ID != "approve" || d.Options[1].ID != "reject" {
 									t.Fatalf("approval contract changed: %+v", d)
 								}
 								t.Logf("pending: %+v", d)
