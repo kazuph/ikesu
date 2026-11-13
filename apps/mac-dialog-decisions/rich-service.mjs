@@ -75,7 +75,7 @@ elif r['action']=='cleanup':
    except FileNotFoundError: pass
 `;
 export class RichService {
- constructor(config) {this.config=config;this.store=new AttachmentStore(config.stateDir);this.cleanupTimer=null;this.nextCleanup=null;this.resolving=new Map();}
+ constructor(config) {this.config=config;this.network=config.network||{};this.store=new AttachmentStore(config.stateDir);this.cleanupTimer=null;this.nextCleanup=null;this.resolving=new Map();}
  async start() {await this.cleanup();}
  stop() {clearTimeout(this.cleanupTimer);}
  async settleResolutions() {await Promise.allSettled([...this.resolving.values()]);}
@@ -96,7 +96,7 @@ export class RichService {
   return execute('/usr/bin/ssh',['-o','BatchMode=yes','-o','ConnectTimeout=15','--',profile.target,...['python3','-c',remoteScript].map(quote)],{input:JSON.stringify({...request,pluginId:this.config.pluginId||'kazuph.mac-dialog-decisions'}),signal,maxBuffer});
  }
  async readImage(machine,source,signal,limit=RICH_LIMITS.imageBytes) {
-  if(/^https?:/.test(source)) return (await fetchPublic(source,{signal,maxBytes:limit})).data;
+  if(/^https?:/.test(source)) return (await fetchPublic(source,{...this.network,signal,maxBytes:limit})).data;
   if(!path.isAbsolute(source)) throw Error('画像の絶対パスが必要です');
   if(machine!=='local') return this.remote(machine,{action:'read',path:source,limit:limit},signal,limit);
   signal?.throwIfAborted();
@@ -120,7 +120,7 @@ export class RichService {
   const filename=await this.cache(Buffer.alloc(0),extension,signal);
   const output=createWriteStream(filename,{flags:'w',mode:0o600});
   try {
-   if(/^https?:/.test(source)) await fetchPublic(source,{signal,maxBytes:Infinity,destination:output});
+   if(/^https?:/.test(source)) await fetchPublic(source,{...this.network,signal,maxBytes:Infinity,destination:output});
    else if(machine==='local') {
     const file=await fs.open(source,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
     try {if(!(await file.stat()).isFile())throw Error('通常ファイルの動画だけを表示できます');await pipeline(file.createReadStream({autoClose:false}),output,{signal});}
@@ -136,19 +136,35 @@ export class RichService {
    signal?.throwIfAborted();return filename;
   } catch(error) {output.destroy();await fs.rm(filename,{force:true});throw error;}
  }
+ async card(url,response,index,signal,cached,publish) {
+  const metadata=await pageMetadata(response.data,response.url,signal);if(!metadata.title) return;
+  let thumbnail='';if(metadata.image) {try{const data=(await fetchPublic(metadata.image,{...this.network,signal,maxBytes:RICH_LIMITS.imageBytes})).data;thumbnail=await this.cache(data,'.image',signal);cached.push(thumbnail);}catch{}}
+  signal.throwIfAborted();publish({status:'rich_card',index,url,title:metadata.title,site:metadata.site,path:thumbnail});
+ }
  async load(spec,machine,signal,publish) {
   const found=discoverRichContent(spec); const cached=[];
-  const image=async(source)=>{const data=await this.readImage(machine,source,signal); const file=await this.cache(data,'.image',signal);cached.push(file);return file;};
+  const linkCards=found.links.filter(url=>!videoPath(url)&&!imagePath(url));
+  // Cards are stored by index on Android, so image-turned-cards follow the link cards without gaps.
+  let nextCard=linkCards.length;
+  const image=async(source,index)=>{
+   let data;
+   if(/^https?:/.test(source)) {
+    const response=await fetchPublic(source,{...this.network,signal,maxBytes:RICH_LIMITS.imageBytes});
+    // A URL ending in .jpg can be a page about the image (e.g. a Wikimedia
+    // File: page). Show such a page as a link card instead of an image error.
+    if(/html/i.test(response.type)) {await this.card(source,response,nextCard++,signal,cached,publish);return;}
+    data=response.data;
+   } else data=await this.readImage(machine,source,signal);
+   const file=await this.cache(data,'.image',signal);cached.push(file);signal.throwIfAborted();publish({status:'rich_image',index,path:file,source});
+  };
   try {
    await Promise.allSettled([
     ...(found.videos || []).map(async(source,index)=>{try {
       const file=await this.cacheVideo(machine,source,signal);cached.push(file);signal.throwIfAborted();
       publish({status:'rich_video',index,path:file,source});
     }catch(error){if(!signal.aborted)publish({status:'rich_error',source,message:`動画を表示できません: ${error.message}`});}}),
-    ...found.images.map(async(source,index)=>{try {const file=await image(source);signal.throwIfAborted();publish({status:'rich_image',index,path:file,source});}catch(error){if(!signal.aborted)publish({status:'rich_error',message:`画像を表示できません: ${error.message}`});}}),
-    ...found.links.filter(url=>!videoPath(url)&&!imagePath(url)).map(async(url,index)=>{try {const response=await fetchPublic(url,{signal});if(!/html/i.test(response.type)) return; const metadata=await pageMetadata(response.data,response.url,signal);if(!metadata.title) return;
-     let thumbnail='';if(metadata.image) {try{const data=(await fetchPublic(metadata.image,{signal,maxBytes:RICH_LIMITS.imageBytes})).data;thumbnail=await this.cache(data,'.image',signal);cached.push(thumbnail);}catch{}}
-     signal.throwIfAborted();publish({status:'rich_card',index,url,title:metadata.title,site:metadata.site,path:thumbnail});
+    ...found.images.map(async(source,index)=>{try {await image(source,index);}catch(error){if(!signal.aborted)publish({status:'rich_error',message:`画像を表示できません: ${error.message}`});}}),
+    ...linkCards.map(async(url,index)=>{try {const response=await fetchPublic(url,{...this.network,signal});if(!/html/i.test(response.type)) return; await this.card(url,response,index,signal,cached,publish);
     }catch{}})
    ]);
   } finally { if(signal.aborted) await Promise.allSettled(cached.map(file=>fs.rm(file,{force:true})));else signal.addEventListener('abort',()=>{void Promise.allSettled(cached.map(file=>fs.rm(file,{force:true})));},{once:true}); }

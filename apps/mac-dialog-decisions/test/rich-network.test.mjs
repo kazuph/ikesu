@@ -2,7 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import {once} from 'node:events';
-import {fetchPublic,publicAddress,pageMetadata,RICH_LIMITS} from '../rich.mjs';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {fetchPublic,publicAddress,pageMetadata,RICH_LIMITS,RICH_USER_AGENT} from '../rich.mjs';
+import {RichService} from '../rich-service.mjs';
 
 // The public service is emulated on loopback. Only DNS and transport are
 // injected; every redirect still passes the production address validator.
@@ -14,6 +18,10 @@ async function publicService(t) {
   const redirect=url.pathname.match(/^\/redirect\/(\d+)$/);
   if(redirect&&Number(redirect[1])>0){res.writeHead(302,{Location:`/redirect/${Number(redirect[1])-1}`});res.end();}
   else if(url.pathname==='/redirect-to'){res.writeHead(302,{Location:url.searchParams.get('url')});res.end();}
+  // Like Wikimedia: refuse a request without a User-Agent with HTTP 403.
+  else if(url.pathname.startsWith('/wiki/')&&!req.headers['user-agent']){res.writeHead(403,{'Content-Type':'text/plain'});res.end('Please set a user-agent');}
+  else if(url.pathname==='/wiki/File:Gyuu-don_001.jpg'){res.writeHead(200,{'Content-Type':'text/html; charset=UTF-8'});res.end('<html><title>File:Gyuu-don 001.jpg</title><meta property="og:site_name" content="Wikimedia Commons"></html>');}
+  else if(url.pathname==='/wiki/photo.png'){res.writeHead(200,{'Content-Type':'image/png'});res.end(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==','base64'));}
   else if(url.pathname==='/headers'){res.end(JSON.stringify({headers:req.headers}));}
   else if(url.pathname==='/bytes'){res.end(Buffer.alloc(1024));}
   else if(url.pathname==='/delay'){server.emit('delayed');}
@@ -92,4 +100,23 @@ test('closing a window cancels its connected public-service request with the cal
  await assert.rejects(pending,error=>{
   assert.equal(error.code,'ABORT_ERR');assert.equal(error.cause,reason);return true;
  });
+});
+
+test('an image URL that is really a page (Wikimedia File:) shows as a link card, and requests carry a User-Agent',async t=>{
+ const {network}=await publicService(t);
+ const headers=JSON.parse((await fetchPublic('http://public.test/headers',network)).data).headers;
+ assert.equal(headers['user-agent'],RICH_USER_AGENT);
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'dialog-rich-card-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
+ const service=new RichService({stateDir:root,network});
+ const published=[];const lifetime=new AbortController();t.after(()=>lifetime.abort());
+ await service.load({body:'・出典 http://public.test/wiki/File:Gyuu-don_001.jpg\n画像 http://public.test/wiki/photo.png'},'local',lifetime.signal,message=>published.push(message));
+ assert.deepEqual(published.filter(m=>m.status==='rich_error'),[]);
+ const card=published.find(m=>m.status==='rich_card');
+ // Android stores cards by index: the only card here comes first.
+ assert.equal(card?.index,0);
+ assert.equal(card?.url,'http://public.test/wiki/File:Gyuu-don_001.jpg');
+ assert.equal(card.title,'File:Gyuu-don 001.jpg');assert.equal(card.site,'Wikimedia Commons');
+ const image=published.find(m=>m.status==='rich_image');
+ assert.equal(image?.source,'http://public.test/wiki/photo.png');
+ assert.equal((await fs.readFile(image.path)).subarray(1,4).toString(),'PNG');
 });
