@@ -264,3 +264,26 @@ func TestLineClaimIncludesExecutableIdentity(t *testing.T) {
 		}
 	}
 }
+
+// PATH が違っても、同じファイルに解決されれば同じハッシュになる。
+func TestLineClaimSamePathResolutionGivesSameHash(t *testing.T) {
+	dir := t.TempDir()
+	other := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "mytool"), []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	a := Input{Command: "mytool", Args: []string{"x"}, Cwd: dir, Env: map[string]string{"PATH": dir + ":/usr/bin:/bin"}}
+	b := Input{Command: "mytool", Args: []string{"x"}, Cwd: dir, Env: map[string]string{"PATH": other + ":" + dir}}
+	ha, oka := lineClaimHash(a)
+	hb, okb := lineClaimHash(b)
+	if !oka || !okb || ha != hb {
+		t.Fatalf("same file, different PATH: %v %v %s %s", oka, okb, ha, hb)
+	}
+	// 同じ名前で別のファイルに解決されれば違うハッシュ。
+	if err := os.WriteFile(filepath.Join(other, "mytool"), []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if hc, ok := lineClaimHash(b); !ok || hc == ha {
+		t.Fatal("a different file with the same name gave the same hash")
+	}
+}
