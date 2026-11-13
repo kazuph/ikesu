@@ -212,11 +212,10 @@ func TestScriptFileDoesNotUseInnerApprovalKeys(t *testing.T) {
 	path := filepath.Join(i.Cwd, "danger.sh")
 	os.WriteFile(path, []byte("rm /outside/victim\n"), 0600)
 	inner := Evaluate(Config{}, Input{Command: "rm", Args: []string{"/outside/victim"}, Cwd: i.Cwd, Env: i.Env})
-	grants := filepath.Join(i.Cwd, "grants")
+	grants := tempApprovalFile(i.Cwd)
 	if e := WriteApproval(grants, inner.TempKey, time.Now().Add(time.Hour)); e != nil {
 		t.Fatal(e)
 	}
-	i.Env["AI_GUARD_TEMP_APPROVAL_FILE"] = grants
 	selected, v, _ := lineVerdict(Config{}, i, "bash "+quote(path))
 	if v.Decision != "ask" || selected.Command != "bash" {
 		t.Fatalf("inner grant suppressed file: %+v %+v", selected, v)

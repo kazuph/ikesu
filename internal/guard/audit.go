@@ -35,6 +35,8 @@ var auditRuleKinds = map[string]string{
 	"rm-paths":   KindDelete,
 	"shell-line": KindUnjudged, "shell-script": KindUnjudged,
 	"guard-boundary": KindBoundary, "ownership": KindBoundary,
+	"d1-sql-write": KindOutward, "git-alias": KindBoundary,
+	"dangerous": KindDelete, "wide-scan": KindOther,
 }
 
 // RuleKind は規則名の種類。unresolved 系は判定不能。
@@ -96,6 +98,26 @@ type MissedSample struct {
 	PaneID  string `json:"pane_id,omitempty"`
 }
 
+// TierRow は ティア × 規則 × AI の種類 × スペース × 結果 の1つの組の件数。
+type TierRow struct {
+	Tier      string `json:"tier"`
+	Rule      string `json:"rule"`
+	Agent     string `json:"agent"`
+	Workspace string `json:"workspace"`
+	Outcome   string `json:"outcome"`
+	Count     int    `json:"count"`
+}
+
+// ティアの記録が無い古い行の名前。
+const TierUnknown = "ティア不明"
+
+func tierLabel(t int) string {
+	if t >= TierL1 && t <= TierL3 {
+		return "L" + strconv.Itoa(t)
+	}
+	return TierUnknown
+}
+
 type AuditReport struct {
 	From        string         `json:"from"`
 	To          string         `json:"to"`
@@ -104,6 +126,8 @@ type AuditReport struct {
 	BundleCount int            `json:"bundle_count"`
 	Top         []Bundle       `json:"top"`
 	Replay      bool           `json:"replay"`
+	TierTotals  map[string]int `json:"tier_totals"`
+	TierTable   []TierRow      `json:"tier_table"`
 	Attention   []Attention    `json:"attention,omitempty"`
 	Missed      []MissedSample `json:"missed_samples"`
 	Notes       []string       `json:"notes,omitempty"`
@@ -317,6 +341,7 @@ func BuildAudit(o AuditOptions) (*AuditReport, error) {
 		all = append(all, r)
 	}
 	sort.SliceStable(all, func(a, b int) bool { return all[a].TSEpoch < all[b].TSEpoch })
+	rep.TierTotals, rep.TierTable = tierTable(all)
 	bundles := map[string]*Bundle{}
 	var order []string
 	for _, r := range all {
@@ -381,6 +406,46 @@ func BuildAudit(o AuditOptions) (*AuditReport, error) {
 	return rep, nil
 }
 
+// tierTable は、ティア × 規則 × AI の種類 × スペース × 結果 で数える。
+func tierTable(all []AskRecord) (map[string]int, []TierRow) {
+	totals := map[string]int{}
+	cells := map[TierRow]int{}
+	for _, r := range all {
+		row := TierRow{Tier: tierLabel(r.Tier), Rule: r.Rule, Agent: dash(r.Agent), Workspace: dash(r.Workspace), Outcome: r.Outcome}
+		totals[row.Tier]++
+		cells[row]++
+	}
+	rows := make([]TierRow, 0, len(cells))
+	for row, n := range cells {
+		row.Count = n
+		rows = append(rows, row)
+	}
+	sort.Slice(rows, func(a, b int) bool {
+		x, y := rows[a], rows[b]
+		switch {
+		case x.Tier != y.Tier:
+			return x.Tier < y.Tier
+		case x.Count != y.Count:
+			return x.Count > y.Count
+		case x.Rule != y.Rule:
+			return x.Rule < y.Rule
+		case x.Agent != y.Agent:
+			return x.Agent < y.Agent
+		case x.Workspace != y.Workspace:
+			return x.Workspace < y.Workspace
+		}
+		return x.Outcome < y.Outcome
+	})
+	return totals, rows
+}
+
+func dash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
+}
+
 const replayPerBundle = 100
 
 func replayBundles(rep *AuditReport, list []*Bundle, o AuditOptions) {
@@ -391,8 +456,7 @@ func replayBundles(rep *AuditReport, list []*Bundle, o AuditOptions) {
 	if env["HOME"] == "" {
 		env["HOME"] = os.Getenv("HOME")
 	}
-	// 今日の許可記録で allow にならないよう、存在しない記録ファイルを指す。
-	env["AI_GUARD_TEMP_APPROVAL_FILE"] = filepath.Join(os.TempDir(), "ikesu-audit-replay-none")
+
 	for _, b := range list {
 		recs := b.records
 		if len(recs) > replayPerBundle {
@@ -526,7 +590,7 @@ func fmtWait(ms int64) string {
 	return fmt.Sprintf("%.1f分", float64(ms)/60000)
 }
 
-var outcomeOrder = []string{OutcomeApprove, OutcomeDayAllow, OutcomeReject, OutcomeExpired, OutcomeCancelled, OutcomeNoReason, OutcomeNoServer}
+var outcomeOrder = []string{OutcomeL1Allow, OutcomeApprove, OutcomeDayAllow, OutcomeReject, OutcomeExpired, OutcomeCancelled, OutcomeNoReason, OutcomeNoServer}
 
 func outcomeText(m map[string]int) string {
 	var parts []string
@@ -547,6 +611,13 @@ func RenderAuditText(w io.Writer, r *AuditReport) {
 	fmt.Fprintf(w, "全体: %d件（%s） 束の数: %d\n", r.Total, outcomeText(r.Outcomes), r.BundleCount)
 	for _, n := range r.Notes {
 		fmt.Fprintf(w, "注: %s\n", n)
+	}
+	if len(r.TierTable) > 0 {
+		fmt.Fprintf(w, "\nティア別: %s\n", tierTotalsText(r.TierTotals))
+		fmt.Fprintln(w, "ティア × 規則 × AI × スペース × 結果:")
+		for _, t := range r.TierTable {
+			fmt.Fprintf(w, "  %s  %s  %s  %s  %s  %d件\n", t.Tier, t.Rule, t.Agent, t.Workspace, t.Outcome, t.Count)
+		}
 	}
 	if len(r.Attention) > 0 {
 		fmt.Fprintln(w, "\n要注意（却下されたが、今の規則なら聞かない）:")
@@ -570,6 +641,16 @@ func RenderAuditText(w io.Writer, r *AuditReport) {
 			fmt.Fprintf(w, "  %s %s\n", localTime(m.TS), m.CmdLine)
 		}
 	}
+}
+
+func tierTotalsText(m map[string]int) string {
+	var parts []string
+	for _, k := range []string{"L1", "L2", "L3", TierUnknown} {
+		if m[k] > 0 {
+			parts = append(parts, k+" "+strconv.Itoa(m[k]))
+		}
+	}
+	return strings.Join(parts, " / ")
 }
 
 func RenderAuditJSON(w io.Writer, r *AuditReport) error {
@@ -599,6 +680,13 @@ code,pre{font:12px/1.5 ui-monospace,Menlo,monospace}pre{background:#f1f3f7;borde
 	fmt.Fprintf(&b, `<div class="sum"><span>全体 <b>%d</b>件</span><span>束 <b>%d</b>つ</span><span>%s</span></div>`, r.Total, r.BundleCount, e(outcomeText(r.Outcomes)))
 	for _, n := range r.Notes {
 		fmt.Fprintf(&b, `<p class="mute">注: %s</p>`, e(n))
+	}
+	if len(r.TierTable) > 0 {
+		fmt.Fprintf(&b, `<h2>ティア別の集計</h2><div class="sum"><span>%s</span></div><div class="card"><table style="border-collapse:collapse;width:100%%"><tr><th align="left">ティア</th><th align="left">規則</th><th align="left">AI</th><th align="left">スペース</th><th align="left">結果</th><th align="right">件数</th></tr>`, e(tierTotalsText(r.TierTotals)))
+		for _, t := range r.TierTable {
+			fmt.Fprintf(&b, `<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td align="right">%d</td></tr>`, e(t.Tier), e(t.Rule), e(t.Agent), e(t.Workspace), e(t.Outcome), t.Count)
+		}
+		b.WriteString(`</table></div>`)
 	}
 	if len(r.Attention) > 0 {
 		b.WriteString(`<h2 class="warn">要注意（却下されたが、今の規則なら聞かない）</h2>`)

@@ -96,8 +96,7 @@ func TestDecisionAnswerFeedback(t *testing.T) {
 			}
 			i := Input{Command: "npx", Args: []string{"wrangler", "deploy", "--env", "staging"}, Cwd: root, Env: EnvMap(env)}
 			i.Env["AI_GUARD_REQUEST_REASON"] = "対象プロジェクトの確認用デプロイを行うため"
-			approval := filepath.Join(root, "approvals")
-			i.Env["AI_GUARD_TEMP_APPROVAL_FILE"] = approval
+			approval := tempApprovalFile(root)
 			verdict := Evaluate(Config{}, i)
 			store, err := dispatch.Open(filepath.Join(root, "ledger.db"))
 			if err != nil {
@@ -168,7 +167,7 @@ func TestDecisionAnswerFeedback(t *testing.T) {
 				if tc.option == "day_allow" {
 					suppressed = "day"
 				}
-				if v := Evaluate(Config{}, i); v.Decision != "allow" || v.Suppressed != suppressed {
+				if v := applyGrants(root, Evaluate(Config{}, i), time.Now()); v.Decision != "allow" || v.Suppressed != suppressed {
 					t.Errorf("approval no longer suppresses: %+v", v)
 				}
 			} else if _, err := os.Stat(approval); !os.IsNotExist(err) {

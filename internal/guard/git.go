@@ -81,7 +81,7 @@ func gitPush(i Input) Verdict {
 		if destMain {
 			return result("block", "git-main", "main/master への push は AI からは禁止です。必要なら人間が手動で実行してください。")
 		}
-		return result("ask", "ownership", "git -C の場所を確定できないため承認が必要です。")
+		return askAt("ownership", "git -C の場所を確定できないため承認が必要です。", TierL2, DestGitHub)
 	}
 	if destMain {
 		root := probe(i, "git", "rev-parse", "--show-toplevel")
@@ -104,7 +104,7 @@ func repository(s string) string {
 	return ""
 }
 func ownerVerdict(i Input, repo, operation string) Verdict {
-	ask := result("ask", "ownership", "リモート・所有者を確認できないため承認が必要です。")
+	ask := askAt("ownership", "リモート・所有者を確認できないため承認が必要です。", TierL2, DestGitHub)
 	if !strings.Contains(repo, "/") {
 		return ask
 	}

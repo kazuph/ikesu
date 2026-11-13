@@ -72,8 +72,20 @@ func TestShellAnalysisDoesNotExecuteSubstitutions(t *testing.T) {
 
 func TestShellLineDangerAcknowledgementPreserved(t *testing.T) {
 	i := Input{Cwd: t.TempDir(), Env: map[string]string{"AI_GUARD_DANGER_WORD_ACK": "1"}}
+	// ACK は判定を変えない。結果が ask で L1 のときだけ allow にする。
+	// printf の引数に deploy があるコマンドは、宛先が決まらない L3 なので ACK では通らない。
 	_, v, e := lineVerdict(Config{}, i, "printf deploy")
+	if e != nil || v.Decision != "ask" || v.Rule != "danger-word-line" || v.Tier != TierL3 {
+		t.Fatal(v, e)
+	}
+	// 語が git の引数にあるだけの行は L1 なので、ACK で通る。
+	_, v, e = lineVerdict(Config{}, i, `git commit -m "fix deploy script"`)
 	if e != nil || v.Decision != "allow" {
+		t.Fatal(v, e)
+	}
+	delete(i.Env, "AI_GUARD_DANGER_WORD_ACK")
+	_, v, e = lineVerdict(Config{}, i, `git commit -m "fix deploy script"`)
+	if e != nil || v.Decision != "ask" || v.Tier != TierL1 {
 		t.Fatal(v, e)
 	}
 }

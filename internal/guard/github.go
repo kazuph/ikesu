@@ -8,10 +8,28 @@ import (
 var replyEndpoint = regexp.MustCompile(`^repos/[^/]+/[^/]+/pulls/(comments/[0-9]+|[0-9]+/comments/[0-9]+)/replies$`)
 var commentEndpoint = regexp.MustCompile(`^repos/[^/]+/[^/]+/(issues|pulls)/comments/[0-9]+$`)
 
+// ghTier は gh の書き込みのティア。取り返しがつかない削除と認証の変更は L3、それ以外は L2。
+func ghTier(a []string, method string) int {
+	switch arg(a, 0) {
+	case "auth":
+		return TierL3
+	case "api":
+		if method == "DELETE" {
+			return TierL3
+		}
+	case "repo", "release", "secret", "variable", "gist", "label":
+		if has([]string{"delete", "delete-asset"}, arg(a, 1)) {
+			return TierL3
+		}
+	}
+	return TierL2
+}
+
 func github(i Input) Verdict {
 	a := i.Args
 	allow := result("allow", "gh-safe", "GitHubの確認不要操作")
-	ask := result("ask", "gh-write", "GitHubの書き込みには承認が必要です。")
+	const ghReason = "GitHubの書き込みには承認が必要です。"
+	ask := askAt("gh-write", ghReason, ghTier(a, ""), DestGitHub)
 	if arg(a, 0) == "api" {
 		method := "GET"
 		endpoint := ""
@@ -43,7 +61,7 @@ func github(i Input) Verdict {
 		if !writeMethod(method) || method == "PATCH" && commentEndpoint.MatchString(endpoint) || method == "POST" && replyEndpoint.MatchString(endpoint) {
 			return allow
 		}
-		return ask
+		return askAt("gh-write", ghReason, ghTier(a, method), DestGitHub)
 	}
 	reads := map[string]string{"alias": "list", "auth": "status", "cache": "list", "config": "get list", "gist": "list view", "issue": "list status view", "label": "list", "org": "list", "pr": "checks diff list status view", "release": "list view", "repo": "list view", "run": "list view", "workflow": "list view"}
 	if arg(a, 0) == "search" || has(strings.Fields(reads[arg(a, 0)]), arg(a, 1)) {

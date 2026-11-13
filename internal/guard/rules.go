@@ -95,6 +95,11 @@ type Verdict struct {
 	TempKey    string `json:"approval_key"`
 	DayKey     string `json:"-"`
 	Suppressed string `json:"suppressed_by"`
+	// ティア（1〜3。ask 以外は 0）・宛先・ティアを決めた規則名・通した理由。判定の JSON には出さず、記録にだけ書く。
+	Tier      int    `json:"-"`
+	Dest      string `json:"-"`
+	TierRule  string `json:"-"`
+	AllowedBy string `json:"-"`
 }
 
 func (v Verdict) MarshalJSON() ([]byte, error) {
@@ -145,20 +150,19 @@ func Evaluate(c Config, i Input) Verdict {
 func evaluateVerdict(c Config, i Input, v Verdict) Verdict {
 	v.DayKey = "day:" + physical(i.Cwd)
 	v.TempKey = temporaryKey(c, i)
-	if v.Decision == "ask" && v.TempKey != "" {
-		f := i.Env["AI_GUARD_TEMP_APPROVAL_FILE"]
-		if f == "" {
-			f = filepath.Join(i.Env["HOME"], ".ai_guard_temp_approval")
-		}
-		if validApproval(f, v.DayKey, time.Now()) {
-			v.Decision, v.Suppressed = "allow", "day"
-		} else if validApproval(f, v.TempKey, time.Now()) {
-			v.Decision, v.Suppressed = "allow", "temporary"
-		}
+	return v
+}
+
+// classify は規則の判定。AI_GUARD_DANGER_WORD_ACK は判定を変えず、結果が ask で
+// L1 のときだけ allow に変える。
+func classify(c Config, i Input) Verdict {
+	v := classifyRules(c, i)
+	if v.Decision == "ask" && v.effectiveTier() == TierL1 && i.Env["AI_GUARD_DANGER_WORD_ACK"] == "1" {
+		return result("allow", "default", "")
 	}
 	return v
 }
-func classify(c Config, i Input) Verdict {
+func classifyRules(c Config, i Input) Verdict {
 	i = normalizeGit(i)
 	cmd, a := filepath.Base(i.Command), i.Args
 	for _, p := range defaults(c.ProtectedPatterns, []string{".allow-main", ".allow_main", "allow-main", "allow_main"}) {
@@ -167,13 +171,13 @@ func classify(c Config, i Input) Verdict {
 		}
 	}
 	if cmd == "git" && i.gitAlias {
-		return result("ask", "git-alias", "git の別名（-c alias.*）を付けた実行は、中身を確定できないため承認が必要です。")
+		return askAt("git-alias", "git の別名（-c alias.*）を付けた実行は、中身を確定できないため承認が必要です。", TierL3, DestUnknown)
 	}
 	if has([]string{"ikesu", "herdr"}, cmd) && wildcard(a) {
 		return result("block", "wildcard", "宛先 '*' は --room を付けても room 内に限定されず、全agentへ一斉配信されます。これは承認では解除できません。")
 	}
-	if reason := commandBoundary(i); reason != "" {
-		return result("ask", "guard-boundary", reason)
+	if reason, tier := boundaryTier(i); reason != "" {
+		return askAt("guard-boundary", reason, tier, "")
 	}
 	if cmd == "git" {
 		switch arg(a, 0) {
@@ -198,10 +202,9 @@ func classify(c Config, i Input) Verdict {
 		return v
 	}
 	allow := result("allow", "default", "")
-	ask := result("ask", "dangerous", "実行前に承認が必要です。")
-	if i.Env["AI_GUARD_DANGER_WORD_ACK"] == "1" {
-		return allow
-	}
+	const dangerousReason = "実行前に承認が必要です。"
+	askL1 := askAt("dangerous", dangerousReason, TierL1, "")
+	askL3 := askAt("dangerous", dangerousReason, TierL3, "")
 	if cmd == "sqlite3" || localWrangler(i) {
 		return allow
 	}
@@ -209,10 +212,16 @@ func classify(c Config, i Input) Verdict {
 		if exactD1Help(i) || readonlySQL(sqlArgument(a)) && !fileSQL(a) {
 			return allow
 		}
-		return result("ask", "d1-sql-write", "D1 への書き込み SQL は確認が必要です")
+		return destinationAsk(i, "d1-sql-write", "D1 への書き込み SQL は確認が必要です")
 	}
 	if danger(c, i) {
-		return result("ask", "danger-word", "deploy/publish 系の操作は確認が必要です")
+		// 行の中の別のコマンドに deploy/publish の語があるだけで、このコマンド自身には無い時は、宛先を決められない L3 にはしない。
+		own := i
+		own.RawLine = ""
+		if !danger(c, own) {
+			return askAt("danger-word", "deploy/publish 系の操作は確認が必要です", TierL1, "")
+		}
+		return destinationAsk(i, "danger-word", "deploy/publish 系の操作は確認が必要です")
 	}
 	switch cmd {
 	case "rm", "rmdir", "rimraf", "trash":
@@ -223,39 +232,46 @@ func classify(c Config, i Input) Verdict {
 			}
 			targets, ok := expandRemovalArg(i, t)
 			if !ok {
-				return result("ask", "rm-paths", "削除操作は確認が必要です")
+				return askAt("rm-paths", "削除操作は確認が必要です", TierL3, "")
 			}
 			for _, target := range targets {
 				if !safeRemovalWithProbes(i, target, probes) {
-					return result("ask", "rm-paths", "削除操作は確認が必要です")
+					return askAt("rm-paths", "削除操作は確認が必要です", TierL3, "")
 				}
 			}
 		}
 		return allow
 	case "mv":
 		if strings.Contains(strings.Join(a, " "), "bak") || strings.Contains(strings.Join(a, " "), "backup") {
-			return ask
+			return askL1
 		}
 	case "dd", "mkfs", "fdisk", "diskutil", "format", "parted", "gparted":
-		return ask
+		return askL3
 	case "git":
-		if arg(a, 0) == "clean" || arg(a, 0) == "stash" && has([]string{"drop", "clear"}, arg(a, 1)) || has([]string{"cherry-pick", "merge"}, arg(a, 0)) && arg(a, 1) == "--abort" {
-			return ask
+		if arg(a, 0) == "stash" && has([]string{"drop", "clear"}, arg(a, 1)) {
+			return askL3
+		}
+		if arg(a, 0) == "clean" || has([]string{"cherry-pick", "merge"}, arg(a, 0)) && arg(a, 1) == "--abort" {
+			return askL1
 		}
 	case "curl", "wget", "http", "https":
-		if writeMethod(httpMethod(a, cmd)) && !localHTTPDestinations(i) {
-			return result("ask", "http-write", "HTTPの書き込みには承認が必要です。")
+		if method := httpMethod(a, cmd); writeMethod(method) && !localHTTPDestinations(i) {
+			tier := TierL2
+			if strings.EqualFold(method, "DELETE") {
+				tier = TierL3
+			}
+			return askAt("http-write", "HTTPの書き込みには承認が必要です。", tier, DestHTTP)
 		}
 	case "aws":
-		return result("ask", "aws", "AWSコマンドには承認が必要です。")
+		return awsAsk(i)
 	case "wrangler":
 		if has(defaults(c.WranglerAllow, []string{"r2 put"}), arg(a, 0)+" "+arg(a, 1)) {
 			return allow
 		}
-		return result("ask", "wrangler", "wrangler の許可ペア外には承認が必要です。")
+		return destinationAsk(i, "wrangler", "wrangler の許可ペア外には承認が必要です。")
 	case "psql", "mysql":
 		if !readonlySQL(sqlArgument(a)) {
-			return result("ask", "sql-write", "SQLの書き込みには承認が必要です。")
+			return askAt("sql-write", "SQLの書き込みには承認が必要です。", TierL3, DestUnknown)
 		}
 	}
 	return allow

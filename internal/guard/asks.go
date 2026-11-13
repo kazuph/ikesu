@@ -25,11 +25,16 @@ type AskRecord struct {
 	Cwd        string    `json:"cwd,omitempty"`
 	Repo       string    `json:"repo,omitempty"`
 	PaneID     string    `json:"pane_id,omitempty"`
+	Workspace  string    `json:"workspace_id,omitempty"` // 分析用。許可の判断には使わない
 	Agent      string    `json:"agent,omitempty"`
 	Via        string    `json:"via,omitempty"`
 	Outcome    string    `json:"outcome"`
 	WaitMS     int64     `json:"wait_ms"`
 	AnswerText string    `json:"answer_text,omitempty"`
+	Tier       int       `json:"tier,omitempty"`
+	Dest       string    `json:"dest,omitempty"`
+	TierRule   string    `json:"tier_rule,omitempty"`
+	AllowedBy  string    `json:"allowed_by,omitempty"`
 }
 
 // AskUnit は command_units のうち ask・block の行だけを残したもの。
@@ -48,6 +53,7 @@ const (
 	OutcomeCancelled = "cancelled"
 	OutcomeNoReason  = "no_reason"
 	OutcomeNoServer  = "no_server"
+	OutcomeL1Allow   = "l1_allow" // L1 でペインの中だったので、聞かずに通した
 )
 
 const answerTextLimit = 500
@@ -113,8 +119,15 @@ func recordAsk(root string, i Input, m Marker, v Verdict, via, command, outcome 
 		Rule: v.Rule, Reason: i.redact(v.Reason), Command: truncateRunes(i.redact(command), 4000),
 		Units: askUnits(i.commandUnits(command)),
 		Cwd:   i.redact(i.Cwd), Repo: i.redact(repoOf(i.Cwd)),
-		PaneID: m.Pane, Agent: m.Agent, Via: via, Outcome: outcome,
+		PaneID: m.Pane, Workspace: m.Workspace, Agent: m.Agent, Via: via, Outcome: outcome,
 		WaitMS: now.Sub(started).Milliseconds(),
+		Tier:   v.Tier, Dest: v.Dest, TierRule: v.TierRule,
+	}
+	switch outcome {
+	case OutcomeL1Allow:
+		r.AllowedBy = "l1-default"
+	case OutcomeApprove, OutcomeDayAllow:
+		r.AllowedBy = "approve"
 	}
 	if d != nil {
 		r.DecisionID = d.DecisionID

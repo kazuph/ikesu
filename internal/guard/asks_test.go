@@ -63,7 +63,6 @@ func TestAuthorizeRecordsAsks(t *testing.T) {
 			}
 			i := Input{Command: "npx", Args: []string{"wrangler", "deploy", "--env", "staging"}, Cwd: root, Env: EnvMap(env)}
 			i.Env["AI_GUARD_REQUEST_REASON"] = tc.reason
-			i.Env["AI_GUARD_TEMP_APPROVAL_FILE"] = filepath.Join(root, "approvals")
 			store, err := dispatch.Open(filepath.Join(root, "ledger.db"))
 			if err != nil {
 				t.Fatal(err)

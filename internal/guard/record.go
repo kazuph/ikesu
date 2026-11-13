@@ -29,6 +29,10 @@ type Record struct {
 	Agent       string   `json:"agent,omitempty"`
 	Via         string   `json:"via"`
 	Suppressed  string   `json:"suppressed_by,omitempty"`
+	Tier        int      `json:"tier,omitempty"`
+	Dest        string   `json:"dest,omitempty"`
+	TierRule    string   `json:"tier_rule,omitempty"`
+	AllowedBy   string   `json:"allowed_by,omitempty"`
 }
 
 func ReadMarker(i Input) (Marker, bool, error) {
@@ -70,7 +74,7 @@ func Log(root string, i Input, m Marker, v Verdict, via string) error {
 	}
 	defer unix.Flock(int(f.Fd()), unix.LOCK_UN)
 	now := time.Now()
-	b, e := json.Marshal(Record{OutsidePane: m.OutsidePane, Epoch: now.Unix(), Timestamp: now.UTC().Format(time.RFC3339), Decision: v.Decision, Rule: v.Rule, Reason: i.redact(v.Reason), Command: i.redactedArgv(), CommandLine: i.redact(i.Line()), Cwd: i.redact(i.Cwd), LaunchCwd: i.redact(i.LaunchCwd), Pane: m.Pane, Workspace: m.Workspace, Tab: m.Tab, Agent: m.Agent, Via: via, Suppressed: v.Suppressed})
+	b, e := json.Marshal(Record{OutsidePane: m.OutsidePane, Epoch: now.Unix(), Timestamp: now.UTC().Format(time.RFC3339), Decision: v.Decision, Rule: v.Rule, Reason: i.redact(v.Reason), Command: i.redactedArgv(), CommandLine: i.redact(i.Line()), Cwd: i.redact(i.Cwd), LaunchCwd: i.redact(i.LaunchCwd), Pane: m.Pane, Workspace: m.Workspace, Tab: m.Tab, Agent: m.Agent, Via: via, Suppressed: v.Suppressed, Tier: v.Tier, Dest: v.Dest, TierRule: v.TierRule, AllowedBy: v.AllowedBy})
 	if e != nil {
 		return e
 	}

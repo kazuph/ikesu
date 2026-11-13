@@ -47,36 +47,47 @@ func guardPath(i Input, path string) bool {
 	}
 	return false
 }
-func commandBoundary(i Input) string {
+
+// boundaryTier は guard 自身の境界に関わる確認の理由とティアを返す（理由が空なら確認なし）。
+func boundaryTier(i Input) (string, int) {
 	if i.Command == "" {
-		return ""
+		return "", 0
 	}
 	cmd, args := filepath.Base(i.Command), i.Args
 	if i.Unresolved && has([]string{"trap", "unset", "unfunction", "functions", "alias", "unalias", "setopt", "unsetopt", "shopt", "set", "chmod", "chown", "chgrp"}, cmd) {
-		return "判定・権限を変更する操作の対象を安全に確定できません"
+		const reason = "判定・権限を変更する操作の対象を安全に確定できません"
+		switch cmd {
+		case "set":
+			if arg(args, 0) == "--" {
+				return reason, TierL1
+			}
+		case "chmod", "chown", "chgrp":
+			return reason, relativeWriteTier(i, cmd, args)
+		}
+		return reason, TierL3
 	}
 	switch cmd {
 	case "env":
 		if reason := envDropsGuard(i, args); reason != "" {
-			return reason
+			return reason, TierL3
 		}
 	case "ikesu", "herdr":
 		if len(args) >= 2 && args[0] == "guard" && args[1] == "claude-prefix" {
-			return "専用入口の実行内容は入口自身で全体を確認する必要があります"
+			return "専用入口の実行内容は入口自身で全体を確認する必要があります", TierL3
 		}
 	case "eval", "source", ".", "xargs", "sudo", "doas", "timeout", "stdbuf", "arch", "chroot", "setsid", "ionice":
-		return "実行を委譲する " + cmd + " の中身を安全に確定できません"
+		return "実行を委譲する " + cmd + " の中身を安全に確定できません", TierL3
 	case "find":
 		for _, a := range args {
 			if has([]string{"-exec", "-execdir", "-ok", "-okdir"}, a) {
-				return "find が実行するコマンドの入力を確定できません"
+				return "find が実行するコマンドの入力を確定できません", TierL3
 			}
 		}
 	case "trap":
 		if !has(args, "-p") {
 			for _, a := range args {
 				if has([]string{"DEBUG", "ERR", "RETURN"}, a) {
-					return "判定のトラップの変更・解除には承認が必要です"
+					return "判定のトラップの変更・解除には承認が必要です", TierL3
 				}
 			}
 		}
@@ -84,12 +95,12 @@ func commandBoundary(i Input) string {
 		for _, a := range args {
 			name, _, _ := strings.Cut(a, "=")
 			if guardFunction(i, name) || has([]string{"unset", "unsetenv", "setenv", "export", "typeset", "declare", "readonly"}, cmd) && startupVariable(name) {
-				return "判定の関数・エイリアスの変更には承認が必要です"
+				return "判定の関数・エイリアスの変更には承認が必要です", TierL3
 			}
 		}
 	case "set":
 		if setChangesGuard(args) {
-			return "実行前の判定に関わる設定の変更には承認が必要です"
+			return "実行前の判定に関わる設定の変更には承認が必要です", TierL3
 		}
 	case "setopt", "unsetopt", "shopt":
 		// unsetopt and shopt -u clear options; setopt and shopt -s set them.
@@ -103,12 +114,12 @@ func commandBoundary(i Input) string {
 				off = false
 				continue
 			case "+T":
-				return "実行前の判定に関わる設定の変更には承認が必要です"
+				return "実行前の判定に関わる設定の変更には承認が必要です", TierL3
 			case "-T", "-E", "+E":
 				continue
 			}
 			if optionWeakensGuard(a, off) {
-				return "実行前の判定に関わる設定の変更には承認が必要です"
+				return "実行前の判定に関わる設定の変更には承認が必要です", TierL3
 			}
 		}
 	}
@@ -136,31 +147,55 @@ func commandBoundary(i Input) string {
 			}
 		}
 	}
+	reason, tier := "", 0
 	for _, path := range targets {
-		if !strings.HasPrefix(path, "-") && !filepath.IsAbs(path) && i.CwdUncertain {
-			return "ディレクトリ変更を含む入力の書き込み先を安全に確定できません"
+		if !strings.HasPrefix(path, "-") && !filepath.IsAbs(path) && i.CwdUncertain && reason == "" {
+			reason, tier = "ディレクトリ変更を含む入力の書き込み先を安全に確定できません", relativeWriteTier(i, cmd, targets)
 		}
 		if !strings.HasPrefix(path, "-") && guardPath(i, path) {
-			return "ガードの目印・シム・起動ファイルへの操作には承認が必要です"
+			return "ガードの目印・シム・起動ファイルへの操作には承認が必要です", TierL3
 		}
 	}
-	return ""
+	return reason, tier
+}
+
+// relativeWriteTier は、cd の後の相対パスへ書く操作のティア。削除は L3。それ以外は
+// 行や引数に guard の置き場所の手がかりが見えなければ L1。
+func relativeWriteTier(i Input, cmd string, targets []string) int {
+	if has([]string{"rm", "rmdir", "trash", "rimraf"}, cmd) {
+		return TierL3
+	}
+	if root := guardDirectory(i); root != "" && strings.Contains(i.Line(), root) {
+		return TierL3
+	}
+	for _, path := range targets {
+		if !strings.HasPrefix(path, "-") && guardNameClue(i, path) {
+			return TierL3
+		}
+	}
+	return TierL1
 }
 
 func treeBoundary(i Input, tree *syntax.File) error {
 	var failure error
 	cfg := &expand.Config{Env: expand.ListEnviron(environment(i.shellExpansionValues())...), NoUnset: true}
+	// L1 の失敗は、すでに見つけた L2 以上の失敗を隠さない。
+	lowFailure := func(e error) {
+		if failure == nil || unresolvedFailure(failure) || errTier(failure) <= TierL1 {
+			failure = e
+		}
+	}
 	syntax.Walk(tree, func(node syntax.Node) bool {
 		if p, ok := node.(*syntax.ParamExp); ok && (unsupportedParamOp(p) || unquotableParamValue(cfg, p)) {
 			failure = fmt.Errorf("未対応の変数展開には承認が必要です")
 			return false
 		}
 		if _, ok := node.(*syntax.ProcSubst); ok {
-			failure = fmt.Errorf("プロセス置換が実行する内容には承認が必要です")
+			lowFailure(lowTierErrorf("プロセス置換が実行する内容には承認が必要です"))
 			return false
 		}
 		if _, ok := node.(*syntax.ExtGlob); ok {
-			failure = fmt.Errorf("拡張グロブの展開には承認が必要です")
+			lowFailure(lowTierErrorf("拡張グロブの展開には承認が必要です"))
 			return false
 		}
 		if i.runtimeLine {
@@ -200,7 +235,12 @@ func treeBoundary(i Input, tree *syntax.File) error {
 					value, e := shellLiteral(cfg, assignment.Value)
 					name, _, assigned := strings.Cut(value, "=")
 					if e != nil && !i.runtimeLine || assigned && startupVariable(name) {
-						failure = fmt.Errorf("子シェルの起動設定の変更内容を確認する必要があります")
+						// 宣言の名前が決まっていて予約名でなければ L1。名前が動的・予約名は L3。
+						if assignment.Name != nil && !reservedDeclName(assignment.Name.Value) && !(assigned && startupVariable(name)) {
+							lowFailure(lowTierErrorf("子シェルの起動設定の変更内容を確認する必要があります"))
+						} else {
+							failure = fmt.Errorf("子シェルの起動設定の変更内容を確認する必要があります")
+						}
 					}
 					removeExport = removeExport || value == "-n" || value == "+x"
 					prefixName = prefixName || value == "CLAUDE_CODE_SHELL_PREFIX"
@@ -250,6 +290,19 @@ func treeBoundary(i Input, tree *syntax.File) error {
 		return true
 	})
 	return failure
+}
+
+func reservedDeclName(name string) bool {
+	return startupVariable(name) || name == "PATH" || strings.HasPrefix(name, "IKESU_") || strings.HasPrefix(name, "AI_GUARD_")
+}
+
+// シェルへ渡すスクリプトを確定できない時のティア。bash が検証済みの起動環境で
+// 動いているなら L1、それ以外のシェルは L3。シェル以外のインタプリタは L1。
+func scriptInputTier(i Input, shell bool) int {
+	if !shell || filepath.Base(i.Command) == "bash" && verifiedBashEnv(i) {
+		return TierL1
+	}
+	return TierL3
 }
 
 func commandScript(i Input, redirs []*syntax.Redirect, commands *[]Input) error {
@@ -330,7 +383,7 @@ func commandScript(i Input, redirs []*syntax.Redirect, commands *[]Input) error 
 		switch redir.Op {
 		case syntax.Hdoc, syntax.DashHdoc, syntax.WordHdoc:
 			if !shell {
-				return fmt.Errorf("インタプリタへ渡す標準入力のスクリプトを確定できません")
+				return lowTierErrorf("インタプリタへ渡す標準入力のスクリプトを確定できません")
 			}
 			word := redir.Hdoc
 			if redir.Op == syntax.WordHdoc {
@@ -338,7 +391,7 @@ func commandScript(i Input, redirs []*syntax.Redirect, commands *[]Input) error 
 			}
 			script, e := shellLiteral(&expand.Config{Env: expand.ListEnviron(environment(i.shellExpansionValues())...), NoUnset: true}, word)
 			if e != nil {
-				return fmt.Errorf("標準入力のスクリプトを安全に展開できません")
+				return tierError(fmt.Errorf("標準入力のスクリプトを安全に展開できません"), scriptInputTier(i, true))
 			}
 			if i.scriptBody && i.scriptScanner != nil {
 				r := i.scriptScanner.body(i, []byte(script), i.scriptLabel)
@@ -355,11 +408,11 @@ func commandScript(i Input, redirs []*syntax.Redirect, commands *[]Input) error 
 			*commands = append(*commands, nested...)
 			return e
 		case syntax.RdrIn, syntax.RdrInOut, syntax.DplIn:
-			return fmt.Errorf("ファイル・パイプから渡すスクリプトを確定できません")
+			return tierError(fmt.Errorf("ファイル・パイプから渡すスクリプトを確定できません"), scriptInputTier(i, shell))
 		}
 	}
 	if !shell || len(i.Args) == 0 || has(i.Args, "-") {
-		return fmt.Errorf("標準入力から実行するスクリプトを確定できません")
+		return tierError(fmt.Errorf("標準入力から実行するスクリプトを確定できません"), scriptInputTier(i, shell))
 	}
 	if shell {
 		return fmt.Errorf("シェルが読み込むスクリプトの中身を確定できません")

@@ -55,12 +55,20 @@ func TestGuardSubstitutionFailsClosedWithoutExecution(t *testing.T) {
 	i := Input{Cwd: root, Env: EnvMap(env)}
 	marker := filepath.Join(root, "never-created")
 	for _, line := range []string{crashedGuardLine, "cat <(touch " + quote(marker) + ")", "printf x > >(touch " + quote(marker) + ")"} {
+		// プロセス置換は L1。ペインの外（本人確認で一致しない呼び出し）では今までどおり確認になる。
+		outside := i
+		outside.VerifiedOutside = &Marker{OutsidePane: true, Pane: "p1", Agent: "claude", Cwd: root, Socket: filepath.Join(root, "socket"), Mode: "enforce", Policy: &Config{}}
 		var out bytes.Buffer
-		if AuthorizeLine(Config{}, root, i, line, &out, nil) {
+		if AuthorizeLine(Config{}, root, outside, line, &out, nil) {
 			t.Fatalf("unsupported substitution allowed: %s", line)
 		}
 		if !strings.Contains(out.String(), "プロセス置換") {
 			t.Fatalf("missing safe rejection: %s", out.String())
+		}
+		// ペインの中では L1 なので最初から任せる。中身は実行しない。
+		out.Reset()
+		if !AuthorizeLine(Config{}, root, i, line, &out, nil) {
+			t.Fatalf("L1 line was not allowed in the pane: %s %s", line, out.String())
 		}
 	}
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {

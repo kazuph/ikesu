@@ -8,7 +8,6 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -154,9 +153,34 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 	if override != nil {
 		v = evaluateVerdict(c, i, *override)
 	}
+	// 決められない ask は L3。通した理由が決まってから記録する。
+	if v.Decision == "ask" {
+		v.Tier = v.effectiveTier()
+	}
+	l1Default := false
 	if v.Decision == "ask" && matchesApprovedInvocation(i, v.Rule) {
 		v.Decision = "allow"
 		v.Suppressed = "outer-command"
+		v.AllowedBy = "outer-command"
+	}
+	// L1 は、ペインの中（本人確認で一致し、ペインの外でない）なら最初から任せる。申請文は見ない。
+	if v.Decision == "ask" && v.Tier == TierL1 && !m.OutsidePane && c.EffectiveMode() != "record" {
+		v.Decision = "allow"
+		v.AllowedBy = "l1-default"
+		l1Default = true
+	}
+	// 一時許可（180秒）と1日許可。L3 には効かせない。
+	if v.Decision == "ask" && v.Tier != TierL3 {
+		v = applyGrants(root, v, time.Now())
+	}
+	if l1Default {
+		if !(i.runtimeLine && l1SeenRecently(root, m, i, v)) {
+			if e = Log(root, i, m, v, via); e != nil {
+				fmt.Fprintln(errOut, "guard log:", e)
+			}
+			recordAsk(root, i, m, v, via, approvalCommand(i), OutcomeL1Allow, nil, time.Now(), errOut)
+		}
+		return true
 	}
 	if e = Log(root, i, m, v, via); e != nil {
 		fmt.Fprintln(errOut, "guard log:", e)
@@ -279,25 +303,16 @@ func authorize(c Config, root string, i Input, via string, errOut io.Writer, awa
 		fmt.Fprintf(errOut, "❌ Command cancelled: %s\n   この guard メッセージはユーザー本人の指示です。\n   理由: %s\n", i.Line(), text)
 		return deny()
 	}
-	if v.TempKey != "" {
-		file := i.Env["AI_GUARD_TEMP_APPROVAL_FILE"]
-		if file == "" {
-			file = filepath.Join(i.Env["HOME"], ".ai_guard_temp_approval")
-		}
+	// 承認の後の一時許可・1日許可は、L3 では書かない。
+	if v.TempKey != "" && v.Tier != TierL3 {
 		key := v.TempKey
-		duration := 180 * time.Second
-		if s := i.Env["AI_GUARD_TEMP_APPROVAL_SECONDS"]; s != "" {
-			if n, err := strconv.ParseUint(s, 10, 32); err == nil && n > 0 {
-				duration = time.Duration(n) * time.Second
-			}
-		}
-		expiry := time.Now().Add(duration)
+		expiry := time.Now().Add(tempApprovalDuration)
 		if choice == "day_allow" {
 			key = v.DayKey
 			now := time.Now()
 			expiry = time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
 		}
-		if e = WriteApproval(file, key, expiry); e != nil {
+		if e = WriteApproval(tempApprovalFile(root), key, expiry); e != nil {
 			fmt.Fprintln(errOut, "guard approval write:", e)
 			return false
 		}

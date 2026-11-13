@@ -37,10 +37,14 @@ func lineCommands(i Input, line string) ([]Input, error) {
 	var commands []Input
 	setError := func(e error) {
 		if i.scriptBody {
-			if err == nil || scriptError(e).kind > scriptError(err).kind {
+			if err == nil || scriptError(e).kind > scriptError(err).kind || scriptError(e).kind == scriptError(err).kind && errTier(e) > errTier(err) {
 				err = e
 			}
 		} else if err == nil || !unresolvedFailure(e) || unresolvedFailure(err) {
+			// 確認の失敗どうしでは、ティアの高いほうを残す（同じなら後のもの）。
+			if err != nil && !unresolvedFailure(e) && !unresolvedFailure(err) && errTier(err) > errTier(e) {
+				return
+			}
 			err = e
 		}
 	}
@@ -381,8 +385,31 @@ func lineVerdictJudged(c Config, i Input, line string, j *lineJudgement) (Input,
 	if blocksRun(best.Decision) {
 		return i, best, nil
 	}
-	if !i.runtimeLine && danger(c, i) && i.Env["AI_GUARD_DANGER_WORD_ACK"] != "1" {
-		best = result("ask", "danger-word-line", "deploy/publish を含む入力行は確認対象です")
+	// 行の中でいちばん高いティア。danger-word-line は、deploy/publish を含む各コマンドの宛先から決める。
+	var maxTier tierInfo
+	if !i.runtimeLine && danger(c, i) {
+		dangerTier := tierInfo{}
+		for _, command := range commands {
+			command.RawLine = ""
+			if danger(c, command) {
+				tier, dest := destinationTier(command)
+				dangerTier.take(tier, dest, "danger-word")
+			}
+		}
+		if dangerTier.tier == 0 {
+			// 語が git・gh・ikesu の引数にあるだけで、deploy/publish のコマンドは無い。
+			dangerTier = tierInfo{TierL1, "", "danger-word-line"}
+		}
+		if dangerTier.tier == TierL1 && i.Env["AI_GUARD_DANGER_WORD_ACK"] == "1" {
+			best = result("allow", "default", "")
+		} else {
+			best = askAt("danger-word-line", "deploy/publish を含む入力行は確認対象です", dangerTier.tier, dangerTier.dest)
+			best.TierRule = dangerTier.rule
+			maxTier = dangerTier
+		}
+	}
+	if maxTier.tier == 0 {
+		maxTier.takeVerdict(best)
 	}
 	var undetermined []string
 	for _, command := range commands {
@@ -404,14 +431,15 @@ func lineVerdictJudged(c Config, i Input, line string, j *lineJudgement) (Input,
 				undetermined = append(undetermined, r.verdict.Reason)
 				continue
 			}
-			v = r.verdict
+			v = r.verdict.withTier(tierInfo{r.tier, r.dest, r.tierRule})
 			command.TriggerCommand = r.trigger
 		}
 		if v.Decision == "allow" && command.UnresolvedArg && has([]string{"rm", "rmdir", "rimraf", "trash"}, filepath.Base(command.Command)) {
 			// 削除の対象が未確定な間は聞く（サンドボックスを入れるまでの例外）。
-			v = result("ask", "rm-paths", "削除操作は確認が必要です")
+			v = askAt("rm-paths", "削除操作は確認が必要です", TierL3, "")
 		}
 		j.add(command, v)
+		maxTier.takeVerdict(v)
 		if blocksRun(v.Decision) && !blocksRun(best.Decision) || v.Decision == "ask" && best.Decision == "allow" {
 			i, best = command, v
 		}
@@ -429,7 +457,11 @@ func lineVerdictJudged(c Config, i Input, line string, j *lineJudgement) (Input,
 			i.AuthorizationEnv = commands[0].AuthorizationEnv
 		}
 		i.TriggerCommand = "入力行全体: " + line
-		return i, result("ask", "shell-line", err.Error()), err
+		// エラーのティアは、ここまでの最大より高い時だけ勝つ。
+		if et := errTier(err); et > maxTier.tier {
+			maxTier = tierInfo{et, "", "shell-line"}
+		}
+		return i, result("ask", "shell-line", err.Error()).withTier(maxTier), err
 	}
 	if best.Rule == "danger-word-line" {
 		i.TriggerCommand = "入力行全体: " + line
@@ -449,7 +481,7 @@ func lineVerdictJudged(c Config, i Input, line string, j *lineJudgement) (Input,
 	if best.Decision == "allow" && best.Rule == "default" && len(undetermined) > 0 {
 		best.Reason = undeterminedPrefix + strings.Join(undetermined, " / ")
 	}
-	return i, best, nil
+	return i, best.withTier(maxTier), nil
 }
 
 // withDangerRequestReason hands the line's approval the request reason
@@ -518,7 +550,7 @@ func unresolvedVerdict(c Config, command Input, judge func(Config, Input) Verdic
 	var found Verdict
 	have := false
 	take := func(v Verdict, ok bool) {
-		if ok && (!have || blocksRun(v.Decision) && !blocksRun(found.Decision)) {
+		if ok && (!have || blocksRun(v.Decision) && !blocksRun(found.Decision) || v.Decision == "ask" && found.Decision == "ask" && v.effectiveTier() > found.effectiveTier()) {
 			found, have = v, true
 		}
 	}
