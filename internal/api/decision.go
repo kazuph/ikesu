@@ -96,6 +96,9 @@ type DecisionReach struct {
 	AtUnixMS int64  `json:"at_unix_ms"`
 }
 
+// ReachChannelIDs は decision.reach と [notify] の channel に使える id。
+var ReachChannelIDs = map[string]bool{"mac-panel": true, "android": true, "slack": true}
+
 const (
 	ReachShown    = "shown"
 	ReachNoClient = "no_client"

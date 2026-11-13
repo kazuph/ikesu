@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/kazuph/ikesu/internal/api"
 )
 
 // DefaultNotifyReachTimeout は reach_timeout を省いたときの待ち時間。
@@ -25,7 +27,7 @@ type NotifyConfig struct {
 }
 
 // NotifyChannelIDs は channel の id として受け付ける値。
-var NotifyChannelIDs = map[string]bool{"mac-panel": true, "android": true, "slack": true}
+var NotifyChannelIDs = api.ReachChannelIDs
 
 // Channel は id の channel を返す。
 func (n NotifyConfig) Channel(id string) (NotifyChannel, bool) {
