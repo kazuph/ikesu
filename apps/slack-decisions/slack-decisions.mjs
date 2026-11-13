@@ -1270,7 +1270,32 @@ export class SlackDecisionsDaemon {
 
   async rerouteAll() {
     for (const entry of [...this.entries.values()]) {
-      if (this.canRoute(entry)) await this.routeEntry(entry);
+      if (this.canRoute(entry)) await this.routeOrLegacy(entry);
+    }
+  }
+
+  /** 振り分けの決まりがあればそれで、無くなっていて待機中だったなら今の動き（メガネの3分）に戻す。 */
+  async routeOrLegacy(entry) {
+    const wasRouting = !!entry.routeTimer;
+    if (await this.routeEntry(entry)) return;
+    if (wasRouting && this.canRoute(entry)) await this.armLegacy(entry);
+  }
+
+  /** 今の動き: メガネ接続中なら postDelayMs 後に、未接続ならすぐ投稿する。 */
+  async armLegacy(entry) {
+    if (entry.postTimer) return;
+    const glasses = await this.glassesState();
+    if (glasses === "connected") {
+      this.log(
+        `グラス接続中: ${entry.decision.decision_id} は ${Math.round(this.config.postDelayMs / 1000)}秒たっても未回答なら投稿`,
+      );
+      entry.postTimer = setTimeout(() => {
+        entry.postTimer = null;
+        void this.postDecision(entry);
+      }, this.config.postDelayMs);
+    } else {
+      this.log(`グラス未接続: ${entry.decision.decision_id} をすぐ投稿します`);
+      await this.postDecision(entry);
     }
   }
 
@@ -1288,6 +1313,8 @@ export class SlackDecisionsDaemon {
     }
     if (!this.canRoute(entry)) return true;
     if (entry.routeTimer) { this.clock.clearTimeout(entry.routeTimer); entry.routeTimer = null; }
+    // 振り分けの決まりがあるときは、メガネの3分の待ちで先に投稿しない。
+    if (entry.postTimer) { clearTimeout(entry.postTimer); entry.postTimer = null; }
     const wait = plan.at - this.clock.now();
     if (wait <= 0) {
       this.log(`通知の振り分け: ${entry.decision.decision_id} を投稿します（${plan.reason}）`);
@@ -1297,7 +1324,7 @@ export class SlackDecisionsDaemon {
     entry.routeTimer = this.clock.setTimeout(() => {
       entry.routeTimer = null;
       void this.routeEntry(entry);
-    }, wait);
+    }, Math.min(wait, 2 ** 31 - 1)); // setTimeout の上限。発火のたびに計算し直す
     entry.routeTimer.unref?.();
     return true;
   }
@@ -1375,19 +1402,7 @@ export class SlackDecisionsDaemon {
 
     if (await this.routeEntry(entry)) return;
 
-    const glasses = await this.glassesState();
-    if (glasses === "connected") {
-      this.log(
-        `グラス接続中: ${decision.decision_id} は ${Math.round(this.config.postDelayMs / 1000)}秒たっても未回答なら投稿`,
-      );
-      entry.postTimer = setTimeout(() => {
-        entry.postTimer = null;
-        void this.postDecision(entry);
-      }, this.config.postDelayMs);
-    } else {
-      this.log(`グラス未接続: ${decision.decision_id} をすぐ投稿します`);
-      await this.postDecision(entry);
-    }
+    await this.armLegacy(entry);
   }
 
   async onUpdated(mid, machine, decision) {
@@ -1415,7 +1430,7 @@ export class SlackDecisionsDaemon {
     entry.decision = decision;
     entry.machine = machine;
     if (entry.post) await this.renderPending(entry);
-    else if (this.canRoute(entry)) await this.routeEntry(entry);
+    else if (this.canRoute(entry)) await this.routeOrLegacy(entry);
   }
 
   refreshVisibleDecisions() {

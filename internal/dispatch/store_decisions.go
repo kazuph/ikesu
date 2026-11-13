@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/config"
 )
 
 const decisionSchema = `CREATE TABLE IF NOT EXISTS decisions (
@@ -406,8 +407,8 @@ func (s *Store) RecordDecisionReach(id, channel, state string, now time.Time) (a
 	if state != api.ReachShown && state != api.ReachNoClient {
 		return api.Decision{}, false, decisionError(api.ErrInvalidRequest, "invalid reach state")
 	}
-	if strings.TrimSpace(channel) == "" {
-		return api.Decision{}, false, decisionError(api.ErrInvalidRequest, "reach channel is required")
+	if !config.NotifyChannelIDs[channel] {
+		return api.Decision{}, false, decisionError(api.ErrInvalidRequest, "unknown reach channel")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

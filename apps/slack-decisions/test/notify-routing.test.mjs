@@ -186,3 +186,64 @@ test("切断中のマシンの判断待ちは、振り分けの時刻が来て�
     assert.equal(t.fake.posts.length, 0);
   } finally { await t.done(); }
 });
+
+test("待機中に設定が消える・無効になる・読み込みが失敗すると、今の動きに戻って投稿される", async () => {
+  for (const next of [async () => ({ enabled: false, reach_timeout_ms: 30000, channels: [], warnings: [] }),
+    async () => ({ ...CFG, channels: CFG.channels.filter(c => c.id !== "slack") }),
+    async () => { throw new Error("config notify が失敗"); }]) {
+    let current = async () => CFG;
+    const t = await setup({ notifyConfig: () => current(), glasses: null });
+    try {
+      created(t.daemon, decision(t.clock));
+      await t.settle();
+      assert.equal(t.fake.posts.length, 0, "待機中");
+      current = next;
+      await t.daemon.reloadNotify();
+      await waitUntil(() => t.fake.posts.length === 1);
+    } finally { await t.done(); }
+  }
+});
+
+test("待機中に設定が消えてメガネ接続中なら、postDelayMs 後に投稿する（今の動き）", async () => {
+  let current = async () => CFG;
+  const t = await setup({ notifyConfig: () => current(), glasses: "connected", config: { postDelayMs: 150 } });
+  try {
+    created(t.daemon, decision(t.clock));
+    await t.settle();
+    assert.equal(t.fake.posts.length, 0);
+    current = async () => { throw new Error("読めない"); };
+    await t.daemon.reloadNotify();
+    await new Promise(resolve => setTimeout(resolve, 60));
+    assert.equal(t.fake.posts.length, 0, "postDelayMs の前");
+    await waitUntil(() => t.fake.posts.length === 1);
+  } finally { await t.done(); }
+});
+
+test("メガネの待ち（今の動き）の最中に有効な設定を読むと、メガネの待ちで先に投稿されない", async () => {
+  let current = async () => { throw new Error("まだ無い"); };
+  const u = await setup({ notifyConfig: () => current(), glasses: "connected", config: { postDelayMs: 200 } });
+  try {
+    current = async () => { throw new Error("まだ無い"); };
+    await u.daemon.reloadNotify();
+    created(u.daemon, decision(u.clock));
+    await new Promise(resolve => setTimeout(resolve, 30));
+    current = async () => CFG;
+    await u.daemon.reloadNotify();
+    await new Promise(resolve => setTimeout(resolve, 350));
+    assert.equal(u.fake.posts.length, 0, "メガネの待ち（200ms）で投稿されない");
+    await u.clock.advance(30_000);
+    await waitUntil(() => u.fake.posts.length === 1);
+  } finally { await u.done(); }
+});
+
+test("待ち時間が setTimeout の上限を超えても、上限で切って待つ", async () => {
+  const t = await setup({ notifyConfig: async () => ({ ...CFG, reach_timeout_ms: 5_000_000_000 }) });
+  try {
+    created(t.daemon, decision(t.clock));
+    await t.settle();
+    const entry = [...t.daemon.entries.values()][0];
+    assert.ok(entry.routeTimer);
+    assert.equal(entry.routeTimer.at - t.clock.now(), 2 ** 31 - 1);
+    assert.equal(t.fake.posts.length, 0);
+  } finally { await t.done(); }
+});

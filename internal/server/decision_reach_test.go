@@ -70,7 +70,7 @@ func TestDecisionReachRecordsNotifiesAndIsIdempotent(t *testing.T) {
 		t.Fatalf("get: %+v", got.Decision.Reach)
 	}
 	// 検証
-	for _, p := range []api.DecisionReachParams{{DecisionID: d.DecisionID, Channel: "android", State: "bogus"}, {DecisionID: d.DecisionID, Channel: "", State: api.ReachShown}} {
+	for _, p := range []api.DecisionReachParams{{DecisionID: d.DecisionID, Channel: "android", State: "bogus"}, {DecisionID: d.DecisionID, Channel: "", State: api.ReachShown}, {DecisionID: d.DecisionID, Channel: "line", State: api.ReachShown}} {
 		if resp := apiReq(t, dir, api.MethodDecisionReach, p); resp.Err == nil {
 			t.Fatalf("invalid %+v accepted", p)
 		}
