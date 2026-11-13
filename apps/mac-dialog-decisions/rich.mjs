@@ -6,6 +6,8 @@ import net from 'node:net';
 import { execFile } from 'node:child_process';
 
 // Limits from the approved dialog-rich plan, revision 1.
+// Public sites such as Wikimedia refuse requests without a User-Agent (HTTP 403).
+export const RICH_USER_AGENT='ikesu-mac-dialog (+https://github.com/kazuph/ikesu)';
 export const RICH_LIMITS = Object.freeze({cards:3, images:4, imageBytes:10*1024*1024, pageBytes:2*1024*1024, redirects:3, timeoutMs:5000, pixels:8000, attachmentBytes:20*1024*1024, retentionMs:7*24*60*60*1000});
 const videoExtension=/\.(mp4|mov|m4v|webm|ogv|ogg)$/i;
 export function videoPath(value) { try { return videoExtension.test(new URL(value).pathname); } catch { return videoExtension.test(value); } }
@@ -94,7 +96,7 @@ export async function fetchPublic(raw,{signal,maxBytes=RICH_LIMITS.pageBytes,onC
     if(!addresses.length||addresses.some(a=>!publicAddress(a.address))) throw Error('非公開の宛先は自動取得しません');
     const selected=addresses[0];
     const response=await new Promise((resolve,reject)=>{
-      const pending=request(url,{agent:false,signal:combined,headers:{Accept:'text/html,image/*', 'Accept-Encoding':'identity'},lookup:(_host,options,callback)=>{if(options.all) callback(null,[selected]); else callback(null,selected.address,selected.family);}},resolve);
+      const pending=request(url,{agent:false,signal:combined,headers:{Accept:'text/html,image/*', 'Accept-Encoding':'identity', 'User-Agent':RICH_USER_AGENT},lookup:(_host,options,callback)=>{if(options.all) callback(null,[selected]); else callback(null,selected.address,selected.family);}},resolve);
       pending.on('socket',socket=>socket.once('connect',()=>onConnect?.({address:socket.remoteAddress,port:socket.remotePort,url:url.href})));
       pending.on('error',reject);
     });
