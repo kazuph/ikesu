@@ -99,7 +99,57 @@ prefix = "ctrl+t"
 next_workspace = "cmd+j"
 previous_workspace = "cmd+k"
 switch_workspace = "cmd+1..9"
+focus_history_back = "cmd+["
+focus_history_forward = "cmd+]"
+workspace_search = "cmd+f"
 ```
+
+`workspace_search` はスペース検索を開くキーです。`prefix /` と、サイドバーの一番上の🔍でも開けるので、⌘の無い端末（Linux、Windows、スマホの SSH アプリ）では設定は要りません。`workspace_search = ["cmd+f", "alt+f"]` のように並べると、複数のキーを割り当てられます。
+
+## 端末アプリの設定: ⌘のキーを ikesu へ届ける
+
+ikesu は kitty キー符号（kitty keyboard protocol）を有効にするので、端末アプリは⌘の組み合わせを ikesu へ送れます。ただし端末アプリは、自分で使っている⌘のキーを ikesu へ送りません。`[keys]` に書いた⌘のキーは、端末アプリ側の割り当てを外してください。
+
+### Ghostty
+
+使うキーの行を設定ファイル（macOS では `~/Library/Application Support/com.mitchellh.ghostty/config` または `~/.config/ghostty/config`）に追記し、⌘⇧, で設定を読み直します。
+
+```
+# switch_workspace = "cmd+1..9"（Ghostty ではタブ1〜8・最後のタブへ移る）
+keybind = super+1=unbind
+keybind = super+digit_1=unbind
+keybind = super+2=unbind
+keybind = super+digit_2=unbind
+keybind = super+3=unbind
+keybind = super+digit_3=unbind
+keybind = super+4=unbind
+keybind = super+digit_4=unbind
+keybind = super+5=unbind
+keybind = super+digit_5=unbind
+keybind = super+6=unbind
+keybind = super+digit_6=unbind
+keybind = super+7=unbind
+keybind = super+digit_7=unbind
+keybind = super+8=unbind
+keybind = super+digit_8=unbind
+keybind = super+9=unbind
+keybind = super+digit_9=unbind
+# focus_history_back / focus_history_forward = "cmd+[" / "cmd+]"（Ghostty では前・次の分割へ移る）
+keybind = super+[=unbind
+keybind = super+]=unbind
+# workspace_search = "cmd+f"（Ghostty では検索を開く）
+keybind = super+f=unbind
+```
+
+- 数字は `super+1` と `super+digit_1` の両方を外します。Ghostty が両方に割り当てているためです。
+- ⌘J と ⌘K の行は要りません。Ghostty はこの2つを「選択した所へ移る」「画面を消す」に割り当てていますが、ikesu を表示している間はその操作をせず、キーを ikesu へ渡します。ただし Ghostty 自身の選択で文字を選んでいる間の ⌘J は、Ghostty が使います。
+- 開いている Ghostty の窓は、設定を読み直すまで前の割り当てのままです。
+- `ghostty +list-keybinds` で確かめられます。外したキーは一覧に出なくなります。
+- この設定の後は、Ghostty 自体のタブ切替に ⌘⇧[ / ⌘⇧]、分割の移動に ⌘⌥＋矢印キーを使います。
+
+### ⌘Tab は使えません
+
+⌘Tab は macOS がアプリ切替のために先に取るため、どの端末アプリにも届きません。
 
 ## 端末アプリの設定: ⌃Tab / ⌃⇧Tab でタブを移動する
 
@@ -125,10 +175,6 @@ keybind = ctrl+shift+tab=text:\x1b[9;6u
 ### そのほかの端末
 
 上の表の文字列を ⌃Tab / ⌃⇧Tab で送る設定にしてください。Ghostty 以外の端末の設定例はまだ検証していません。
-
-### ⌘Tab は使えません
-
-⌘Tab は macOS がアプリ切替のために先に取るため、どの端末アプリにも届きません。
 
 ## ライセンス
 
