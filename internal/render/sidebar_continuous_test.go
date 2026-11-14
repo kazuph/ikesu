@@ -87,6 +87,13 @@ func TestSidebarContinuousRowsAndStatusAtEveryWidth(t *testing.T) {
 									skip = 1
 								}
 								for col := 0; col < width-1; col++ {
+									if width == 2 && !right && y == 0 && col == 0 {
+										// The strip's top cell is the » that restores the sidebar.
+										if f.Cell(x, y).Content != "»" {
+											t.Fatalf("strip top cell %+v", f.Cell(x, y))
+										}
+										continue
+									}
 									if !reflect.DeepEqual(f.Cell(x+col, y), reference.Cell(rx+skip+col, y)) {
 										t.Fatalf("width=%d server=%t jobs=%t custom=%t machine=%t right=%t x=%d y=%d got=%+v want=%+v", width, server, jobs, custom, machine, right, col, y, f.Cell(x+col, y), reference.Cell(rx+skip+col, y))
 									}

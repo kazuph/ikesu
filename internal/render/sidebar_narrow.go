@@ -87,6 +87,9 @@ func drawNarrowSidebar(f *Frame, s *model.AppState, in Input, right bool) {
 		}
 	}
 	copyNarrowSidebar(f, ref, in, reference, right, rows)
+	if !right {
+		drawCollapsedExpandMark(f, s, in)
+	}
 	if !right && !in.ServerUI && s.SidebarVisible {
 		drawSidebarCopyFeedback(f, in)
 	}
@@ -123,6 +126,9 @@ func (m *MachineSidebar) draw(f *Frame, in Input) {
 			}
 		}
 		copyNarrowSidebar(f, ref, in, reference, right, rows)
+		if !right {
+			drawCollapsedExpandMark(f, in.State, in)
+		}
 	}
 	if !in.ServerUI {
 		drawSidebarCopyFeedback(f, in)

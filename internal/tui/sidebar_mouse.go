@@ -13,6 +13,7 @@ type sidebarGesture struct {
 	active, moved, divider bool
 	right, double          bool
 	gitRow                 bool
+	expand                 bool
 	section                model.Section
 	drop                   int
 }
@@ -42,6 +43,11 @@ func (a *App) sidebarPress(m uv.Mouse) bool {
 
 	if m.Button != uv.MouseLeft {
 		return false
+	}
+	if pointIn(m.X, m.Y, render.CollapsedExpandRect(s)) {
+		// The strip's top cell restores the sidebar once the press is released in place.
+		a.sidebarGesture = &sidebarGesture{x: m.X, y: m.Y, expand: true, drop: -1}
+		return true
 	}
 	if a.sidebarScrollbarPress(m) {
 		return true
@@ -96,6 +102,17 @@ func (a *App) sidebarGestureMouseAt(ev input.Event, now time.Time) {
 		return
 	}
 	m := ev.Mouse
+	if g.expand {
+		if ev.Kind == input.KindMouseRelease {
+			a.sidebarGesture = nil
+			if m.X == g.x && m.Y == g.y && !g.moved {
+				a.expandCollapsedSidebar()
+			}
+		} else if ev.Kind == input.KindMouseMotion && (m.X != g.x || m.Y != g.y) {
+			g.moved = true
+		}
+		return
+	}
 	if g.divider && ev.Kind == input.KindMouseRelease {
 		a.sidebarGestureMouseAt(input.Event{Kind: input.KindMouseMotion, Mouse: m}, now)
 	}
@@ -209,4 +226,15 @@ func (a *App) sidebarGestureMouseAt(ev input.Event, now time.Time) {
 			a.exec(model.CmdSelectWorkspace{Index: g.ws})
 		}
 	}
+}
+
+// expandCollapsedSidebar returns the two-cell strip to its remembered width.
+func (a *App) expandCollapsedSidebar() {
+	s := a.st
+	s.SidebarVisible = true
+	s.SidebarHidden = false
+	s.SidebarSize = s.ExpandedSidebarWidth()
+	a.syncLayout()
+	a.saveViewPreferences()
+	a.changed()
 }
