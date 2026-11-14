@@ -533,3 +533,72 @@ func TestWorkspaceSearchBoxWithWideTextThroughEmulator(t *testing.T) {
 		t.Fatalf("Japanese row not drawn: %q", got)
 	}
 }
+
+func TestWorkspaceSearchButtonYieldsToOverlays(t *testing.T) {
+	covers := map[string]func(*render.Input){
+		"menu":      func(v *render.Input) { v.Menu = &render.Menu{} },
+		"dialog":    func(v *render.Input) { v.Dialog = &render.Dialog{} },
+		"help":      func(v *render.Input) { v.Help = &render.HelpInput{} },
+		"settings":  func(v *render.Input) { v.Settings = &render.Settings{} },
+		"navigator": func(v *render.Input) { v.Navigator = &render.Navigator{} },
+		"copy":      func(v *render.Input) { v.Copy = &render.CopyMark{} },
+	}
+	for name, cover := range covers {
+		t.Run(name, func(t *testing.T) {
+			m := searchFixture(t)
+			snap := m.endpoints["local"].snapshot
+			paintSearchUI(m)
+			b := m.searchButtons.sidebar
+			if b.W == 0 {
+				t.Fatal("no button without an overlay")
+			}
+			cover(snap)
+			out := paintSearchUI(m)
+			if m.searchButtons.sidebar.W != 0 || m.searchButtons.mobile.W != 0 {
+				t.Fatal("button kept while an overlay is open")
+			}
+			if got := out.Frame.Cell(b.X, b.Y).Content; got == "🔍" {
+				t.Fatal("🔍 drawn over the overlay")
+			}
+			// A press on the old button cell goes on to the overlay.
+			m.searchButtons.sidebar = b
+			if m.workspaceSearchInput(searchClick(t, b.X, b.Y)) || m.search != nil {
+				t.Fatal("click was taken from the overlay")
+			}
+		})
+	}
+}
+
+func TestWorkspaceSearchOpeningKeyReleaseDoesNotLinger(t *testing.T) {
+	m := searchFixture(t)
+	openSearch(t, m)
+	if !m.workspaceKeyReleases['f'] {
+		t.Fatal("fixture: opening key release not recorded")
+	}
+	m.workspaceSearchInput(input.Event{Kind: input.KindKeyRelease, Key: uv.Key{Code: 'f', Mod: uv.ModSuper}})
+	m.workspaceSearchInput(searchKey(uv.KeyEscape, 0, ""))
+	if m.search != nil {
+		t.Fatal("not closed")
+	}
+	// Later 'f' in a pane: neither the press nor its release is taken.
+	press := searchKey('f', 0, "f")
+	if m.workspaceSearchInput(press) || m.workspaceCycleInput(press) {
+		t.Fatal("press of f was taken")
+	}
+	release := input.Event{Kind: input.KindKeyRelease, Key: uv.Key{Code: 'f'}}
+	if m.workspaceSearchInput(release) || m.workspaceCycleInput(release) {
+		t.Fatal("release of f was eaten")
+	}
+}
+
+func TestWorkspaceSearchDropsUnknownInputWhileOpen(t *testing.T) {
+	m := searchFixture(t)
+	unknown := input.Event{Kind: input.KindUnknown, Raw: []byte("\x1b[?1;2c")}
+	if m.workspaceSearchInput(unknown) {
+		t.Fatal("unknown input taken while closed")
+	}
+	openSearch(t, m)
+	if !m.workspaceSearchInput(unknown) {
+		t.Fatal("unknown input leaked while open")
+	}
+}

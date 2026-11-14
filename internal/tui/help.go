@@ -53,6 +53,7 @@ func (a *App) helpRows() []render.HelpRow {
 		{Group: true, Cmd: "workspaces / tabs"},
 		{Bind: "prefix+w", Cmd: "workspace navigation"},
 		{Bind: "prefix+g", Cmd: "session navigator"},
+		{Bind: "prefix+/", Cmd: "workspace search"},
 		{Bind: "prefix+shift+n", Cmd: "new workspace"},
 		{Bind: "prefix+shift+g", Cmd: "new worktree"},
 		{Bind: "unset", Cmd: "open worktree"},
@@ -112,6 +113,13 @@ func (a *App) helpRows() []render.HelpRow {
 				bindings = append(bindings, "left", "right")
 			}
 			rows[i].Bind = strings.Join(bindings, " / ")
+			if rows[i].Bind == "" {
+				rows[i].Bind = "unset"
+			}
+			continue
+		}
+		if rows[i].Cmd == "workspace search" {
+			rows[i].Bind = strings.Join(a.sidebarConfig.WorkspaceSearchBindings(), " / ")
 			if rows[i].Bind == "" {
 				rows[i].Bind = "unset"
 			}

@@ -136,6 +136,21 @@ func (m *machineClient) openWorkspaceSearch() {
 	}
 }
 
+// workspaceSearchView is the active view with the client's own forms on top.
+func (m *machineClient) workspaceSearchView(snapshot *render.Input) render.Input {
+	view := *snapshot
+	if m.forms != nil {
+		m.forms.Overlay(&view)
+	}
+	return view
+}
+
+// workspaceSearchCovered reports an overlay or mode that owns the keys and
+// clicks; the search keys and the 🔍 cells stay out of its way.
+func workspaceSearchCovered(view render.Input) bool {
+	return view.Dialog != nil || view.Menu != nil || view.Help != nil || view.Navigator != nil || view.Settings != nil || view.Copy != nil || view.ModeHint != "" && !view.Prefix
+}
+
 // workspaceSearchKey reports whether the key opens the overlay. A prefix chord
 // needs the server's pending prefix; plain chords must not be inside one.
 func (m *machineClient) workspaceSearchKey(event input.Event) (open, prefixed bool) {
@@ -150,21 +165,14 @@ func (m *machineClient) workspaceSearchKey(event input.Event) (open, prefixed bo
 	if local != nil && local.snapshot != nil {
 		cfg = local.snapshot.SidebarConfig
 	}
-	view := *active.snapshot
-	if m.forms != nil {
-		m.forms.Overlay(&view)
-	}
-	if view.Dialog != nil || view.Menu != nil || view.Help != nil || view.Navigator != nil || view.Settings != nil || view.Copy != nil || view.ModeHint != "" && !view.Prefix {
+	view := m.workspaceSearchView(active.snapshot)
+	if workspaceSearchCovered(view) {
 		return false, false
 	}
 	if workspaceCycleCommand(active.snapshot.SidebarConfig, event.Key) {
 		return false, false
 	}
-	bindings := cfg.ActionBindings("workspace_search")
-	if _, configured := cfg.Keys.Actions["workspace_search"]; configured && len(bindings) > 0 && bindings[0] != "" {
-		// A configured key adds to prefix+/ rather than replacing it.
-		bindings = append(bindings[:len(bindings):len(bindings)], config.ActionDefaults["workspace_search"]...)
-	}
+	bindings := cfg.WorkspaceSearchBindings()
 	for _, binding := range bindings {
 		chord, err := config.ParseChord(binding)
 		if err == nil && chord.Match(event.Key, view.Prefix) {
@@ -181,7 +189,11 @@ func (m *machineClient) workspaceSearchInput(event input.Event) (handled bool) {
 		return m.workspaceSearchOpenInput(event)
 	}
 	switch event.Kind {
-	case input.KindKeyRelease, input.KindMouseRelease, input.KindMouseMotion:
+	case input.KindKeyRelease:
+		// The opening key's release is dropped here, so it must not wait for a later one.
+		delete(m.workspaceKeyReleases, event.Key.Code)
+		return true
+	case input.KindMouseRelease, input.KindMouseMotion, input.KindUnknown:
 		return true
 	case input.KindPaste:
 		m.search.query = append(m.search.query, []rune(strings.NewReplacer("\r", "", "\n", " ").Replace(event.Text))...)
@@ -231,6 +243,10 @@ func (m *machineClient) workspaceSearchOpenInput(event input.Event) bool {
 		if event.Mouse.Button != uv.MouseLeft {
 			return false
 		}
+		active := m.endpoints[m.active]
+		if active == nil || active.snapshot == nil || workspaceSearchCovered(m.workspaceSearchView(active.snapshot)) {
+			return false
+		}
 		cell := m.mouse.CellEvent(event, m.size).Mouse
 		for _, r := range []layout.Rect{m.searchButtons.sidebar, m.searchButtons.mobile} {
 			if r.W > 0 && contains(r.X, r.Y, r.W, r.H, cell.X, cell.Y) {
@@ -253,6 +269,7 @@ func (m *machineClient) workspaceSearchKeyPress(key uv.Key) {
 	switch {
 	case key.Code == uv.KeyEscape && key.Mod == 0:
 		m.search = nil
+		m.consumeWorkspaceKey(key.Code)
 	case key.Code == uv.KeyEnter && !key.Mod.Contains(uv.ModCtrl):
 		results := m.workspaceSearchResults()
 		if len(results) == 0 {
@@ -356,7 +373,9 @@ func (m *machineClient) drawWorkspaceSearchUI(out *render.Output, in render.Inpu
 	f := out.Frame
 	m.searchButtons = workspaceSearchButtons{}
 	s := in.State
-	if s != nil && s.Mobile() && in.MobileSwitcher {
+	if s != nil && workspaceSearchCovered(in) {
+		// An overlay is open: no 🔍 and no tap target.
+	} else if s != nil && s.Mobile() && in.MobileSwitcher {
 		r := layout.Rect{X: 0, Y: 2, W: s.Cols, H: 1}
 		if s.Rows > 3 && r.W > 0 {
 			style := uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}
