@@ -1,6 +1,7 @@
 package client
 
 import (
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -65,7 +66,7 @@ func (m *machineClient) workspaceSearchItems() []workspaceSearchItem {
 	return items
 }
 
-// filterWorkspaceSearch keeps the cycle order. Every space-separated word of the
+// filterWorkspaceSearch ranks the matches (see below). Every space-separated word of the
 // query must be a case-insensitive substring of the name, machine or branch.
 func filterWorkspaceSearch(items []workspaceSearchItem, query []rune) []workspaceSearchItem {
 	tokens := strings.Fields(strings.ToLower(string(query)))
@@ -83,6 +84,21 @@ func filterWorkspaceSearch(items []workspaceSearchItem, query []rune) []workspac
 			out = append(out, item)
 		}
 	}
+	// Name matches come before branch matches, and those before machine-only matches.
+	// The first word decides; equal ranks keep the cycle order.
+	rank := func(item workspaceSearchItem) int {
+		name := strings.ToLower(item.name)
+		switch {
+		case strings.HasPrefix(name, tokens[0]):
+			return 0
+		case strings.Contains(name, tokens[0]):
+			return 1
+		case strings.Contains(strings.ToLower(item.branch), tokens[0]):
+			return 2
+		}
+		return 3
+	}
+	sort.SliceStable(out, func(i, j int) bool { return rank(out[i]) < rank(out[j]) })
 	return out
 }
 
@@ -96,7 +112,8 @@ func (m *machineClient) workspaceSearchResults() []workspaceSearchItem {
 }
 
 type workspaceSearchGeometry struct {
-	box        layout.Rect
+	box        layout.Rect // outer rect, border included
+	inner      layout.Rect
 	list       layout.Rect
 	listHeight int
 }
@@ -104,10 +121,13 @@ type workspaceSearchGeometry struct {
 func (m *machineClient) workspaceSearchGeometry(count int) workspaceSearchGeometry {
 	cols, rows := m.size.Cols, m.size.Rows
 	w := max(1, min(cols, min(72, cols-4)))
-	listH := max(1, min(count, min(workspaceSearchMaxRows, rows-4)))
-	h := min(rows, 2+listH)
+	listH := max(1, min(count, min(workspaceSearchMaxRows, rows-6)))
+	h := min(rows, 4+listH)
 	x, y := (cols-w)/2, min(1, max(0, rows-h))
-	return workspaceSearchGeometry{box: layout.Rect{X: x, Y: y, W: w, H: h}, list: layout.Rect{X: x, Y: y + 2, W: w, H: max(0, h-2)}, listHeight: max(0, h-2)}
+	box := layout.Rect{X: x, Y: y, W: w, H: h}
+	inner := layout.Rect{X: x + 1, Y: y + 1, W: max(0, w-2), H: max(0, h-2)}
+	list := layout.Rect{X: inner.X, Y: inner.Y + 2, W: inner.W, H: max(0, inner.H-2)}
+	return workspaceSearchGeometry{box: box, inner: inner, list: list, listHeight: list.H}
 }
 
 func (m *machineClient) openWorkspaceSearch() {
@@ -368,9 +388,9 @@ func (m *machineClient) drawWorkspaceSearchUI(out *render.Output, in render.Inpu
 	results := m.workspaceSearchResults()
 	m.workspaceSearchScroll()
 	g := m.workspaceSearchGeometry(len(results))
-	box := g.box
-	base := uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG}
-	f.Fill(box.X, box.Y, box.W, box.H, " ", base)
+	box := g.inner
+	f.Fill(g.box.X, g.box.Y, g.box.W, g.box.H, " ", uv.Style{Bg: f.Palette.PopupBG})
+	f.Box(g.box.X, g.box.Y, g.box.W, g.box.H, uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.PopupBG})
 	prompt := " 🔍 "
 	query := string(m.search.query)
 	f.Text(box.X, box.Y, prompt, uv.Style{Fg: f.Palette.Accent, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}, box.X+box.W)
@@ -380,9 +400,7 @@ func (m *machineClient) drawWorkspaceSearchUI(out *render.Output, in render.Inpu
 	if cx := box.X + box.W - ansi.StringWidth(count); cx > end {
 		f.Text(cx, box.Y, count, uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, box.X+box.W)
 	}
-	if box.H > 1 {
-		f.Text(box.X, box.Y+1, strings.Repeat("─", box.W), uv.Style{Fg: f.Palette.PanelBG, Bg: f.Palette.PopupBG}, box.X+box.W)
-	}
+	f.Fill(box.X, box.Y+1, box.W, 1, "─", uv.Style{Fg: f.Palette.PanelBG, Bg: f.Palette.PopupBG})
 	if len(results) == 0 {
 		if g.list.H > 0 {
 			f.Text(g.list.X+2, g.list.Y, "該当なし", uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, box.X+box.W)
@@ -409,6 +427,14 @@ func (m *machineClient) drawWorkspaceSearchUI(out *render.Output, in render.Inpu
 		}
 		if x+2 < limit {
 			f.Text(x+2, y, ansi.Truncate(detail, max(0, limit-x-3), "…"), uv.Style{Fg: f.Palette.Dim, Bg: bg}, limit)
+		}
+	}
+	// A wide glyph's trailing cell carries the glyph's style, so no row has a gap.
+	for y := g.box.Y; y < g.box.Y+g.box.H; y++ {
+		for x := g.box.X + 1; x < g.box.X+g.box.W; x++ {
+			if cell, head := f.Cell(x, y), f.Cell(x-1, y); cell != nil && head != nil && cell.Width == 0 && head.Width == 2 {
+				cell.Style = head.Style
+			}
 		}
 	}
 	out.AnchorX, out.AnchorY = min(box.X+box.W-1, qx+ansi.StringWidth(query)), box.Y

@@ -2,9 +2,11 @@ package client
 
 import (
 	"fmt"
+	"os"
 	"testing"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/vt"
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/input"
 	"github.com/kazuph/ikesu/internal/model"
@@ -439,4 +441,95 @@ func mouseEventKey(t *testing.T, raw string) input.Event {
 		t.Fatalf("key framing %q: %+v", raw, events)
 	}
 	return events[0]
+}
+
+func TestWorkspaceSearchRanksNameStartThenNameThenBranchThenMachine(t *testing.T) {
+	m := searchFixture(t)
+	// Cycle order is alpha-api, 日本語メモ, beta-web, tau.
+	m.endpoints["mini"].snapshot.State.Workspaces[1].Name = "tau"
+	openSearch(t, m)
+	for query, want := range map[string][]string{
+		"t": {"mini/tau", "mini/beta-web", "local/日本語メモ"},                    // name start, name middle, branch
+		"e": {"mini/beta-web", "local/日本語メモ"},                                // name middle before branch, though the cycle order is the reverse
+		"a": {"local/alpha-api", "mini/beta-web", "mini/tau", "local/日本語メモ"}, // equal ranks keep the cycle order
+		"":  {"local/alpha-api", "local/日本語メモ", "mini/beta-web", "mini/tau"}, // no query: cycle order
+		"i": {"local/alpha-api", "mini/beta-web", "mini/tau"},                // "mini" machine matches rank last
+	} {
+		m.search.query, m.search.sel = nil, 0
+		typeSearch(t, m, query)
+		if got := searchNames(m); fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Fatalf("%q -> %v want %v", query, got, want)
+		}
+		if m.search.sel != 0 {
+			t.Fatalf("%q: selection starts at %d", query, m.search.sel)
+		}
+	}
+}
+
+func emulatedScreen(t *testing.T, m *machineClient, path string) *vt.Emulator {
+	t.Helper()
+	if err := m.paint(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	emu := vt.NewEmulator(m.size.Cols, m.size.Rows)
+	if _, err := emu.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	return emu
+}
+
+// Wide (Japanese) names and branches: the box has a border like the menus,
+// every row of it ends at the same right edge with one background, and no
+// cell outside the box differs from the screen without the overlay.
+func TestWorkspaceSearchBoxWithWideTextThroughEmulator(t *testing.T) {
+	m := searchFixture(t)
+	file, err := os.CreateTemp(t.TempDir(), "term")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	m.out = file
+	closed := emulatedScreen(t, m, file.Name())
+	openSearch(t, m)
+	open := emulatedScreen(t, m, file.Name())
+	g := m.workspaceSearchGeometry(4)
+	b := g.box
+	inBox := func(x, y int) bool { return x >= b.X && x < b.X+b.W && y >= b.Y && y < b.Y+b.H }
+	for y := 0; y < m.size.Rows; y++ {
+		for x := 0; x < m.size.Cols; x++ {
+			if inBox(x, y) {
+				continue
+			}
+			a, c := closed.CellAt(x, y), open.CellAt(x, y)
+			if a.Content != c.Content || a.Width != c.Width || fmt.Sprint(a.Style.Bg) != fmt.Sprint(c.Style.Bg) {
+				t.Fatalf("cell %d,%d outside the box changed: %+v -> %+v", x, y, a, c)
+			}
+		}
+	}
+	for y := b.Y; y < b.Y+b.H; y++ {
+		if left, right := open.CellAt(b.X, y).Content, open.CellAt(b.X+b.W-1, y).Content; y > b.Y && y < b.Y+b.H-1 && (left != "│" || right != "│") {
+			t.Fatalf("row %d has no border: %q %q", y, left, right)
+		}
+		bgs := map[string]bool{}
+		for x := b.X + 1; x < b.X+b.W-1; x++ {
+			c := open.CellAt(x, y)
+			if c.Width == 0 && c.Content == "" {
+				continue // trailing half of a wide glyph; the emulator keeps no style for it
+			}
+			bgs[fmt.Sprint(c.Style.Bg)] = true
+		}
+		if y > b.Y && y < b.Y+b.H-1 && len(bgs) != 1 {
+			t.Fatalf("row %d background is uneven: %v", y, bgs)
+		}
+	}
+	if top := open.CellAt(b.X, b.Y).Content + open.CellAt(b.X+b.W-1, b.Y+b.H-1).Content; top != "┌┘" {
+		t.Fatalf("corners %q", top)
+	}
+	if got := open.CellAt(g.list.X+2, g.list.Y+1).Content; got != "日" {
+		t.Fatalf("Japanese row not drawn: %q", got)
+	}
 }
