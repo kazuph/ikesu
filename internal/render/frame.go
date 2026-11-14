@@ -157,6 +157,8 @@ func (f *Frame) CopyGrid(x, y int, grid [][]uv.Cell) {
 				continue
 			}
 			f.Set(x+gx, y+gy, c.Content, c.Style)
+			// Keep the pane's OSC 8 hyperlink so the host terminal can open it.
+			f.Cells[(y+gy)*f.W+x+gx].Link = c.Link
 		}
 	}
 }
