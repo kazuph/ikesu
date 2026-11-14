@@ -22,7 +22,7 @@ func TestConfigEveryActionRemapThroughRealInput(t *testing.T) {
 	names := make([]string, 0, len(config.ActionDefaults))
 	for name := range config.ActionDefaults {
 		// These actions are owned and tested by the display client.
-		if name != "remote_image_paste" && name != "open_guard_approval" {
+		if name != "remote_image_paste" && name != "open_guard_approval" && name != "workspace_search" {
 			names = append(names, name)
 		}
 	}

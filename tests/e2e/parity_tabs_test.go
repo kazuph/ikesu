@@ -12,13 +12,34 @@ func hasTabLabel(screen, label string) bool {
 	return strings.Contains(row, " "+label+" ")
 }
 
+// findTab returns the cell of a tab label on row 0, right of the sidebar
+// (column 26 on). Columns are cells, not bytes: the sidebar title holds a
+// wide 🔍 and box-drawing runes.
 func (s *session) findTab(label string) (int, int) {
-	row := strings.Split(s.text(), "\n")[0] + " "
-	i := strings.Index(row[26:], " "+label+" ")
+	var row strings.Builder
+	cellAt := []int{} // byte offset where each column starts
+	for x := 0; x < termW; x++ {
+		cellAt = append(cellAt, row.Len())
+		if c := s.emu.CellAt(x, 0); c != nil && c.Width > 0 {
+			row.WriteString(c.Content)
+		}
+	}
+	row.WriteString(" ")
+	text := row.String()
+	if len(cellAt) <= 26 {
+		return -1, -1
+	}
+	i := strings.Index(text[cellAt[26]:], " "+label+" ")
 	if i < 0 {
 		return -1, -1
 	}
-	return 26 + i + 1, 0
+	at := cellAt[26] + i + 1
+	for x := len(cellAt) - 1; x >= 0; x-- {
+		if cellAt[x] <= at {
+			return x, 0
+		}
+	}
+	return -1, -1
 }
 
 func TestTabBar(t *testing.T) {

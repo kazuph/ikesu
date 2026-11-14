@@ -163,6 +163,9 @@ func (m *machineClient) input(event input.Event) error {
 	if handled, err := m.approvalInputEvent(m.mouse.CellEvent(event, m.size)); handled || err != nil {
 		return err
 	}
+	if m.workspaceSearchInput(event) {
+		return m.paint()
+	}
 	if m.workspaceCycleInput(event) {
 		return nil
 	}
