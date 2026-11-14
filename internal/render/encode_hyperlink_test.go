@@ -102,3 +102,61 @@ func TestFrameDropsUnsafeHyperlinks(t *testing.T) {
 		}
 	}
 }
+
+// A frame that ends on a linked cell still closes the link, so the next
+// frame's plain cells carry none.
+func TestFrameLinkDoesNotLeakIntoNextFrame(t *testing.T) {
+	e := &Encoder{}
+	a := NewFrame(6, 1)
+	a.Text(0, 0, "ab", uv.Style{})
+	a.CopyGrid(3, 0, linkedGrid("xyz", uv.NewLink("https://a.test/")))
+	b := NewFrame(6, 1)
+	b.Text(0, 0, "AB", uv.Style{})
+	b.CopyGrid(3, 0, linkedGrid("xyz", uv.NewLink("https://a.test/")))
+
+	emu := vt.NewEmulator(6, 1)
+	defer emu.Close()
+	for _, f := range []*Frame{a, b} {
+		data := e.Frame(f, 0, 0, false)
+		if _, err := emu.Write(data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := emu.CellAt(0, 0); got.Content != "A" || got.Link.URL != "" {
+		t.Fatalf("plain cell after a linked frame: %+v", got)
+	}
+	data := e.Frame(b, 0, 0, false)
+	if bytes.Contains(data, []byte("\x1b]8;")) {
+		t.Fatalf("unchanged frame rewrote links: %q", data)
+	}
+}
+
+// Adjacent different links switch directly; a wide linked glyph keeps its
+// link; drawing over a linked cell with Set or Box drops the link.
+func TestFrameLinkSwitchWideAndOverlay(t *testing.T) {
+	f := NewFrame(12, 3)
+	f.CopyGrid(0, 0, linkedGrid("ab", uv.NewLink("https://a.test/")))
+	f.CopyGrid(2, 0, linkedGrid("cd", uv.NewLink("https://b.test/")))
+	f.CopyGrid(0, 1, [][]uv.Cell{{{Content: "界", Width: 2, Link: uv.NewLink("https://w.test/")}, {Width: 0}}})
+	f.CopyGrid(0, 2, linkedGrid("overlay", uv.NewLink("https://o.test/")))
+	f.Set(1, 2, "#", uv.Style{})
+	f.Box(3, 2, 3, 1, uv.Style{})
+
+	data := (&Encoder{}).Frame(f, 0, 0, false)
+	if !bytes.Contains(data, []byte("\x1b]8;;https://a.test/\x07ab\x1b]8;;https://b.test/\x07cd")) {
+		t.Fatalf("adjacent links did not switch directly: %q", data)
+	}
+	emu := vt.NewEmulator(12, 3)
+	defer emu.Close()
+	if _, err := emu.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if got := emu.CellAt(0, 1); got.Content != "界" || got.Link.URL != "https://w.test/" {
+		t.Fatalf("wide linked glyph: %+v", got)
+	}
+	for x, want := range []string{"https://o.test/", "", "https://o.test/"} {
+		if got := emu.CellAt(x, 2).Link.URL; got != want {
+			t.Fatalf("overlay row cell %d link %q want %q", x, got, want)
+		}
+	}
+}
