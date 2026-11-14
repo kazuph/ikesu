@@ -83,16 +83,19 @@ type pendingMachine struct {
 }
 
 type machineClient struct {
-	oyagoiStore oyagoiStore
-	oyagoi      *oyagoiSelection
-	oyagoiCache *oyagoiCache
-	koiNext     time.Time
-	koiClock    render.KoiAnimation
-	koiVisible  bool
-	koiKitty    bool
-	koiRetained bool
-	koiInput    render.Input
-	koiScene    render.KoiScene
+	search        *workspaceSearch
+	searchButtons workspaceSearchButtons
+	searchRelease bool
+	oyagoiStore   oyagoiStore
+	oyagoi        *oyagoiSelection
+	oyagoiCache   *oyagoiCache
+	koiNext       time.Time
+	koiClock      render.KoiAnimation
+	koiVisible    bool
+	koiKitty      bool
+	koiRetained   bool
+	koiInput      render.Input
+	koiScene      render.KoiScene
 
 	workspaceKeyReleases map[rune]bool
 

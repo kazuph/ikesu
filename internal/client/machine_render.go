@@ -112,6 +112,7 @@ func (m *machineClient) paint() error {
 		m.koiNext = time.Now().Add(composed.Frame.KoiScene.UpdateInterval())
 	} // existing TUI tick interval and agreed 20fps
 	m.drawTabFeedback(composed)
+	m.drawWorkspaceSearchUI(composed, in)
 	f := composed.Frame
 	if m.notice != "" {
 		x, y, end := composed.ActionBar.Copy.X+composed.ActionBar.Copy.W, composed.ActionBar.Area.Y, composed.ActionBar.Cycle.X

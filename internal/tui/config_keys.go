@@ -40,7 +40,7 @@ func (a *App) configuredKey(k uv.Key, prefix bool) bool {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		if strings.HasPrefix(name, "navigate_") || (name == "remote_image_paste" || name == "fullscreen") {
+		if strings.HasPrefix(name, "navigate_") || (name == "remote_image_paste" || name == "fullscreen" || name == "workspace_search") {
 			continue
 		}
 		if a.cm != nil && !prefix && ((name == "next_tab" && a.sidebarConfig.Keys.NextTab == nil) || (name == "previous_tab" && a.sidebarConfig.Keys.PreviousTab == nil)) {
