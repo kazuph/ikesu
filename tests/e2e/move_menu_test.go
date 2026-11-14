@@ -77,12 +77,12 @@ func TestRightClickMovesPaneAndTabBetweenSpaces(t *testing.T) {
 	s.waitFor("pane 1 shown in space 2", 5*time.Second, func(tx string) bool { return strings.Contains(tx, " %1 terminal ") })
 
 	// 移したペインのタブ（タブ帯の「2」）を右クリックし、「Move to space…」で元のスペースへ戻す。
-	row0 := strings.Split(s.text(), "\n")[0]
-	col := strings.Index(row0, "· 2")
-	if col < 0 {
-		t.Fatal("tab 2 not in tab strip:", row0)
+	// Columns are cells: the sidebar title holds a wide 🔍.
+	tabX, ty := s.find("· 2")
+	if ty != 0 {
+		t.Fatal("tab 2 not in tab strip:", strings.Split(s.text(), "\n")[0])
 	}
-	s.rightClick(len([]rune(row0[:col]))+2, 0)
+	s.rightClick(tabX+2, 0)
 	s.waitFor("tab menu", 5*time.Second, func(tx string) bool { return strings.Contains(tx, "Move to space…") })
 	shot("tab menu", s.text())
 	fx, fy = s.find("New tab")
