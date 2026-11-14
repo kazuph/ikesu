@@ -97,7 +97,57 @@ prefix = "ctrl+t"
 next_workspace = "cmd+j"
 previous_workspace = "cmd+k"
 switch_workspace = "cmd+1..9"
+focus_history_back = "cmd+["
+focus_history_forward = "cmd+]"
+workspace_search = "cmd+f"
 ```
+
+`workspace_search` opens the space search. `prefix /` and the 🔍 at the top of the sidebar also open it, so terminals without ⌘ (Linux, Windows, SSH apps on phones) need no setup. A list such as `workspace_search = ["cmd+f", "alt+f"]` binds several keys.
+
+## Terminal setup: let ⌘ keys reach ikesu
+
+ikesu turns on the kitty keyboard protocol, so the terminal can pass ⌘ combinations to it. A terminal app sends a ⌘ key only when it does not use the key itself. Remove the terminal's own binding for every ⌘ key you put in `[keys]`.
+
+### Ghostty
+
+Add the lines for the keys you use to the configuration file (on macOS, `~/Library/Application Support/com.mitchellh.ghostty/config` or `~/.config/ghostty/config`) and reload it with ⌘⇧,.
+
+```
+# switch_workspace = "cmd+1..9" (Ghostty: go to tab 1-8, last tab)
+keybind = super+1=unbind
+keybind = super+digit_1=unbind
+keybind = super+2=unbind
+keybind = super+digit_2=unbind
+keybind = super+3=unbind
+keybind = super+digit_3=unbind
+keybind = super+4=unbind
+keybind = super+digit_4=unbind
+keybind = super+5=unbind
+keybind = super+digit_5=unbind
+keybind = super+6=unbind
+keybind = super+digit_6=unbind
+keybind = super+7=unbind
+keybind = super+digit_7=unbind
+keybind = super+8=unbind
+keybind = super+digit_8=unbind
+keybind = super+9=unbind
+keybind = super+digit_9=unbind
+# focus_history_back / focus_history_forward = "cmd+[" / "cmd+]" (Ghostty: previous / next split)
+keybind = super+[=unbind
+keybind = super+]=unbind
+# workspace_search = "cmd+f" (Ghostty: search)
+keybind = super+f=unbind
+```
+
+- Remove both forms of each digit (`super+1` and `super+digit_1`). Ghostty defines both.
+- ⌘J and ⌘K need no line. Ghostty binds them to "scroll to selection" and "clear screen", but skips them while ikesu is on screen and passes the key on. ⌘J still goes to Ghostty while text is selected with Ghostty's own selection.
+- A Ghostty window that is already open keeps the old bindings until the configuration is reloaded.
+- Check the result with `ghostty +list-keybinds`. The keys you removed no longer appear in the list.
+- After this change, use ⌘⇧[ / ⌘⇧] for Ghostty's own tabs and ⌘⌥ + arrow keys for its splits.
+
+### ⌘Tab cannot be used
+
+macOS takes ⌘Tab for app switching before any terminal app sees it.
 
 ## Terminal setup: switch tabs with ⌃Tab / ⌃⇧Tab
 
@@ -123,10 +173,6 @@ keybind = ctrl+shift+tab=text:\x1b[9;6u
 ### Other terminals
 
 Configure ⌃Tab / ⌃⇧Tab to send the sequences in the table above. Examples for terminals other than Ghostty have not been verified yet.
-
-### ⌘Tab cannot be used
-
-macOS takes ⌘Tab for app switching before any terminal app sees it.
 
 ## License
 
