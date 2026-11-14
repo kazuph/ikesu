@@ -106,8 +106,10 @@ func TestLeanLegacyCellParityAndLinks(t *testing.T) {
 				}
 			}
 		}
-		if !a.CellAt(16, 2).Link.Equal(&b.CellAt(16, 2).Link) {
-			t.Fatal("link-only change differs from baseline")
+		// The baseline drops links; the encoder now forwards them (OSC 8), so a
+		// link-only change must reach the host terminal exactly.
+		if want := f.Cell(16, 2).Link; !a.CellAt(16, 2).Link.Equal(&want) {
+			t.Fatalf("frame%d link-only change not forwarded: got %+v want %+v", i, a.CellAt(16, 2).Link, want)
 		}
 	}
 }

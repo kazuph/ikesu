@@ -5,6 +5,8 @@ import "github.com/kazuph/ikesu/internal/benchstage"
 import (
 	"bytes"
 	"fmt"
+	"strings"
+	"unicode/utf8"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
@@ -26,6 +28,7 @@ type Encoder struct {
 	prev              *Frame
 	curSty            uv.Style
 	haveSty           bool
+	curLink           uv.Link
 	started           bool
 	cursorShape       int
 	styleGroups       []encodedStyleGroup
@@ -93,6 +96,9 @@ func (e *Encoder) Frame(f *Frame, anchorX, anchorY int, anchorVisible bool, shap
 		e.diff(f, &b)
 	}
 
+	// Close a hyperlink left open by the last cell so later output, such as
+	// image placements and the cursor parking below, carries no link.
+	e.closeLink(&b)
 	e.emitRealPlacements(f, &b, graphicsChanged)
 	e.retireGraphics(f, &b, graphicsChanged)
 	e.imageFence = bytes.Contains(b.Bytes(), []byte("\x1b_Ga=t,")) || bytes.Contains(b.Bytes(), []byte("\x1b_Ga=p,"))
@@ -198,11 +204,59 @@ func (e *Encoder) emitCell(b *bytes.Buffer, c *uv.Cell) {
 	}
 	e.curSty = c.Style
 	e.haveSty = true
+	e.setLink(b, c.Link)
 	content := c.Content
 	if content == "" {
 		content = " "
 	}
 	b.WriteString(content)
+}
+
+// setLink forwards a pane cell's OSC 8 hyperlink to the host terminal so it
+// can open links whose text differs from the URL. Each frame starts and ends
+// with no hyperlink open, so cursor jumps between cells keep the state exact.
+func (e *Encoder) setLink(b *bytes.Buffer, link uv.Link) {
+	if !safeHyperlink(link) {
+		link = uv.Link{}
+	}
+	if link == e.curLink {
+		return
+	}
+	if link.URL == "" {
+		b.WriteString(ansi.ResetHyperlink())
+	} else {
+		b.WriteString(ansi.SetHyperlink(link.URL, link.Params))
+	}
+	e.curLink = link
+}
+
+func (e *Encoder) closeLink(b *bytes.Buffer) {
+	e.setLink(b, uv.Link{})
+}
+
+// maxHyperlinkBytes bounds one forwarded link; longer ones are dropped.
+const maxHyperlinkBytes = 4096
+
+// safeHyperlink rejects links that could end the OSC 8 sequence early or
+// inject other control sequences into the host terminal.
+func safeHyperlink(link uv.Link) bool {
+	if link.URL == "" {
+		return link.Params == ""
+	}
+	if len(link.URL)+len(link.Params) > maxHyperlinkBytes || strings.Contains(link.Params, ";") {
+		return false
+	}
+	for _, s := range [2]string{link.URL, link.Params} {
+		if !utf8.ValidString(s) {
+			return false
+		}
+		for _, r := range s {
+			if r < 0x20 || r >= 0x7f && r <= 0x9f {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // RequiresImageFence preserves application image processing, but cached koi
