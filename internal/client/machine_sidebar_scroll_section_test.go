@@ -181,4 +181,22 @@ func TestMachineSidebarSectionToggleAndNewWhenScrolled(t *testing.T) {
 	if gotNew.Type != "workspace_new" || gotNew.Section == nil || *gotNew.Section != string(model.SectionNone) {
 		t.Fatalf("got %+v, want workspace_new section=none", gotNew)
 	}
+
+	// If the endpoint advertises section_toggle without workspace_new, section
+	// creation must NOT silently fall back to legacy global creation.
+	conn.writer.methods = []string{"rendered", "section_toggle"}
+	conn.queueMu.Lock()
+	conn.queue = conn.queue[:0]
+	conn.queueMu.Unlock()
+	if err := m.createSectionWorkspace("local", model.SectionPersonal); err != nil {
+		t.Fatalf("createSectionWorkspace returned unexpected error: %v", err)
+	}
+	conn.queueMu.Lock()
+	for _, queued := range conn.queue {
+		if queued.Type == "workspace_new" || queued.Type == "input" {
+			conn.queueMu.Unlock()
+			t.Fatalf("unexpected fallback creation message: %+v", queued)
+		}
+	}
+	conn.queueMu.Unlock()
 }

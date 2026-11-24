@@ -1135,18 +1135,19 @@ func (s *Server) attach(conn net.Conn) {
 				}
 			})
 		case "workspace_new":
-			s.app.Do(func() {
-				if m.Section != nil {
-					sec := model.Section(*m.Section)
-					if sec.Valid() {
-						c.viewer.NewSectionWorkspace(s.app, sec)
-						return
-					}
+			if m.Section != nil {
+				sec := model.Section(*m.Section)
+				if !sec.Valid() {
+					_ = c.send(clientMsg{Type: "error", Reason: "endpoint_section_invalid"})
+					continue
 				}
-				c.viewer.NewWorkspace(s.app)
-			})
+				s.app.Do(func() { c.viewer.NewSectionWorkspace(s.app, sec) })
+				continue
+			}
+			s.app.Do(func() { c.viewer.NewWorkspace(s.app) })
 		case "section_toggle":
 			if m.Section == nil || !model.Section(*m.Section).Valid() {
+				_ = c.send(clientMsg{Type: "error", Reason: "endpoint_section_invalid"})
 				continue
 			}
 			sec := model.Section(*m.Section)

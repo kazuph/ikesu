@@ -385,14 +385,19 @@ func (m *machineClient) input(event input.Event) error {
 					}
 					if event.Mouse.Button == uv.MouseLeft {
 						e := m.endpoints[hit.Machine]
-						if e.connection != nil && endpoint.Allows(e.connection.writer.available, endpoint.MachineGeneration, e.connection.writer.methods, "section_toggle") {
-							m.suppressRelease = true
+						if e.connection != nil {
 							newRect := render.SectionNewRect(hit.Rect.X, hit.Rect.Y, hit.Rect.W)
 							if newRect.W > 0 && contains(newRect.X, newRect.Y, newRect.W, newRect.H, event.Mouse.X, event.Mouse.Y) {
-								return m.createSectionWorkspace(hit.Machine, hit.Row.Section)
+								if endpoint.Allows(e.connection.writer.available, endpoint.MachineGeneration, e.connection.writer.methods, "section_toggle") &&
+									endpoint.Allows(e.connection.writer.available, endpoint.MachineGeneration, e.connection.writer.methods, "workspace_new") {
+									m.suppressRelease = true
+									return m.createSectionWorkspace(hit.Machine, hit.Row.Section)
+								}
+							} else if endpoint.Allows(e.connection.writer.available, endpoint.MachineGeneration, e.connection.writer.methods, "section_toggle") {
+								m.suppressRelease = true
+								sec := string(hit.Row.Section)
+								return e.connection.enqueue(msg{Type: "section_toggle", Section: &sec})
 							}
-							sec := string(hit.Row.Section)
-							return e.connection.enqueue(msg{Type: "section_toggle", Section: &sec})
 						}
 					}
 				}
@@ -448,6 +453,10 @@ func (m *machineClient) createWorkspaceInSection(id string, section *string) err
 		return fmt.Errorf("machine %s is not connected", e.profile.Label)
 	}
 	modern := endpoint.Allows(e.connection.writer.available, endpoint.MachineGeneration, e.connection.writer.methods, "workspace_new")
+	if section != nil && (!modern || !endpoint.Allows(e.connection.writer.available, endpoint.MachineGeneration, e.connection.writer.methods, "section_toggle")) {
+		m.notify("endpoint_action_unsupported: workspace_new (section unsupported)")
+		return m.paint()
+	}
 	var data []byte
 	if !modern {
 		// Legacy servers draw [new] in the old footer, three rows from the bottom.
