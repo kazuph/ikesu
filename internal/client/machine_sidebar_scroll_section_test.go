@@ -182,21 +182,35 @@ func TestMachineSidebarSectionToggleAndNewWhenScrolled(t *testing.T) {
 		t.Fatalf("got %+v, want workspace_new section=none", gotNew)
 	}
 
-	// If the endpoint advertises section_toggle without workspace_new, section
-	// creation must NOT silently fall back to legacy global creation.
-	conn.writer.methods = []string{"rendered", "section_toggle"}
-	conn.queueMu.Lock()
-	conn.queue = conn.queue[:0]
-	conn.queueMu.Unlock()
-	if err := m.createSectionWorkspace("local", model.SectionPersonal); err != nil {
-		t.Fatalf("createSectionWorkspace returned unexpected error: %v", err)
-	}
-	conn.queueMu.Lock()
-	for _, queued := range conn.queue {
-		if queued.Type == "workspace_new" || queued.Type == "input" {
-			conn.queueMu.Unlock()
-			t.Fatalf("unexpected fallback creation message: %+v", queued)
+	// If the endpoint advertises only one of section_toggle / workspace_new,
+	// clicking [new] must notify unsupported and enqueue neither workspace_new
+	// nor raw coordinate input.
+	for _, partial := range [][]string{
+		{"rendered", "input", "section_toggle"},
+		{"rendered", "input", "workspace_new"},
+	} {
+		conn.writer.methods = partial
+		m.notice = ""
+		conn.queueMu.Lock()
+		conn.queue = conn.queue[:0]
+		conn.queueMu.Unlock()
+		if err := m.input(input.Event{
+			Kind:  input.KindMouseClick,
+			Mouse: uv.Mouse{X: newRect.X + 1, Y: newRect.Y, Button: uv.MouseLeft},
+			Raw:   []byte("\x1b[<0;1;1M"),
+		}); err != nil {
+			t.Fatalf("partial %v click returned unexpected error: %v", partial, err)
 		}
+		if m.notice == "" {
+			t.Fatalf("partial %v did not set unsupported notice", partial)
+		}
+		conn.queueMu.Lock()
+		for _, queued := range conn.queue {
+			if queued.Type == "workspace_new" || queued.Type == "input" {
+				conn.queueMu.Unlock()
+				t.Fatalf("partial %v sent unexpected fallback message: %+v", partial, queued)
+			}
+		}
+		conn.queueMu.Unlock()
 	}
-	conn.queueMu.Unlock()
 }

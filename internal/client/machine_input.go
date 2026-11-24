@@ -388,12 +388,10 @@ func (m *machineClient) input(event input.Event) error {
 						if e.connection != nil {
 							newRect := render.SectionNewRect(hit.Rect.X, hit.Rect.Y, hit.Rect.W)
 							if newRect.W > 0 && contains(newRect.X, newRect.Y, newRect.W, newRect.H, event.Mouse.X, event.Mouse.Y) {
-								if endpoint.Allows(e.connection.writer.available, endpoint.MachineGeneration, e.connection.writer.methods, "section_toggle") &&
-									endpoint.Allows(e.connection.writer.available, endpoint.MachineGeneration, e.connection.writer.methods, "workspace_new") {
-									m.suppressRelease = true
-									return m.createSectionWorkspace(hit.Machine, hit.Row.Section)
-								}
-							} else if endpoint.Allows(e.connection.writer.available, endpoint.MachineGeneration, e.connection.writer.methods, "section_toggle") {
+								m.suppressRelease = true
+								return m.createSectionWorkspace(hit.Machine, hit.Row.Section)
+							}
+							if endpoint.Allows(e.connection.writer.available, endpoint.MachineGeneration, e.connection.writer.methods, "section_toggle") {
 								m.suppressRelease = true
 								sec := string(hit.Row.Section)
 								return e.connection.enqueue(msg{Type: "section_toggle", Section: &sec})
