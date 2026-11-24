@@ -588,6 +588,63 @@ func singleExpandedField(cfg *expand.Config, word *syntax.Word) (string, bool) {
 	return fields[0], true
 }
 
+// escapeUnquotedBraces returns a shallow copy of word with every unescaped
+// top-level '{' wrapped in single quotes so expand.Fields decodes quotes and
+// backslashes without invoking exponential brace expansion (expand.Braces).
+func escapeUnquotedBraces(word *syntax.Word) *syntax.Word {
+	if !wordHasUnquotedBrace(word) {
+		return word
+	}
+	parts := make([]syntax.WordPart, 0, len(word.Parts)+2)
+	for _, part := range word.Parts {
+		switch p := part.(type) {
+		case *syntax.BraceExp:
+			return nil
+		case *syntax.Lit:
+			if !strings.ContainsRune(p.Value, '{') {
+				parts = append(parts, p)
+				continue
+			}
+			s := p.Value
+			start := 0
+			for idx := 0; idx < len(s); idx++ {
+				if s[idx] == '\\' && idx+1 < len(s) {
+					idx++
+					continue
+				}
+				if s[idx] == '{' {
+					if idx > start {
+						parts = append(parts, &syntax.Lit{Value: s[start:idx]})
+					}
+					parts = append(parts, &syntax.SglQuoted{Value: "{"})
+					start = idx + 1
+				}
+			}
+			if start < len(s) {
+				parts = append(parts, &syntax.Lit{Value: s[start:]})
+			}
+		default:
+			parts = append(parts, part)
+		}
+	}
+	return &syntax.Word{Parts: parts}
+}
+
+// singleDisplayField decodes a shell word for display redaction without brace
+// expansion, preserving quote-boundary decoding even when the word contains
+// ordinary unquoted braces.
+func singleDisplayField(cfg *expand.Config, word *syntax.Word) (string, bool) {
+	safe := escapeUnquotedBraces(word)
+	if safe == nil {
+		return "", false
+	}
+	fields, err := expand.Fields(cfg, safe)
+	if err != nil || len(fields) != 1 {
+		return "", false
+	}
+	return fields[0], true
+}
+
 // This runtime-only check inspects expansion syntax without evaluating it.
 func reservedExpansionWrite(i Input, node syntax.Node) bool {
 	var target syntax.ArithmExpr

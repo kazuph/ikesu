@@ -159,7 +159,7 @@ func (i Input) environmentWords(text string) []environmentWord {
 			if err != nil {
 				return true
 			}
-			field, ok := singleExpandedField(&expand.Config{NoUnset: true}, word)
+			field, ok := singleDisplayField(&expand.Config{NoUnset: true}, word)
 			if !ok {
 				return true
 			}
