@@ -588,9 +588,10 @@ func singleExpandedField(cfg *expand.Config, word *syntax.Word) (string, bool) {
 	return fields[0], true
 }
 
-// escapeUnquotedBraces returns a shallow copy of word with every unescaped
-// top-level '{' wrapped in single quotes so expand.Fields decodes quotes and
-// backslashes without invoking exponential brace expansion (expand.Braces).
+// escapeUnquotedBraces returns a shallow copy of word with every top-level
+// '{' (both unescaped '{' and escaped '\{') wrapped in single quotes so
+// expand.Fields decodes quotes and backslashes without invoking expand.Braces.
+// The returned word is guaranteed to satisfy !wordHasUnquotedBrace(out).
 func escapeUnquotedBraces(word *syntax.Word) *syntax.Word {
 	if !wordHasUnquotedBrace(word) {
 		return word
@@ -609,6 +610,16 @@ func escapeUnquotedBraces(word *syntax.Word) *syntax.Word {
 			start := 0
 			for idx := 0; idx < len(s); idx++ {
 				if s[idx] == '\\' && idx+1 < len(s) {
+					if s[idx+1] == '{' {
+						// In shell syntax, `\{` decodes to a literal `{`, identical to `'{'`.
+						if idx > start {
+							parts = append(parts, &syntax.Lit{Value: s[start:idx]})
+						}
+						parts = append(parts, &syntax.SglQuoted{Value: "{"})
+						idx++
+						start = idx + 1
+						continue
+					}
 					idx++
 					continue
 				}
@@ -627,7 +638,11 @@ func escapeUnquotedBraces(word *syntax.Word) *syntax.Word {
 			parts = append(parts, part)
 		}
 	}
-	return &syntax.Word{Parts: parts}
+	out := &syntax.Word{Parts: parts}
+	if wordHasUnquotedBrace(out) {
+		return nil
+	}
+	return out
 }
 
 // singleDisplayField decodes a shell word for display redaction without brace

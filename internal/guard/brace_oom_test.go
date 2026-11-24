@@ -73,7 +73,35 @@ func TestBraceExpansionPreventedWithoutRegressingRedaction(t *testing.T) {
 		t.Fatalf("unquoted-brace secret spanning quote boundary not redacted: %q", redacted)
 	}
 
-	// 5. Realistic JS heredoc snippet with many brace pairs redacts cleanly without expanding.
+	// 5. Escaped braces (`\{` and `\\{`) must leave ZERO top-level '{' in the
+	//    transformed AST while preserving exact shell decoding and secret masking.
+	for _, tc := range []struct{ raw, want string }{
+		{`lbl\{x`, `lbl{x`},
+		{`lbl\\{x`, `lbl\{x`},
+		{`\{a,b\}\{c,d\}`, `{a,b}{c,d}`},
+	} {
+		w := parseSingleWord(t, tc.raw)
+		safe := escapeUnquotedBraces(w)
+		if safe == nil || wordHasUnquotedBrace(safe) {
+			t.Fatalf("escapeUnquotedBraces(%q) left unquoted brace in AST", tc.raw)
+		}
+		got, ok := singleDisplayField(&expand.Config{NoUnset: true}, w)
+		if !ok || got != tc.want {
+			t.Fatalf("singleDisplayField(%q) = (%q, %v), want (%q, true)", tc.raw, got, ok, tc.want)
+		}
+	}
+	iEscapedSecret := Input{
+		Command: "curl",
+		Args:    []string{"-d", secret},
+		RawLine: `curl -d opaque\{mid\}'value98765'`,
+		Env:     map[string]string{"TEST_TOKEN": secret},
+	}
+	redactedEsc := iEscapedSecret.redact(iEscapedSecret.RawLine)
+	if !strings.Contains(redactedEsc, "$TEST_TOKEN") || strings.Contains(redactedEsc, "value98765") {
+		t.Fatalf("escaped-brace secret not redacted: %q", redactedEsc)
+	}
+
+	// 6. Realistic JS heredoc snippet with many brace pairs redacts cleanly without expanding.
 	jsLine := `python3 - build.py <<'PYEOF'` + "\n" +
 		`const WHO = {'0-0':'q','0-1':'z'}; const S = [{a:1,b:2},{c:3,d:4},{e:5,f:6},{g:7,h:8}];` + "\n" +
 		`PYEOF`
