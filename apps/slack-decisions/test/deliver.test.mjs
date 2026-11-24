@@ -132,7 +132,7 @@ test("deliver without --title falls back to the basename and skips a missing hub
   }
 });
 
-test("deliver sends nothing on a non-kazuph machine", async () => {
+test("deliver sends nothing on a disallowed OS user machine", async () => {
   const tmp = tmpdir("otherhost");
   const file = path.join(tmp, "result.txt");
   fs.writeFileSync(file, "must not leave this machine\n");
@@ -142,7 +142,8 @@ test("deliver sends nothing on a non-kazuph machine", async () => {
       ["deliver", file],
       cliEnv(tmp, {
         apiBase: fake.base,
-        SLACK_DECISIONS_OS_USER: "kazuph",
+        SLACK_DECISIONS_ALLOWED_USER: "alice",
+        SLACK_DECISIONS_OS_USER: "alice",
       }),
       "someoneelse",
     );

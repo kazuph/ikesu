@@ -1066,7 +1066,7 @@ test("saberaGlassesState reads the unix-socket ws handshake", async () => {
   assert.equal(gone, null);
 });
 
-test("non-kazuph user -> exits without touching Slack", async () => {
+test("disallowed OS user -> exits without touching Slack", async () => {
   const state = tmpdir("notme");
   const result = await new Promise((resolve) => {
     execFile(
@@ -1075,6 +1075,7 @@ test("non-kazuph user -> exits without touching Slack", async () => {
       {
         env: {
           ...process.env,
+          SLACK_DECISIONS_ALLOWED_USER: "alice",
           SLACK_DECISIONS_OS_USER: "someoneelse",
           SLACK_DECISIONS_STATE_DIR: state,
           SLACK_BOT_TOKEN: "xoxb-fake",
@@ -1092,7 +1093,7 @@ test("non-kazuph user -> exits without touching Slack", async () => {
   assert.match(result.stderr, /Slack 送信をしません/);
 });
 
-test("kazuph but no credentials -> exits without posting", async () => {
+test("allowed user but no credentials -> exits without posting", async () => {
   const state = tmpdir("nocreds");
   const result = await new Promise((resolve) => {
     execFile(

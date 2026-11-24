@@ -5,9 +5,9 @@ import { locationLabel, approvalCommand, approvalTargetRange, approvalFields, ap
 // glasses are not answering, and turn Slack answers (number reactions or
 // thread replies) into `ikesu decision answer --responder slack`.
 //
-// Slack sends only ever happen on kazuph's machine, and only when the
-// slack-ask credentials resolve. On any other machine, or without
-// credentials, this exits quietly after logging the reason.
+// Slack sends only happen when credentials resolve and (if `allowed_user` /
+// `SLACK_DECISIONS_ALLOWED_USER` is configured) the real OS user matches.
+// Otherwise this exits quietly after logging the reason.
 
 import { execFile, execFileSync, spawn } from "node:child_process";
 import crypto from "node:crypto";
@@ -25,7 +25,6 @@ const ANSWER_RETRY_MS = 15_000;
 const ANSWER_RETRY_LIMIT = 120;
 const PLUGIN_ID = "kazuph.slack-decisions";
 const RUN_LABEL = "slack-decisions";
-const DEFAULT_ALLOWED_USER = "kazuph";
 const DEFAULT_POST_DELAY_MS = 180_000; // glasses connected: wait before posting
 const DEFAULT_POLL_INTERVAL_MS = 5_000;
 const SABERA_TIMEOUT_MS = 3_000;
@@ -142,6 +141,12 @@ function loadConfig(env = process.env) {
     const parsed = Number(envValue ?? fileValue);
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
   };
+  const pickString = (...values) => {
+    for (const v of values) {
+      if (typeof v === "string" && v.trim() !== "") return v.trim();
+    }
+    return "";
+  };
   const stateDir =
     env.SLACK_DECISIONS_STATE_DIR ||
     env.IKESU_PLUGIN_STATE_DIR ||
@@ -168,8 +173,7 @@ function loadConfig(env = process.env) {
       env.SLACK_DECISIONS_API_BASE ||
       file.slack_api_base ||
       "https://slack.com/api",
-    allowedUser:
-      env.SLACK_DECISIONS_ALLOWED_USER || file.allowed_user || DEFAULT_ALLOWED_USER,
+    allowedUser: pickString(env.SLACK_DECISIONS_ALLOWED_USER, file.allowed_user),
     slackChannel: env.SLACK_DECISIONS_CHANNEL || file.slack_channel || "",
     mention: env.SLACK_DECISIONS_MENTION ?? file.mention ?? "",
     socketMode:
@@ -2795,13 +2799,16 @@ export async function gateCheck(config, userInfo = os.userInfo) {
     log("設定で無効化されています (enabled=false)");
     return false;
   }
-  const user = userInfo().username;
-  const allowed = config.allowedUser || DEFAULT_ALLOWED_USER;
-  if (user !== allowed) {
-    log(
-      `このマシンでは Slack 送信をしません (whoami=${user}; 許可: ${allowed})`,
-    );
-    return false;
+  const allowed =
+    typeof config.allowedUser === "string" ? config.allowedUser.trim() : "";
+  if (allowed) {
+    const user = userInfo().username;
+    if (user !== allowed) {
+      log(
+        `このマシンでは Slack 送信をしません (whoami=${user}; 許可: ${allowed})`,
+      );
+      return false;
+    }
   }
   return true;
 }
