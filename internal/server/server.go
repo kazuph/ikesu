@@ -90,6 +90,7 @@ type clientMsg struct {
 	Decisions           *endpoint.DecisionProjection `json:"decisions,omitempty"`
 	DecisionAnswer      *api.DecisionAnswerParams    `json:"decision_answer,omitempty"`
 	MachineAction       string                       `json:"machine_action,omitempty"`
+	Section             *string                      `json:"section,omitempty"`
 }
 
 // Server is one running session.
@@ -1134,7 +1135,22 @@ func (s *Server) attach(conn net.Conn) {
 				}
 			})
 		case "workspace_new":
-			s.app.Do(func() { c.viewer.NewWorkspace(s.app) })
+			s.app.Do(func() {
+				if m.Section != nil {
+					sec := model.Section(*m.Section)
+					if sec.Valid() {
+						c.viewer.NewSectionWorkspace(s.app, sec)
+						return
+					}
+				}
+				c.viewer.NewWorkspace(s.app)
+			})
+		case "section_toggle":
+			if m.Section == nil || !model.Section(*m.Section).Valid() {
+				continue
+			}
+			sec := model.Section(*m.Section)
+			s.app.Do(func() { c.viewer.ToggleSection(s.app, sec) })
 		case "workspace_menu":
 			s.app.Do(func() {
 				if !c.viewer.OpenWorkspaceMenu(s.app, m.Workspace, m.WorkspaceGeneration, m.MenuX, m.MenuY) {

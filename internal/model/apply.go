@@ -87,8 +87,17 @@ func (s *AppState) Apply(cmd Command) (effects []Effect) {
 		}
 		ws.Section = c.Section
 		delete(s.CollapsedSections, c.Section)
+		idx := len(s.Workspaces) - 1
+		if c.InsertAfterActive && s.Active >= 0 && s.Active < idx {
+			insertAt := s.Active + 1
+			copy(s.Workspaces[insertAt+1:], s.Workspaces[insertAt:idx])
+			s.Workspaces[insertAt] = ws
+			idx = insertAt
+		}
 		if !c.NoFocus {
-			s.Active = len(s.Workspaces) - 1
+			s.Active = idx
+		} else if idx <= s.Active {
+			s.Active++
 		}
 		return []Effect{
 			EffSpawnPane{Pane: ws.Tabs[0].Layout.Focused(), Cwd: c.Cwd, Env: c.Env},

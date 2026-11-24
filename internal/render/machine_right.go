@@ -80,7 +80,8 @@ func (m *MachineSidebar) drawRight(f *Frame, active Input) {
 	area.Y = 2
 	area.H = max(0, area.H-2)
 	rows := m.rightRows(active)
-	m.RightScroll = max(0, min(m.RightScroll, max(0, len(rows)-area.H)))
+	m.RightMaxScroll = max(0, len(rows)-area.H)
+	m.RightScroll = max(0, min(m.RightScroll, m.RightMaxScroll))
 	f.Fill(area.X, area.Y, area.W, area.H, " ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG})
 	for n := 0; n < area.H && n+m.RightScroll < len(rows); n++ {
 		entry := rows[n+m.RightScroll]

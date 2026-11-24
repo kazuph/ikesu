@@ -276,12 +276,35 @@ func (m *machineClient) input(event input.Event) error {
 		// Overlay hit areas belong to the selected server and take precedence.
 		if active.snapshot != nil && active.snapshot.Menu == nil && active.snapshot.Dialog == nil && active.snapshot.Help == nil {
 			if event.Kind == input.KindMouseWheel && len(m.sidebar.Groups) > 1 && contains(active.snapshot.State.RightSidebarArea().X, 0, active.snapshot.State.RightSidebarArea().W, m.size.Rows, event.Mouse.X, event.Mouse.Y) {
-				if event.Mouse.Button == uv.MouseWheelUp {
+				switch event.Mouse.Button {
+				case uv.MouseWheelUp:
 					m.sidebar.RightScroll--
-				} else {
+				case uv.MouseWheelDown:
 					m.sidebar.RightScroll++
+				default:
+					return nil
 				}
+				m.sidebar.RightScroll = max(0, min(m.sidebar.RightScroll, m.sidebar.RightMaxScroll))
 				return m.paint()
+			}
+			if event.Kind == input.KindMouseWheel && (len(m.sidebar.Groups) > 1 || m.sidebar.Oyagoi != nil) {
+				left := active.snapshot.State.SidebarArea()
+				if left.W > 0 && contains(left.X, left.Y, left.W, left.H, event.Mouse.X, event.Mouse.Y) {
+					step := 3
+					if active.snapshot.SidebarConfig.UI.Sidebar.Spaces.Rows == nil {
+						step = render.WorkspaceCardHeight(active.snapshot.State.WorkspaceDensity)
+					}
+					switch event.Mouse.Button {
+					case uv.MouseWheelUp:
+						m.sidebar.Scroll -= step
+					case uv.MouseWheelDown:
+						m.sidebar.Scroll += step
+					default:
+						return nil
+					}
+					m.sidebar.Scroll = max(0, min(m.sidebar.Scroll, m.sidebar.MaxScroll))
+					return m.paint()
+				}
 			}
 			for _, hit := range m.sidebar.Hits {
 				if !contains(hit.Rect.X, hit.Rect.Y, hit.Rect.W, hit.Rect.H, event.Mouse.X, event.Mouse.Y) {
@@ -307,16 +330,7 @@ func (m *machineClient) input(event input.Event) error {
 					return m.rightMachineInput(hit, event)
 				}
 				if event.Kind == input.KindMouseWheel {
-					step := 3
-					if active.snapshot.SidebarConfig.UI.Sidebar.Spaces.Rows == nil {
-						step = render.WorkspaceCardHeight(active.snapshot.State.WorkspaceDensity)
-					}
-					if event.Mouse.Button == uv.MouseWheelUp {
-						m.sidebar.Scroll -= step
-					} else {
-						m.sidebar.Scroll += step
-					}
-					return m.paint()
+					return nil
 				}
 				if (hit.Header || hit.New) && hit.Machine != "local" && event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseRight {
 					m.forms.OpenMachine(m.endpoints[hit.Machine].profile, active.snapshot.State, event.Mouse.X, event.Mouse.Y)
@@ -365,6 +379,23 @@ func (m *machineClient) input(event input.Event) error {
 					}
 					return m.paint()
 				}
+				if hit.Row.Kind == render.RowSection {
+					if event.Kind != input.KindMouseClick {
+						return nil
+					}
+					if event.Mouse.Button == uv.MouseLeft {
+						e := m.endpoints[hit.Machine]
+						if e.connection != nil && endpoint.Allows(e.connection.writer.available, endpoint.MachineGeneration, e.connection.writer.methods, "section_toggle") {
+							m.suppressRelease = true
+							newRect := render.SectionNewRect(hit.Rect.X, hit.Rect.Y, hit.Rect.W)
+							if newRect.W > 0 && contains(newRect.X, newRect.Y, newRect.W, newRect.H, event.Mouse.X, event.Mouse.Y) {
+								return m.createSectionWorkspace(hit.Machine, hit.Row.Section)
+							}
+							sec := string(hit.Row.Section)
+							return e.connection.enqueue(msg{Type: "section_toggle", Section: &sec})
+						}
+					}
+				}
 				if hit.Workspace != 0 && hit.Machine != m.active && event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseRight {
 					e := m.endpoints[hit.Machine]
 					if e.connection == nil || e.snapshot == nil {
@@ -403,6 +434,15 @@ func (m *machineClient) input(event input.Event) error {
 }
 
 func (m *machineClient) createWorkspace(id string) error {
+	return m.createWorkspaceInSection(id, nil)
+}
+
+func (m *machineClient) createSectionWorkspace(id string, section model.Section) error {
+	sec := string(section)
+	return m.createWorkspaceInSection(id, &sec)
+}
+
+func (m *machineClient) createWorkspaceInSection(id string, section *string) error {
 	e := m.endpoints[id]
 	if e.connection == nil || e.snapshot == nil {
 		return fmt.Errorf("machine %s is not connected", e.profile.Label)
@@ -434,7 +474,7 @@ func (m *machineClient) createWorkspace(id string) error {
 		}
 	}
 	if modern {
-		return e.connection.enqueue(msg{Type: "workspace_new"})
+		return e.connection.enqueue(msg{Type: "workspace_new", Section: section})
 	}
 	return m.sendInput(id, data)
 }

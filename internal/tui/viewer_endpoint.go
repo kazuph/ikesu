@@ -38,6 +38,16 @@ func (v *Viewer) NewWorkspace(a *App) {
 	v.with(a, func(ui *App) { ui.newWorkspace() })
 }
 
+// NewSectionWorkspace creates a workspace in the requested sidebar section.
+func (v *Viewer) NewSectionWorkspace(a *App, section model.Section) {
+	v.with(a, func(ui *App) { ui.newSectionWorkspace(section) })
+}
+
+// ToggleSection folds or unfolds a sidebar section regardless of scroll offset.
+func (v *Viewer) ToggleSection(a *App, section model.Section) {
+	v.with(a, func(ui *App) { ui.toggleSection(section) })
+}
+
 func (v *Viewer) HasWorkspace(a *App, id int, generation string) bool {
 	for _, ws := range a.st.Workspaces {
 		if ws.ID == id && generation != "" && ws.Generation == generation {

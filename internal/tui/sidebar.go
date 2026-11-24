@@ -201,8 +201,7 @@ func (a *App) toggleSection(section model.Section) {
 	a.sidebarScroll = 0
 }
 func (a *App) newSectionWorkspace(section model.Section) {
-	a.newWorkspace()
-	a.setSection(a.st.Active, section)
+	a.newWorkspaceInSection(section)
 }
 func (a *App) toggleSidebarSetting(density bool) {
 	key, value := "agent_panel_scope", "sort"

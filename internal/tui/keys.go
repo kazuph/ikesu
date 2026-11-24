@@ -287,8 +287,13 @@ func (a *App) selectWorkspace(i int) {
 	a.exec(model.CmdSelectWorkspace{Index: i})
 }
 
-// newWorkspace creates a workspace in the focused pane's cwd.
+// newWorkspace creates a workspace in the focused pane's cwd, inserted right
+// below the currently active workspace.
 func (a *App) newWorkspace() {
+	a.newWorkspaceInSection("")
+}
+
+func (a *App) newWorkspaceInSection(section model.Section) {
 	cwd := a.cwd
 	if ws := a.st.ActiveWorkspace(); ws != nil {
 		cwd = ws.Cwd
@@ -297,7 +302,7 @@ func (a *App) newWorkspace() {
 		}
 	}
 	cwd = a.newPaneCwd(cwd)
-	a.exec(model.CmdNewWorkspace{Cwd: cwd, Name: filepath.Base(cwd)})
+	a.exec(model.CmdNewWorkspace{Cwd: cwd, Name: filepath.Base(cwd), Section: section, InsertAfterActive: true})
 }
 
 // closeFocusedPane replaces the final workspace's shell, or confirms closing

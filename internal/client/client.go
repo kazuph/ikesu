@@ -94,6 +94,7 @@ type msg struct {
 	MenuX               int                       `json:"menu_x,omitempty"`
 	MenuY               int                       `json:"menu_y,omitempty"`
 	MachineAction       string                    `json:"machine_action,omitempty"`
+	Section             *string                   `json:"section,omitempty"`
 }
 
 // Attach connects the local terminal to the session's server, spawning it

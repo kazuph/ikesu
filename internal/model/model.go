@@ -224,11 +224,12 @@ type (
 	// CmdNewWorkspace creates a workspace whose single pane starts in Cwd;
 	// the new workspace takes focus unless NoFocus is set.
 	CmdNewWorkspace struct {
-		Cwd     string
-		Name    string
-		Env     map[string]string
-		NoFocus bool
-		Section Section
+		Cwd               string
+		Name              string
+		Env               map[string]string
+		NoFocus           bool
+		Section           Section
+		InsertAfterActive bool
 	}
 	// CmdCloseWorkspace closes workspace idx.
 	CmdCloseWorkspace struct{ Index int }

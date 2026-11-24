@@ -28,12 +28,14 @@ type MachineHit struct {
 }
 
 type MachineSidebar struct {
-	Oyagoi      *Oyagoi
-	Groups      []MachineGroup
-	Active      string
-	Scroll      int
-	RightScroll int
-	Hits        []MachineHit
+	Oyagoi         *Oyagoi
+	Groups         []MachineGroup
+	Active         string
+	Scroll         int
+	MaxScroll      int
+	RightScroll    int
+	RightMaxScroll int
+	Hits           []MachineHit
 	PaneStatus  []string
 	DropMachine string
 	DropIndex   *int
@@ -155,7 +157,8 @@ func (m *MachineSidebar) drawExpanded(f *Frame, active Input) {
 		cards++
 		lastCard++
 	}
-	m.Scroll = max(0, min(m.Scroll, min(max(0, len(rows)-area.H), max(0, cards-lastCard))))
+	m.MaxScroll = min(max(0, len(rows)-area.H), max(0, cards-lastCard))
+	m.Scroll = max(0, min(m.Scroll, m.MaxScroll))
 	view.Workspace.Offset = m.Scroll
 	f.Fill(area.X, area.Y, area.W, area.H, " ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.PopupBG})
 	width := area.W
