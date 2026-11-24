@@ -555,6 +555,39 @@ func shellLiteral(cfg *expand.Config, word *syntax.Word) (string, error) {
 	return expand.Literal(cfg, word)
 }
 
+// wordHasUnquotedBrace reports whether word contains an unquoted '{' literal
+// or BraceExp that mvdan.cc/sh/v3/expand.Fields would feed into expand.Braces,
+// which can expand exponentially (e.g. JS/JSON braces or `{1..999999999}`).
+func wordHasUnquotedBrace(word *syntax.Word) bool {
+	if word == nil {
+		return false
+	}
+	for _, part := range word.Parts {
+		switch p := part.(type) {
+		case *syntax.BraceExp:
+			return true
+		case *syntax.Lit:
+			if strings.ContainsRune(p.Value, '{') {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// singleExpandedField evaluates word into a single shell field without
+// triggering brace expansion (expand.Braces).
+func singleExpandedField(cfg *expand.Config, word *syntax.Word) (string, bool) {
+	if wordHasUnquotedBrace(word) {
+		return "", false
+	}
+	fields, err := expand.Fields(cfg, word)
+	if err != nil || len(fields) != 1 {
+		return "", false
+	}
+	return fields[0], true
+}
+
 // This runtime-only check inspects expansion syntax without evaluating it.
 func reservedExpansionWrite(i Input, node syntax.Node) bool {
 	var target syntax.ArithmExpr

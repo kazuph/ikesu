@@ -159,12 +159,12 @@ func (i Input) environmentWords(text string) []environmentWord {
 			if err != nil {
 				return true
 			}
-			fields, err := expand.Fields(&expand.Config{NoUnset: true}, word)
-			if err != nil || len(fields) != 1 {
+			field, ok := singleExpandedField(&expand.Config{NoUnset: true}, word)
+			if !ok {
 				return true
 			}
-			restored := i.restoreEnvironment(fields[0])
-			if restored == fields[0] {
+			restored := i.restoreEnvironment(field)
+			if restored == field {
 				return true
 			}
 			words = append(words, environmentWord{int(word.Pos().Offset()), int(word.End().Offset()), literal, restored})

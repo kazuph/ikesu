@@ -94,11 +94,11 @@ func wholeCommand(command string, i Input) bool {
 	// A shim receives shell argv; line analysis retains its Literal form.
 	var argv []string
 	for _, word := range call.Args {
-		fields, err := expand.Fields(&expand.Config{Env: expand.ListEnviron(environment(i.Env)...), NoUnset: true}, word)
-		if err != nil || len(fields) != 1 {
+		field, ok := singleExpandedField(&expand.Config{Env: expand.ListEnviron(environment(i.Env)...), NoUnset: true}, word)
+		if !ok {
 			return false
 		}
-		argv = append(argv, fields[0])
+		argv = append(argv, field)
 	}
 	return slices.Equal(argv, expected)
 }

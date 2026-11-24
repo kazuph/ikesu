@@ -273,11 +273,7 @@ func claudeLiteral(word *syntax.Word) (string, bool) {
 	if !claudeLiteralParts(word.Parts, false) {
 		return "", false
 	}
-	values, err := expand.Fields(&expand.Config{Env: expand.ListEnviron(), NoUnset: true}, word)
-	if err != nil || len(values) != 1 {
-		return "", false
-	}
-	return values[0], true
+	return singleExpandedField(&expand.Config{Env: expand.ListEnviron(), NoUnset: true}, word)
 }
 
 func claudeLiteralParts(parts []syntax.WordPart, quoted bool) bool {
