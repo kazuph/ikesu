@@ -7,6 +7,14 @@ const DefaultExample = `config_version = 2
 enabled = false # opt in with true
 # mode = "record" # default when enabled; set "enforce" to enforce
 
+[runaway]
+enabled = false # opt in with true
+# poll_interval_seconds = 5 # range 2–15
+# memory_mb = 8192
+# memory_spike_mb = 3072 # over the last 30 seconds
+# cpu_percent = 180
+# cpu_duration_seconds = 180
+
 [decisions]
 screen_prompts = false # opt in with true
 

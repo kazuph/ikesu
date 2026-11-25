@@ -217,6 +217,48 @@ func (s *AppState) FindPane(pane PaneID) (wsIdx, tabIdx int) {
 	return -1, -1
 }
 
+// Include runtime-only panes even when another space or tab is selected.
+func (s *AppState) WorkspacePaneIDs(ws *Workspace) []int {
+	var ids []int
+	for _, tab := range ws.Tabs {
+		ids = append(ids, tab.Layout.PaneIDs()...)
+	}
+	popup := s.Popups[ws.ID]
+	if popup == nil && s.Popup != nil && s.Popup.WorkspaceID == ws.ID {
+		popup = s.Popup
+	}
+	if popup != nil {
+		ids = append(ids, popup.PaneID)
+	}
+	if overlay := s.Overlay; overlay != nil && overlay.WorkspaceID == ws.ID {
+		ids = append(ids, overlay.PaneID)
+	}
+	return ids
+}
+
+// FindManagedPane also locates workspace-scoped popups, which have no tab.
+func (s *AppState) FindManagedPane(pane PaneID) (int, int) {
+	if popup := s.PopupByPane(pane); popup != nil {
+		for i, ws := range s.Workspaces {
+			if ws.ID == popup.WorkspaceID {
+				return i, -1
+			}
+		}
+	}
+	return s.FindPane(pane)
+}
+
+// FocusedManagedPane includes visible runtime panes that receive keyboard input.
+func (s *AppState) FocusedManagedPane() PaneID {
+	if s.OverlayVisible() {
+		return s.Overlay.PaneID
+	}
+	if s.PopupVisible() {
+		return s.Popup.PaneID
+	}
+	return s.FocusedPane()
+}
+
 // Command is a user or runtime intent against the pure state.
 type Command interface{ isCommand() }
 

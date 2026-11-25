@@ -24,6 +24,7 @@ const (
 	MethodNotificationShow        = "notification.show"
 	MethodServerStop              = "server.stop"
 	MethodServerRestart           = "server.restart"
+	MethodServerRunaway           = "server.runaway"
 	MethodServerReloadConfig      = "server.reload_config"
 	MethodServerLiveHandoff       = "server.live_handoff"
 	MethodWorkspaceList           = "workspace.list"

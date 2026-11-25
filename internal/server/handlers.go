@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/runtime"
 )
@@ -17,6 +18,16 @@ func (s *Server) dispatchOnLoop(req *api.Request) api.Response {
 		return s.graphicsRequest(req)
 	case api.MethodSessionImportHerdr:
 		return s.importHerdr(req)
+	case api.MethodServerRunaway:
+		var p api.EmptyParams
+		if err := req.DecodeParams(&p); err != nil {
+			return api.Failure(req.ID, api.ErrInvalidRequest, err.Error())
+		}
+		return api.Success(req.ID, struct {
+			Type    string                  `json:"type"`
+			Enabled bool                    `json:"enabled"`
+			Alerts  []endpoint.RunawayAlert `json:"alerts"`
+		}{"server_runaway", s.cfg.RunawaySettings().Enabled, s.runaway.list()})
 	case api.MethodServerReloadConfig:
 		var p api.EmptyParams
 		if err := req.DecodeParams(&p); err != nil {

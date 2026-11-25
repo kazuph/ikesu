@@ -1,6 +1,10 @@
 package tui
 
-import "github.com/kazuph/ikesu/internal/model"
+import (
+	"errors"
+
+	"github.com/kazuph/ikesu/internal/model"
+)
 
 // SetLegacySidebarControls selects the geometry understood by this viewer's client.
 func (v *Viewer) SetLegacySidebarControls(legacy, menuRight bool) {
@@ -88,4 +92,41 @@ func (v *Viewer) SetForeignOyagoi(a *App, label string, online bool) {
 
 func (v *Viewer) SetOyagoiCollapsed(a *App, collapsed bool) {
 	v.with(a, func(ui *App) { ui.oyagoiCollapsed = collapsed; ui.dirty = true })
+}
+
+// FocusPane navigates only this viewer, and checks the resulting input target.
+func (v *Viewer) FocusPane(a *App, pane int) error {
+	blocked := errors.New("対象のタブで別のポップアップが開いているため移動できません。閉じてから移動してください")
+	var err error
+	v.with(a, func(ui *App) {
+		s := ui.st
+		wi, ti := s.FindManagedPane(pane)
+		if wi < 0 {
+			err = errors.New("移動先のペインを確認できません")
+			return
+		}
+		ws := s.Workspaces[wi]
+		if ti < 0 {
+			ti = ws.ActiveTab
+		}
+		// Check the destination before changing selection so a failed
+		// request also preserves the viewer's current input target.
+		if o := s.Overlay; o != nil && o.WorkspaceID == ws.ID && o.TabID == ws.Tabs[ti].ID && o.PaneID != pane {
+			err = blocked
+			return
+		}
+		popup := s.Popups[ws.ID]
+		if popup == nil && s.Popup != nil && s.Popup.WorkspaceID == ws.ID {
+			popup = s.Popup
+		}
+		if popup != nil && popup.PaneID != pane && (s.Overlay == nil || s.Overlay.PaneID != pane) {
+			err = blocked
+			return
+		}
+		ui.focusPane(pane)
+		if s.FocusedManagedPane() != pane {
+			err = blocked
+		}
+	})
+	return err
 }

@@ -422,6 +422,7 @@ func tabIDList(wsID int, ws *model.Workspace) []string {
 
 // onPaneExited emits pane.exited for a dead process.
 func (s *Server) onPaneExited(pid int) {
+	s.clearRunawayPane(pid)
 	wi, _ := s.app.State().FindPane(pid)
 	if wi < 0 {
 		return

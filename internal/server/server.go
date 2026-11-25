@@ -45,6 +45,8 @@ import (
 //
 //	{"type":"input","data":"<base64>"}|{"type":"resize","cols":N,"rows":M}
 type clientMsg struct {
+	RunawayAlerts         []endpoint.RunawayAlert              `json:"runaway_alerts,omitempty"`
+	RunawayAction         *endpoint.RunawayAction              `json:"runaway_action,omitempty"`
 	PruneRequest          uint64                               `json:"prune_request,omitempty"`
 	PruneScan             *endpoint.PruneScanResult            `json:"prune_scan,omitempty"`
 	PruneExec             *endpoint.PruneExecRequest           `json:"prune_exec,omitempty"`
@@ -101,6 +103,7 @@ type clientMsg struct {
 
 // Server is one running session.
 type Server struct {
+	runaway             runawayState
 	stall               stallMonitor
 	receiptClock        graphicsReceiptClock
 	trace               *latency.Trace
@@ -249,6 +252,7 @@ var clientWriteTimeout = 5 * time.Second
 
 // clientConn is one attached display client.
 type clientConn struct {
+	runawayCapable bool
 	pruneMu        sync.Mutex
 	pruneScan      *displayPruneScan
 	pruneExecuting bool
@@ -279,6 +283,7 @@ type clientConn struct {
 	lastProgress   time.Time // guarded by qmu; last time a write finished or the queue became non-empty
 	qbytes         int       // guarded by qmu
 	qfailed        bool
+	qwriting       bool // the head has been taken by the send pump
 }
 
 var clientSequence atomic.Int64
@@ -344,7 +349,18 @@ func (c *clientConn) stalled() bool {
 // as ptyInputLimit in internal/runtime (decided by the owner on 2026-11-09).
 const clientQueueLimit = 8 << 20
 
-func queuedSize(m clientMsg) int { return len(m.Data) + len(m.Reason) + len(m.Type) + 64 }
+func queuedSize(m clientMsg) int {
+	size := len(m.Data) + len(m.Reason) + len(m.Type) + 64
+	if a := m.RunawayAction; a != nil {
+		size += 64 + 6*(len(a.ID)+len(a.Kind))
+	}
+	for _, a := range m.RunawayAlerts {
+		// Count fixed JSON keys and scalars plus the worst-case JSON
+		// escaping of the strings. Do not serialize on the app loop.
+		size += 512 + 6*(len(a.Machine)+len(a.ID)+len(a.SpaceName)+len(a.Name)+len(a.Command)+len(a.StopDisabledReason))
+	}
+	return size
+}
 
 func (c *clientConn) enqueue(item queuedSend) error {
 	c.startWriter()
@@ -354,6 +370,22 @@ func (c *clientConn) enqueue(item queuedSend) error {
 		return net.ErrClosed
 	}
 	item.size = queuedSize(item.m)
+	if item.m.Type == endpoint.RunawayAlerts && item.reply == nil && item.done == nil {
+		first := 0
+		if c.qwriting {
+			first = 1
+		}
+		for i := len(c.queue) - 1; i >= first; i-- {
+			old := c.queue[i]
+			if old.m.Type == endpoint.RunawayAlerts && old.reply == nil && old.done == nil {
+				c.qbytes -= old.size
+				copy(c.queue[i:], c.queue[i+1:])
+				c.queue[len(c.queue)-1] = queuedSend{}
+				c.queue = c.queue[:len(c.queue)-1]
+				break
+			}
+		}
+	}
 	if c.stalled() || c.qbytes+item.size > clientQueueLimit {
 		c.qmu.Unlock()
 		c.fail()
@@ -390,6 +422,7 @@ func (c *clientConn) runSendPump() {
 			continue
 		}
 		item := c.queue[0]
+		c.qwriting = true
 		failed := c.qfailed
 		c.qmu.Unlock()
 		var err error
@@ -401,6 +434,7 @@ func (c *clientConn) runSendPump() {
 		c.qmu.Lock()
 		c.queue[0] = queuedSend{}
 		c.queue = c.queue[1:]
+		c.qwriting = false
 		c.qbytes -= item.size
 		c.lastProgress = time.Now()
 		c.qmu.Unlock()
@@ -629,6 +663,7 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 	s.app.SetRestartHook(s.requestRestart)
 	s.app.SetRestoreHook(func(dryRun bool) { s.runAgentRestore(dryRun) })
 	s.app.SetPaneClosedHook(func(pid int) {
+		s.clearRunawayPane(pid)
 		s.ledgerDel(pid)
 		delete(s.pluginPanes, pid)
 		delete(s.agentLaunches, pid)
@@ -644,7 +679,11 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 	s.app.SetJobSource(s.cachedJobSnapshot)
 	s.app.SetPruneJobCwds(s.pruneJobCwds)
 	s.app.SetWorkspaceTokenSource(s.workspaceTokens)
-	s.app.SetConfigChanged(s.screenPromptConfig)
+	s.runaway.config = make(chan config.RunawaySettings, 1)
+	s.app.SetConfigChanged(func(c config.Config) {
+		s.configureRunaway(c.RunawaySettings())
+		s.screenPromptConfig(c)
+	})
 	s.app.SetPaneMetadataSource(s.paneMetadataView)
 	s.app.UsePaneMetadataEvents(s.paneMetadataNextExpiry)
 	// Mail delivery and agent notifications fire on status transitions
@@ -705,6 +744,7 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 	if imported == nil {
 		s.app.StartOnboarding()
 	}
+	runawaySettings := s.cfg.RunawaySettings()
 	appDone := make(chan struct{})
 	go func() {
 		s.app.Run()
@@ -726,6 +766,7 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 		s.resumePluginWorker()
 		_ = imported.Control.SetDeadline(time.Time{})
 	}
+	go s.runawayLoop(runawaySettings)
 	// Persist the start time assigned to panes from older session data.
 	s.markSessionDirty()
 	s.mailWG.Add(1)
@@ -1025,6 +1066,11 @@ func (s *Server) attach(conn net.Conn) {
 		menuRight := !legacySidebar && !endpoint.Allows(available, endpoint.MachineGeneration, hello.Methods, endpoint.SidebarMenuLeft)
 		c.viewer.SetLegacySidebarControls(legacySidebar, menuRight)
 		c.viewer.RestoreSelection(s.app, hello.Selection)
+		c.runawayCapable = endpoint.Allows(available, 1, hello.Methods, endpoint.Runaway) &&
+			endpoint.Allows(available, 1, s.endpointPeer.Methods, endpoint.Runaway)
+		if c.runawayCapable && len(s.runaway.alerts) > 0 {
+			c.post(clientMsg{Type: endpoint.RunawayAlerts, RunawayAlerts: s.runaway.list()})
+		}
 		c.viewer.SetContinuousSidebarRows(endpoint.Allows(available, 1, hello.Methods, "sidebar_continuous"))
 		c.viewer.SetRightSidebarPlugins(endpoint.Allows(available, 1, hello.Methods, endpoint.RightSidebarPlugins) &&
 			endpoint.Allows(available, 1, s.endpointPeer.Methods, endpoint.RightSidebarPlugins))
@@ -1104,6 +1150,14 @@ func (s *Server) attach(conn net.Conn) {
 			continue
 		}
 		switch m.Type {
+		case endpoint.Runaway:
+			s.app.Do(func() {
+				reply := clientMsg{Type: "runaway_result", RunawayAction: m.RunawayAction}
+				if err := s.runawayAction(c, m.RunawayAction); err != nil {
+					reply.Reason = err.Error()
+				}
+				c.post(reply)
+			})
 		case endpoint.PruneScanCancel:
 			c.cancelPruneScan(m.PruneRequest)
 		case endpoint.PruneScan, endpoint.PruneExec:

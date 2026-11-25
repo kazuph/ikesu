@@ -70,6 +70,7 @@ func (m *machineClient) paint() error {
 		}
 	}
 	e.guardApproval.overlay(&in)
+	runawayToast, runawayDialog := m.overlayRunaway(&in)
 	m.sidebar.PaneStatus = nil
 	if e.connection == nil {
 		m.sidebar.PaneStatus = []string{e.profile.Label + ": " + e.status, e.reason, "手元のspaceは使える"}
@@ -113,7 +114,9 @@ func (m *machineClient) paint() error {
 	} else if m.koiNext.IsZero() {
 		m.koiNext = time.Now().Add(composed.Frame.KoiScene.UpdateInterval())
 	} // existing TUI tick interval and agreed 20fps
-	m.drawTabFeedback(composed)
+	if runawayDialog.id == "" {
+		m.drawTabFeedback(composed)
+	}
 	m.drawWorkspaceSearchUI(composed, in)
 	f := composed.Frame
 	if m.notice != "" {
@@ -129,6 +132,10 @@ func (m *machineClient) paint() error {
 		for _, r := range m.notice {
 			if x >= end {
 				break
+			}
+			if runawayDialog.id != "" && composed.DialogRect.Contains(x, y) {
+				x++
+				continue
 			}
 			if cell := f.Cell(x, y); cell != nil {
 				style := cell.Style
@@ -209,6 +216,8 @@ func (m *machineClient) paint() error {
 		e.requestAck = false
 	}
 	m.regions = composed
+	m.runawayToast, m.runawayPainted = runawayToast, runawayDialog
+	m.runawayPaintedSize = m.size
 	m.reportClientView(in)
 	if nativePaint && !graphicsRetained {
 		if err := m.nativePainted(); err != nil {

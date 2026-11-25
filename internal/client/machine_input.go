@@ -164,6 +164,9 @@ func (m *machineClient) input(event input.Event) error {
 	if handled, err := m.approvalInputEvent(m.mouse.CellEvent(event, m.size)); handled || err != nil {
 		return err
 	}
+	if m.runawayInput(m.mouse.CellEvent(event, m.size)) {
+		return m.paint()
+	}
 	if m.prune != nil {
 		m.pruneInput(event)
 		return m.paint()

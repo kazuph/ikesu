@@ -88,7 +88,7 @@ func (a *App) pruneTarget(ws *model.Workspace, viewers []*Viewer, uses pruneUses
 		fmt.Fprintf(hash, "%d %q %q %d %d %q %q %d\n", id, a.st.PaneGeneration(id), state, a.AgentStateChangeSeq(id), activity, agent, a.reported[id].agent, foreground)
 		return true
 	}
-	for _, id := range a.workspacePaneIDs(ws) {
+	for _, id := range a.st.WorkspacePaneIDs(ws) {
 		if !addPane(id) {
 			return pruneTarget{}, "active agent"
 		}
@@ -100,25 +100,6 @@ func (a *App) pruneTarget(ws *model.Workspace, viewers []*Viewer, uses pruneUses
 		},
 		root: info.RepoRoot, repo: info.RepoKey, directory: dir,
 	}, ""
-}
-
-// Include runtime-only panes even when another space or tab is selected.
-func (a *App) workspacePaneIDs(ws *model.Workspace) []int {
-	var ids []int
-	for _, tab := range ws.Tabs {
-		ids = append(ids, tab.Layout.PaneIDs()...)
-	}
-	popup := a.st.Popups[ws.ID]
-	if popup == nil && a.st.Popup != nil && a.st.Popup.WorkspaceID == ws.ID {
-		popup = a.st.Popup
-	}
-	if popup != nil {
-		ids = append(ids, popup.PaneID)
-	}
-	if overlay := a.st.Overlay; overlay != nil && overlay.WorkspaceID == ws.ID {
-		ids = append(ids, overlay.PaneID)
-	}
-	return ids
 }
 
 type pruneUses struct {
@@ -144,7 +125,7 @@ func (a *App) pruneCwds() pruneUses {
 			paths = append(paths, ws.Worktree.CheckoutPath)
 		}
 		if a.sup != nil {
-			for _, id := range a.workspacePaneIDs(ws) {
+			for _, id := range a.st.WorkspacePaneIDs(ws) {
 				if pane := a.sup.Get(id); pane != nil {
 					paths = append(paths, pane.LiveCwds()...)
 				}

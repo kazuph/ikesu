@@ -70,7 +70,7 @@ func (m *machineClient) finishSwitch() {
 	}
 	s := e.snapshot.State
 	ws := s.ActiveWorkspace()
-	if ws == nil || (!p.create && ws.ID != p.workspace) || (p.generation != "" && (e.snapshotAttempt != e.attempt || ws.Generation != p.generation)) || (p.create && p.previousWorkspaces[ws.ID]) || s.Cols != m.size.Cols || s.Rows != m.size.Rows {
+	if ws == nil || (p.pane != 0 && s.FocusedManagedPane() != p.pane) || (!p.create && ws.ID != p.workspace) || (p.generation != "" && (e.snapshotAttempt != e.attempt || ws.Generation != p.generation)) || (p.create && p.previousWorkspaces[ws.ID]) || s.Cols != m.size.Cols || s.Rows != m.size.Rows {
 		return
 	}
 	old := m.endpoints[m.active]

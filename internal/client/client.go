@@ -18,6 +18,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -44,6 +45,8 @@ const drainMs = 100 * time.Millisecond
 
 // msg is one JSON line on the client socket (see internal/server).
 type msg struct {
+	RunawayAlerts         []endpoint.RunawayAlert              `json:"runaway_alerts,omitempty"`
+	RunawayAction         *endpoint.RunawayAction              `json:"runaway_action,omitempty"`
 	PruneRequest          uint64                               `json:"prune_request,omitempty"`
 	PruneScan             *endpoint.PruneScanResult            `json:"prune_scan,omitempty"`
 	PruneExec             *endpoint.PruneExecRequest           `json:"prune_exec,omitempty"`
@@ -241,7 +244,9 @@ func pump(conn net.Conn, in, out *os.File, leave func(), settings *localSettings
 		return pumpDone
 	}
 	w := &writer{conn: conn}
-	if err := w.send(msg{Terminal: endpoint.LocalTerminal(), Peer: endpoint.Current(), Type: "hello", Cols: ws.Cols, Rows: ws.Rows, Xpixel: ws.Xpixel, Ypixel: ws.Ypixel, Config: settings.config, ConfigWarning: settings.warning, Preferences: settings.preferences}); err != nil {
+	peer := endpoint.Current()
+	peer.Methods = slices.DeleteFunc(peer.Methods, func(method string) bool { return method == endpoint.Runaway })
+	if err := w.send(msg{Terminal: endpoint.LocalTerminal(), Peer: peer, Type: "hello", Cols: ws.Cols, Rows: ws.Rows, Xpixel: ws.Xpixel, Ypixel: ws.Ypixel, Config: settings.config, ConfigWarning: settings.warning, Preferences: settings.preferences}); err != nil {
 		leave()
 		fmt.Fprintf(out, "ikesu: attach: %v\n", err)
 		return pumpDone

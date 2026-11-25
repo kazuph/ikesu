@@ -37,6 +37,7 @@ func (m *machineClient) start(id string, supplied io.ReadWriteCloser) {
 		e.cancel()
 	}
 	m.pruneDisconnect(id)
+	m.runawayDisconnect(id)
 	e.attempt++
 	attempt := e.attempt
 	e.connection = nil
@@ -234,6 +235,7 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		if e.connection != nil {
 			m.idleDisconnect(event.id, event.err)
 			m.pruneDisconnect(event.id)
+			m.runawayDisconnect(event.id)
 		}
 		e.connection = nil
 		e.status = "reconnecting"
@@ -266,6 +268,7 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 				m.notify(err.Error())
 			}
 		}
+		e.runawayAlerts = nil
 		e.connection = event.connection
 		e.oyagoiProjection = nil
 		e.oyagoiCheck = nil
@@ -310,6 +313,22 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 	}
 	message := event.message
 	switch message.Type {
+	case endpoint.RunawayAlerts:
+		e.runawayAlerts = message.RunawayAlerts
+		_ = m.paint()
+	case "runaway_result":
+		if message.RunawayAction != nil {
+			switch message.RunawayAction.Kind {
+			case endpoint.RunawayInspect:
+				m.finishRunawayInspect(event.id, message)
+			case endpoint.RunawayFocus:
+				m.finishRunawayFocus(event.id, message)
+			}
+		}
+		if message.Reason != "" {
+			m.notify(message.Reason)
+		}
+		_ = m.paint()
 	case "oyagoi_check_result":
 		if err := m.confirmOyagoiSnapshot(event.id, message); err != nil {
 			m.notify(err.Error())
@@ -520,6 +539,7 @@ func (m *machineClient) configureOtherEndpoints(source string) {
 func (m *machineClient) fail(id string, err error) {
 	m.idleDisconnect(id, err)
 	m.pruneDisconnect(id)
+	m.runawayDisconnect(id)
 	if id == "local" {
 		m.retirePendingGraphicsFile()
 	}

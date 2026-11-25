@@ -21,13 +21,7 @@ import (
 
 // focusedPane returns the focused pane id of the active workspace.
 func (a *App) focusedPane() int {
-	if a.st.OverlayVisible() {
-		return a.st.Overlay.PaneID
-	}
-	if a.st.PopupVisible() {
-		return a.st.Popup.PaneID
-	}
-	return a.st.FocusedPane()
+	return a.st.FocusedManagedPane()
 }
 
 // glyph returns the pane's display status glyph.

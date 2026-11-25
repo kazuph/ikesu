@@ -14,11 +14,11 @@ import (
 
 func (r *runner) server(args []string) int {
 	if len(args) == 0 {
-		return usageErr(r, "usage: ikesu server <stop|restart|reload-config|ping|profile|stacks>")
+		return usageErr(r, "usage: ikesu server <stop|restart|reload-config|runaway|ping|profile|stacks>")
 	}
 	switch args[0] {
 	case "help", "--help", "-h":
-		fmt.Fprintln(r.out(), "ikesu server commands:\n  ikesu server                run as headless server\n  ikesu server stop           stop the running server via the API socket\n  ikesu server restart        restart the running server and restore its saved session\n  ikesu server reload-config  reload config.toml in the running server\n  ikesu server ping           query the running server\n  ikesu server profile --cpu <duration> --out <filename>  save a CPU profile in the session state directory\n  ikesu server stacks --out <filename>  save goroutine stacks in the session state directory\n  ikesu server live-handoff   hand off live panes to a new local server")
+		fmt.Fprintln(r.out(), "ikesu server commands:\n  ikesu server                run as headless server\n  ikesu server stop           stop the running server via the API socket\n  ikesu server restart        restart the running server and restore its saved session\n  ikesu server reload-config  reload config.toml in the running server\n  ikesu server runaway        list active runaway process alerts\n  ikesu server ping           query the running server\n  ikesu server profile --cpu <duration> --out <filename>  save a CPU profile in the session state directory\n  ikesu server stacks --out <filename>  save goroutine stacks in the session state directory\n  ikesu server live-handoff   hand off live panes to a new local server")
 		return 0
 	case "profile", "stacks":
 		var p api.DiagnosticsParams
@@ -83,6 +83,11 @@ func (r *runner) server(args []string) int {
 			return usageErr(r, "usage: ikesu server restart")
 		}
 		return r.restartServer()
+	case "runaway":
+		if len(args) != 1 {
+			return usageErr(r, "usage: ikesu server runaway")
+		}
+		return r.printResult("cli:server:runaway", api.MethodServerRunaway, api.EmptyParams{})
 	case "ping":
 		if len(args) != 1 {
 			return usageErr(r, "usage: ikesu server ping")

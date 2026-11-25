@@ -239,6 +239,7 @@ type Output struct {
 	MenuItemRows      []layout.Rect // per-item row rects (absolute coords)
 	DialogRect        layout.Rect
 	DialogConfirm     layout.Rect
+	DialogActions     []layout.Rect
 	// HelpRect lets the mouse layer hit-test the help overlay.
 	HelpRect     layout.Rect
 	DialogCancel layout.Rect
@@ -395,7 +396,8 @@ func composeInto(in Input, machines *MachineSidebar, version string, notice bool
 	if in.Menu != nil {
 		drawMenu(f, in.Menu, out)
 	}
-	if in.Dialog != nil {
+	actionDialog := in.Dialog != nil && len(in.Dialog.Actions) != 0
+	if in.Dialog != nil && !actionDialog {
 		area := s.PanesArea()
 		if in.Dialog.InputEdit || in.Dialog.CenterTerminal {
 			area = layout.Rect{W: f.W, H: f.H}
@@ -449,6 +451,9 @@ func composeInto(in Input, machines *MachineSidebar, version string, notice bool
 			spin = in.Spin
 		}
 		drawNavigator(f, in.Navigator, spin)
+	}
+	if actionDialog {
+		drawDialog(f, in.Dialog, out, layout.Rect{W: f.W, H: f.H})
 	}
 	coverInputGraphics(in, out)
 	return out

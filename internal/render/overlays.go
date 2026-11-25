@@ -129,7 +129,7 @@ func drawMobileToast(f *Frame, t *Toast, out *Output) {
 	bg := f.Palette.Surface
 	f.Fill(0, y, f.W, 1, " ", uv.Style{Bg: bg})
 	color := f.Palette.Blue
-	if t.Kind == "needs_attention" {
+	if t.Kind == "needs_attention" || t.Kind == "runaway" {
 		color = f.Palette.Red
 	}
 	f.Set(1, y, "●", uv.Style{Fg: color, Bg: bg})
@@ -148,7 +148,7 @@ func drawToast(f *Frame, t *Toast, out *Output) {
 	r := ToastRect(t, layout.Rect{W: f.W, H: f.H}, out.ConfigWarningRect)
 	out.ToastRect = r
 	dot := uv.Style{Fg: f.Palette.Blue, Bg: f.Palette.PopupBG}
-	if t.Kind == "needs_attention" {
+	if t.Kind == "needs_attention" || t.Kind == "runaway" {
 		dot.Fg = f.Palette.Red
 	}
 	ix, iy, iw, ih := f.Box(r.X, r.Y, r.W, r.H, uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG})
@@ -343,6 +343,10 @@ func drawDialog(f *Frame, d *Dialog, out *Output, area layout.Rect) {
 		drawNameInput(f, d, out)
 		return
 	}
+	if len(d.Actions) != 0 {
+		drawActionDialog(f, d, out, area)
+		return
+	}
 	outer, cancel, confirm := DialogRects(d, area)
 	border := uv.Style{Fg: f.Palette.Red, Bg: f.Palette.PopupBG}
 	ix, iy, iw, ih := f.Box(outer.X, outer.Y, outer.W, outer.H, border)
@@ -436,4 +440,82 @@ func boldIf(b bool) uint8 {
 		return uv.AttrBold
 	}
 	return 0
+}
+
+// drawActionDialog prioritizes the target, then controls, then optional detail.
+func drawActionDialog(f *Frame, d *Dialog, out *Output, area layout.Rect) {
+	if d.MaxCols > 0 {
+		area.W = min(area.W, d.MaxCols)
+	}
+	if d.MaxRows > 0 {
+		area.H = min(area.H, d.MaxRows)
+	}
+	w := max(ansi.StringWidth(d.Title), ansi.StringWidth(d.Detail)) + 4
+	for _, group := range [][]string{d.RequiredLines, d.Lines, d.Actions} {
+		for _, text := range group {
+			w = max(w, ansi.StringWidth(text)+4)
+		}
+	}
+	w = min(w, max(area.W-2, 0))
+	var notice []string
+	if d.Detail != "" {
+		notice = strings.Split(ansi.Wrap(d.Detail, max(1, w-4), ""), "\n")
+	}
+	h := min(4+len(d.RequiredLines)+len(notice)+len(d.Lines)+len(d.Actions), area.H)
+	if w < 4 || h < 3 {
+		return
+	}
+	x, y := area.X+(area.W-w)/2, area.Y+(area.H-h)/2
+	out.DialogRect = layout.Rect{X: x, Y: y, W: w, H: h}
+	ix, iy, iw, ih := f.Box(x, y, w, h, uv.Style{Fg: f.Palette.Red, Bg: f.Palette.PopupBG})
+	f.Fill(ix, iy, iw, ih, " ", uv.Style{Bg: f.Palette.PopupBG})
+	title := uv.Style{Fg: f.Palette.Red, Bg: f.Palette.PopupBG, Attrs: uv.AttrBold}
+	detail := uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}
+	f.Text(ix+1, iy, d.Title, title, ix+iw)
+	requiredFits := len(d.RequiredLines) <= ih-2
+	for i, text := range d.RequiredLines {
+		if i >= ih-2 || ansi.StringWidth(text) > iw-2 {
+			requiredFits = false
+		}
+		if i < ih-2 {
+			f.Text(ix+1, iy+1+i, text, detail, ix+iw)
+		}
+	}
+	f.Text(ix+1, iy+ih-1, "Esc 閉じる", detail, ix+iw)
+	if !requiredFits {
+		return
+	}
+	nextLine := iy + 1 + len(d.RequiredLines)
+	for _, line := range notice {
+		if nextLine >= iy+ih-1 {
+			break
+		}
+		f.Text(ix+1, nextLine, line, title, ix+iw)
+		nextLine++
+	}
+	room := iy + ih - 1 - nextLine
+	actions := make([]int, 0, len(d.Actions))
+	for i, action := range d.Actions {
+		if action != "" && len(actions) < room && ansi.StringWidth(action)+2 <= iw {
+			actions = append(actions, i)
+		}
+	}
+	firstAction := iy + ih - 1 - len(actions)
+	for i, text := range d.Lines {
+		line := nextLine + i
+		if line >= firstAction {
+			break
+		}
+		f.Text(ix+1, line, text, detail, ix+iw)
+	}
+	if len(actions) == 0 {
+		return
+	}
+	out.DialogActions = make([]layout.Rect, len(d.Actions))
+	for row, index := range actions {
+		action := d.Actions[index]
+		r := layout.Rect{X: ix, Y: firstAction + row, W: ansi.StringWidth(action) + 2, H: 1}
+		f.Text(r.X, r.Y, " "+action+" ", uv.Style{Fg: f.Palette.Text, Bg: f.Palette.Surface, Attrs: uv.AttrBold}, r.X+r.W)
+		out.DialogActions[index] = r
+	}
 }

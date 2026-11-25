@@ -105,18 +105,28 @@ func (a *App) navToToastTarget() {
 	if a.toast == nil || a.toast.target < 0 {
 		return
 	}
-	wsIdx, tabIdx := a.st.FindPane(a.toast.target)
+	a.focusPane(a.toast.target)
+}
+
+func (a *App) focusPane(pane int) {
+	wsIdx, tabIdx := a.st.FindManagedPane(pane)
 	if wsIdx < 0 {
 		return
 	}
 	if wsIdx != a.st.Active {
 		a.exec(model.CmdSelectWorkspace{Index: wsIdx})
 	}
+	if tabIdx < 0 { // a popup follows the workspace selection
+		return
+	}
+	if o := a.st.Overlay; o != nil && o.PaneID == pane {
+		pane = o.TargetPaneID
+	}
 	ws := a.st.Workspaces[wsIdx]
 	if ws.ActiveTab != tabIdx {
 		a.exec(model.CmdSelectTab{Workspace: wsIdx, Tab: tabIdx})
 	}
-	a.exec(model.CmdFocusPane{Pane: model.PaneID(a.toast.target)})
+	a.exec(model.CmdFocusPane{Pane: model.PaneID(pane)})
 }
 
 // ShowNotification preserves an existing toast instead of replacing it.

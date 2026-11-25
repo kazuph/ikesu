@@ -74,6 +74,9 @@ func (a *App) selectView(s viewSelection) {
 			ws.ActiveTab = 0
 		}
 	}
+	if ws := a.st.ActiveWorkspace(); ws != nil && a.st.Popups[ws.ID] != nil {
+		a.st.Popup = a.st.Popups[ws.ID]
+	}
 }
 
 func (a *App) NewViewer(out io.Writer, cols, rows int, detach func(string)) *Viewer {

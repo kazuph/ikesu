@@ -227,6 +227,7 @@ ikesu は Go の実行ファイル1つ（`cmd/ikesu`）です。同じファイ�
 
 - `internal/runtime` が、PTY・子プロセス・端末の再現（エミュレーター）など、外に影響する処理を全部持ちます。エミュレーターは `charmbracelet/x/vt` で、`third_party/vt` に同梱しています。
 - スクロールバックはペインごとにバイト数の上限があります（`[advanced] scrollback_limit_bytes`）。保存した履歴は表示に使うだけで、実行し直しません。
+- ペインの暴走検知を使うには `[runaway]` の `enabled = true` を設定します。既定では無効です。有効にすると、ペインのシェルまたは起動コマンドとその子孫を5秒ごとに調べます。変更できる既定値は `poll_interval_seconds = 5`（2〜15秒、15を超える値は15）、`memory_mb = 8192`（プロセスまたはツリーの RSS）、`memory_spike_mb = 3072`（直近30秒の RSS 増加）、`cpu_percent = 180`、`cpu_duration_seconds = 180` です。警告をクリックすると停止・強制終了・ペインへの移動・15分間のスヌーズを選べます。現在の警告は `ikesu server runaway` で確認できます。Linux での停止操作には pidfd 対応カーネルが必要です。対処ポップアップは ikesu 内の警告から開きます。macOS の terminal-notifier による OS 通知のクリックは既存のペインフォーカスに接続されます。`--no-session` では監視は動きません。
 - `internal/model` がスペース（workspace）・タブ・ペインを、`internal/layout` が分割の木を持ちます。`internal/session` は `session.json` を壊れない書き方で保存します。中身はスペース・タブ・分割・作業フォルダ・ペインごとのエージェントのセッション ID です。サーバーは変化の少し後に保存し、起動時に読み戻します。
 
 ### 動かしたままの入れ替え（live handoff）

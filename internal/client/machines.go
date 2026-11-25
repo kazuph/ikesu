@@ -24,6 +24,7 @@ import (
 )
 
 type managedEndpoint struct {
+	runawayAlerts    []endpoint.RunawayAlert
 	oyagoiProjection *oyagoiProjection
 	oyagoiCheck      *oyagoiSelection
 	guardApproval    approvalState
@@ -71,6 +72,7 @@ type endpointEvent struct {
 }
 
 type pendingMachine struct {
+	pane               int
 	inputSequence      uint64
 	sidebar            *machineSidebarAction
 	keys               []input.Event
@@ -84,20 +86,27 @@ type pendingMachine struct {
 }
 
 type machineClient struct {
-	selectionFile *selectionFile
-	search        *workspaceSearch
-	searchButtons workspaceSearchButtons
-	searchRelease bool
-	oyagoiStore   oyagoiStore
-	oyagoi        *oyagoiSelection
-	oyagoiCache   *oyagoiCache
-	koiNext       time.Time
-	koiClock      render.KoiAnimation
-	koiVisible    bool
-	koiKitty      bool
-	koiRetained   bool
-	koiInput      render.Input
-	koiScene      render.KoiScene
+	runawayOpen        runawaySelection
+	runawayInspect     runawaySelection
+	runawayFocus       *runawayFocusRequest
+	runawayFocusError  string
+	runawayPainted     runawaySelection
+	runawayPaintedSize tui.Winsize
+	runawayToast       runawaySelection
+	selectionFile      *selectionFile
+	search             *workspaceSearch
+	searchButtons      workspaceSearchButtons
+	searchRelease      bool
+	oyagoiStore        oyagoiStore
+	oyagoi             *oyagoiSelection
+	oyagoiCache        *oyagoiCache
+	koiNext            time.Time
+	koiClock           render.KoiAnimation
+	koiVisible         bool
+	koiKitty           bool
+	koiRetained        bool
+	koiInput           render.Input
+	koiScene           render.KoiScene
 
 	workspaceKeyReleases map[rune]bool
 

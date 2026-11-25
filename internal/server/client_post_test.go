@@ -5,8 +5,12 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/kazuph/ikesu/internal/endpoint"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 // postTestServer returns a running-app Server with one attached client whose
@@ -308,4 +312,65 @@ func TestClosedClientsAsyncDoesNotHoldAppLoop(t *testing.T) {
 	}
 	peer.Close() // let the stalled writes fail so the flush can finish
 	s.flushClosedClients()
+}
+
+type observedWriteConn struct {
+	net.Conn
+	started chan struct{}
+	once    sync.Once
+}
+
+func (c *observedWriteConn) Write(b []byte) (int, error) {
+	c.once.Do(func() { close(c.started) })
+	return c.Conn.Write(b)
+}
+
+func TestRunawayQueueAccountsAndCoalescesSlowPeer(t *testing.T) {
+	teststate.Lock(t)
+	local, peer := net.Pipe()
+	conn := &observedWriteConn{Conn: local, started: make(chan struct{})}
+	c := &clientConn{conn: conn}
+	defer func() { peer.Close(); c.close() }()
+
+	if err := c.enqueue(queuedSend{m: clientMsg{Type: "error", Reason: "in flight"}}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-conn.started:
+	case <-time.After(time.Second):
+		t.Fatal("writer never blocked on slow peer")
+	}
+	many := make([]endpoint.RunawayAlert, 1200)
+	for i := range many {
+		many[i] = endpoint.RunawayAlert{ID: "old", Command: strings.Repeat("x", 160)}
+	}
+	snapshot := clientMsg{Type: endpoint.RunawayAlerts, RunawayAlerts: many}
+	for range 12 {
+		if err := c.enqueue(queuedSend{m: snapshot}); err != nil {
+			t.Fatalf("superseded snapshots exhausted queue: %v", err)
+		}
+	}
+	last := clientMsg{Type: endpoint.RunawayAlerts, RunawayAlerts: []endpoint.RunawayAlert{{ID: "latest"}}}
+	if err := c.enqueue(queuedSend{m: last}); err != nil {
+		t.Fatal(err)
+	}
+	c.qmu.Lock()
+	size, count := c.qbytes, len(c.queue)
+	c.qmu.Unlock()
+	if count != 2 || size != queuedSize(clientMsg{Type: "error", Reason: "in flight"})+queuedSize(last) ||
+		queuedSize(snapshot) <= len(many)*160 {
+		t.Fatalf("queued messages %d, bytes %d, snapshot estimate %d", count, size, queuedSize(snapshot))
+	}
+	rd := bufio.NewReader(peer)
+	_ = peer.SetReadDeadline(time.Now().Add(time.Second))
+	for _, typ := range []string{"error", endpoint.RunawayAlerts} {
+		m, err := readClientMsg(rd)
+		if err != nil || m.Type != typ || (typ == endpoint.RunawayAlerts && (len(m.RunawayAlerts) != 1 || m.RunawayAlerts[0].ID != "latest")) {
+			t.Fatalf("peer received %+v, %v", m, err)
+		}
+	}
+	huge := clientMsg{Type: endpoint.RunawayAlerts, RunawayAlerts: []endpoint.RunawayAlert{{Command: strings.Repeat("x", clientQueueLimit)}}}
+	if err := c.enqueue(queuedSend{m: huge}); err == nil {
+		t.Fatal("accepted snapshot beyond the queue capacity")
+	}
 }
