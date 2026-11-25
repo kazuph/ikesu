@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
+	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/input"
 	"github.com/kazuph/ikesu/internal/kitty"
 	"github.com/kazuph/ikesu/internal/latency"
@@ -148,6 +149,8 @@ type machineClient struct {
 	noticeUntil       time.Time
 	forms             *tui.MachineForms
 	idle              *idleDialog
+	prune             *machinePrune
+	pruneRequest      uint64
 	idleRequest       uint64
 	idleToast         string
 	readClipboard     func(context.Context) (clipboardContent, error)
@@ -208,6 +211,10 @@ func pumpMachines(session string, local net.Conn, in, out *os.File, settings *lo
 	m.forms.SetMachineRequester(func(action string) error {
 		if action == "idle_panes" {
 			m.openIdlePanes()
+			return nil
+		}
+		if action == endpoint.PruneWorkspaces {
+			m.openPruneWorkspaces()
 			return nil
 		}
 		return fmt.Errorf("unsupported action: %s", action)

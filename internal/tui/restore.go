@@ -278,6 +278,9 @@ func (a *App) respawnShell(pid int) {
 	if cwd == "" {
 		cwd = a.cwd
 	}
+	if a.CheckPruneCwd(cwd) != nil {
+		return
+	}
 	a.sup.Kill(pid)
 	r := a.rectForPane(pid)
 	_, _ = a.sup.Spawn(pid, cwd, max(r.W, 1), max(r.H, 1))

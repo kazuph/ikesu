@@ -178,7 +178,9 @@ func (a *App) DuplicateWorkspace(index int, focus bool) (int, error) {
 			}
 		}
 	}
-	a.exec(model.CmdDuplicateWorkspace{Index: index, Focus: focus, Cwds: cwds})
+	if err := a.exec(model.CmdDuplicateWorkspace{Index: index, Focus: focus, Cwds: cwds}); err != nil {
+		return -1, err
+	}
 	if a.lastSpawnError != nil {
 		err := a.lastSpawnError
 		a.execWithoutClosedRecord(model.CmdCloseWorkspace{Index: len(a.st.Workspaces) - 1})

@@ -295,6 +295,8 @@ type App struct {
 	configChanged                            func(config.Config)
 	preferenceSave                           func(endpoint.ViewPreferences) error
 	configEdit                               func(config.Edit, func(config.Config, error))
+	prune                                    *PruneDialog
+	pruneCancel                              context.CancelFunc
 	dialog                                   *uiDialog
 	sep                                      *sepDrag
 	sel                                      *selState
@@ -336,6 +338,8 @@ type App struct {
 	workspaceLabels                          map[int]workspaceDirectoryLabel
 	worktreePending                          map[workspaceIdentity]int
 	worktreeMutations                        int
+	pruneRemoving                            os.FileInfo
+	pruneJobCwds                             func() ([]string, error)
 	handoffStarting                          bool
 	worktreeScreenRequest                    uint64
 	gitActivity                              *gitActivityState
@@ -644,7 +648,7 @@ func (a *App) Stop() {
 
 // ExecCmd applies a model command and its effects. It must be called on
 // the app loop goroutine (from inside Do) or before Run starts.
-func (a *App) ExecCmd(cmd model.Command) { a.exec(cmd) }
+func (a *App) ExecCmd(cmd model.Command) error { return a.exec(cmd) }
 
 // StartInitialPane spawns the shell for the workspace created by
 // model.New, sized to its inner rect.
@@ -710,6 +714,11 @@ func (a *App) Run() {
 	defer a.inputSource.Prefix(false, false)
 	defer a.removeEditorFiles()
 	defer close(a.doneCh)
+	defer func() {
+		if a.pruneCancel != nil {
+			a.pruneCancel()
+		}
+	}()
 	a.startSidebarPanel(a.doneCh)
 	defer a.closeGitActivity()
 	defer a.pruneBranchCache(nil)

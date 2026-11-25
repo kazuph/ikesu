@@ -51,9 +51,11 @@ func (s *Server) tabCreate(id string, p api.TabCreateParams) api.Response {
 	if cwd == "" {
 		cwd = st.Workspaces[wsIdx].Cwd
 	}
-	s.app.ExecCmd(model.CmdNewTab{
+	if err := s.app.ExecCmd(model.CmdNewTab{
 		Workspace: wsIdx, Cwd: cwd, Env: p.Env, NoFocus: !p.Focus,
-	})
+	}); err != nil {
+		return api.Failure(id, api.ErrInvalidRequest, err.Error())
+	}
 	ws := st.Workspaces[wsIdx]
 	tabIdx := len(ws.Tabs) - 1
 	if p.Label != nil && *p.Label != "" {

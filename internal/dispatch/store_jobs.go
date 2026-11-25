@@ -126,6 +126,25 @@ func (s *Store) CommandRows(limit int) ([]Job, error) {
 	return jobs, st.Err()
 }
 
+// ActiveBackgroundCwds reads the cwd of jobs whose dispatch still owns a
+// background runner, including jobs whose cancellation has not finished.
+func (s *Store) ActiveBackgroundCwds() ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, err := s.queryLocked(`SELECT DISTINCT project FROM dispatches
+		WHERE kind='command' AND status IN ('running','cancelling')
+			AND runner_pid IS NOT NULL AND project<>''`)
+	if err != nil {
+		return nil, err
+	}
+	defer st.Close()
+	var cwds []string
+	for st.Step() {
+		cwds = append(cwds, st.ColumnText(0))
+	}
+	return cwds, st.Err()
+}
+
 // CommandRow finds a job by external id or by its "<id>.log" log name.
 func (s *Store) CommandRow(id string) (*Job, error) {
 	s.mu.Lock()

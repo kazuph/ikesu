@@ -10,10 +10,19 @@ import (
 // prepared before publishing the new state; spawn failure closes only the
 // prepared panes and leaves every existing pane/state intact.
 func (a *App) AppendSession(merged, added *session.File) error {
+	for _, ws := range added.Workspaces {
+		if err := a.CheckPruneCwd(ws.Cwd); err != nil {
+			return err
+		}
+	}
 	prepared := []int{}
 	var spawnErr error
 	added.EachPane(func(_ *session.Workspace, _ *session.Tab, p *session.Pane) {
 		if spawnErr != nil {
+			return
+		}
+		if err := a.CheckPruneCwd(p.Cwd); err != nil {
+			spawnErr = err
 			return
 		}
 		if _, err := a.sup.Spawn(p.ID, p.Cwd, max(a.st.Cols, 1), max(a.st.Rows, 1)); err != nil {

@@ -31,6 +31,9 @@ func (a *App) onInput(ev input.Event) {
 		a.hostMouseReport(ev.Report)
 		a.hostThemeReport(ev.Report)
 	case input.KindKeyRelease:
+		if a.prune != nil {
+			return
+		}
 		if a.modalTextInput() && ev.Key.Code == 'v' && (ev.Key.Mod == uv.ModCtrl || ev.Key.Mod == uv.ModSuper) {
 			return
 		}
@@ -38,6 +41,9 @@ func (a *App) onInput(ev input.Event) {
 	case input.KindKey:
 		a.handleKey(ev.Key, ev.Raw)
 	case input.KindPaste:
+		if a.prune != nil {
+			return
+		}
 		if ev.Text == "" {
 			return
 		}
@@ -303,7 +309,7 @@ func (a *App) anyWorking() bool {
 }
 
 // exec applies a command and performs its effects.
-func (a *App) exec(cmd model.Command) {
+func (a *App) exec(cmd model.Command) error {
 	closingLastWorkspace := false
 	if len(a.st.Workspaces) == 1 {
 		switch c := cmd.(type) {
@@ -319,14 +325,17 @@ func (a *App) exec(cmd model.Command) {
 		if err != nil {
 			a.lastSpawnError = err
 			a.ShowToast("workspace close failed", err.Error(), "error", a.focusedPane())
-			return
+			return nil
 		}
 		a.lastSpawnError = nil
-		a.exec(model.CmdNewWorkspace{Cwd: home, Name: filepath.Base(home)})
+		if err := a.exec(model.CmdNewWorkspace{Cwd: home, Name: filepath.Base(home)}); err != nil {
+			a.lastSpawnError = err
+			return err
+		}
 		if a.lastSpawnError != nil {
 			a.execWithoutClosedRecord(model.CmdCloseWorkspace{Index: 1})
 			a.ShowToast("workspace close failed", a.lastSpawnError.Error(), "error", a.focusedPane())
-			return
+			return nil
 		}
 		delete(a.workspaceNames, 0)
 		delete(a.workspaceGit, 0)
@@ -354,6 +363,10 @@ func (a *App) exec(cmd model.Command) {
 			p.PollProcess()
 			spawnCwd = p.SpawnCwd()
 		}
+	}
+	if err := a.pruneCommandAdmission(cmd, policyCwd, spawnCwd); err != nil {
+		a.ShowToast("checkout is being pruned", err.Error(), "error", a.focusedPane())
+		return err
 	}
 	var metadataOrder []int
 	switch cmd.(type) {
@@ -436,6 +449,7 @@ func (a *App) exec(cmd model.Command) {
 	if a.postExecHook != nil && prev != nil {
 		a.postExecHook(cmd, prev)
 	}
+	return nil
 }
 
 func (a *App) effect(e model.Effect) {

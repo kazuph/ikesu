@@ -10,6 +10,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/input"
 	"github.com/kazuph/ikesu/internal/layout"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/render"
@@ -22,6 +23,10 @@ func isCtrlB(k uv.Key) bool {
 
 // handleKey routes one key event.
 func (a *App) handleKey(k uv.Key, raw []byte) {
+	if a.prune != nil {
+		a.localPruneInput(input.Event{Kind: input.KindKey, Key: k})
+		return
+	}
 	// Reserved for the phone's space controls; never forward these keys to a PTY.
 	if a.sidebarConfig.UI.NativeMenus && k.Mod == 0 && (k.Code == uv.KeyF9 || k.Code == uv.KeyF10) {
 		open := a.st.Mobile() && a.mobileSwitcher || !a.st.Mobile() && a.st.SidebarVisible

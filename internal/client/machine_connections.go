@@ -36,6 +36,7 @@ func (m *machineClient) start(id string, supplied io.ReadWriteCloser) {
 	if e.cancel != nil {
 		e.cancel()
 	}
+	m.pruneDisconnect(id)
 	e.attempt++
 	attempt := e.attempt
 	e.connection = nil
@@ -232,6 +233,7 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		}
 		if e.connection != nil {
 			m.idleDisconnect(event.id, event.err)
+			m.pruneDisconnect(event.id)
 		}
 		e.connection = nil
 		e.status = "reconnecting"
@@ -443,6 +445,8 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		}
 		if message.MachineAction == "idle_panes" {
 			m.openIdlePanes()
+		} else if message.MachineAction == endpoint.PruneWorkspaces {
+			m.openPruneWorkspaces()
 		} else if message.MachineAction == "oyagoi:toggle" {
 			if err := m.oyagoiStore.toggleCollapsed(); err != nil {
 				m.notify(err.Error())
@@ -460,6 +464,12 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		} else if err := m.forms.Open(message.MachineAction, e.snapshot.State); err != nil {
 			m.notify(err.Error())
 		}
+		_ = m.paint()
+	case endpoint.PruneScan + "_result":
+		m.pruneScanResult(event.id, message)
+		_ = m.paint()
+	case endpoint.PruneExec + "_result":
+		m.pruneExecResult(event.id, message)
 		_ = m.paint()
 	case "idle_panes_result":
 		m.idleListResult(event.id, message.IdleRequest, message.IdlePanes)
@@ -509,6 +519,7 @@ func (m *machineClient) configureOtherEndpoints(source string) {
 
 func (m *machineClient) fail(id string, err error) {
 	m.idleDisconnect(id, err)
+	m.pruneDisconnect(id)
 	if id == "local" {
 		m.retirePendingGraphicsFile()
 	}

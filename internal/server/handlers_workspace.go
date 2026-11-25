@@ -38,7 +38,9 @@ func (s *Server) wsCreate(id string, p api.WorkspaceCreateParams) api.Response {
 	if cwd == "" {
 		cwd = s.cwd
 	}
-	s.app.ExecCmd(model.CmdNewWorkspace{Cwd: cwd, Env: p.Env, NoFocus: !p.Focus, Section: section})
+	if err := s.app.ExecCmd(model.CmdNewWorkspace{Cwd: cwd, Env: p.Env, NoFocus: !p.Focus, Section: section}); err != nil {
+		return api.Failure(id, api.ErrInvalidRequest, err.Error())
+	}
 	idx := len(st.Workspaces) - 1
 	ws := st.Workspaces[idx]
 	if p.Label != nil && *p.Label != "" {

@@ -14,7 +14,9 @@ func (a *App) OpenOverlay(target int, cwd string, argv []string, env map[string]
 		return 0, fmt.Errorf("overlay target is not in the active tab")
 	}
 	a.lastSpawnError = nil
-	a.exec(model.CmdOpenOverlay{TargetPaneID: target, Cwd: cwd, Argv: argv, Env: env})
+	if err := a.exec(model.CmdOpenOverlay{TargetPaneID: target, Cwd: cwd, Argv: argv, Env: env}); err != nil {
+		return 0, err
+	}
 	if a.lastSpawnError != nil {
 		err := a.lastSpawnError
 		a.exec(model.CmdCloseOverlay{})

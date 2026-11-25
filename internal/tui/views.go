@@ -250,6 +250,9 @@ func (a *App) drawAt(started time.Time) {
 	if a.dialog != nil {
 		in.Dialog = &a.dialog.d
 	}
+	if a.prune != nil {
+		in.Dialog, in.Menu = a.prune.Render(layout.Rect{W: a.st.Cols, H: a.st.Rows}), nil
+	}
 	if a.sel != nil && a.sel.moved {
 		in.Sel = a.selRender()
 	}

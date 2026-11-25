@@ -16,6 +16,10 @@ import (
 
 // onMouse is the mouse entry point; overlays grab events before panes.
 func (a *App) onMouse(ev input.Event) {
+	if a.prune != nil {
+		a.localPruneInput(ev)
+		return
+	}
 	if a.sidebarConfig.UI.MouseCapture != nil && !*a.sidebarConfig.UI.MouseCapture {
 		if pr, ok := a.paneAt(ev.Mouse.X, ev.Mouse.Y); ok {
 			if p := a.sup.Get(pr.ID); p != nil && p.Snapshot().MouseTracking {

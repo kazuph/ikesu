@@ -55,6 +55,9 @@ func (m *machineClient) paint() error {
 	if m.idle != nil {
 		in.Dialog, in.Menu = m.idle.dialog(), nil
 	}
+	if m.prune != nil {
+		in.Dialog, in.Menu = m.prune.dialog.Render(m.pruneArea()), nil
+	}
 	if m.idleToast != "" {
 		in.Toast = &render.Toast{Title: m.idleToast}
 	}

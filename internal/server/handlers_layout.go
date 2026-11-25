@@ -573,10 +573,12 @@ func (s *Server) layoutApply(id string, p api.LayoutApplyParams) api.Response {
 	if p.TabLabel != nil {
 		tabLabel = *p.TabLabel
 	}
-	s.app.ExecCmd(model.CmdApplyLayout{
+	if err := s.app.ExecCmd(model.CmdApplyLayout{
 		Workspace: wi, Tab: ti, Root: root,
 		TabLabel: tabLabel, Focus: p.Focus, Out: out,
-	})
+	}); err != nil {
+		return api.Failure(id, api.ErrInvalidRequest, err.Error())
+	}
 	if len(out.PaneIDs) == 0 {
 		return api.Failure(id, api.ErrInvalidRequest, "layout apply produced no panes")
 	}

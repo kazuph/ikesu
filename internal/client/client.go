@@ -44,6 +44,11 @@ const drainMs = 100 * time.Millisecond
 
 // msg is one JSON line on the client socket (see internal/server).
 type msg struct {
+	PruneRequest          uint64                               `json:"prune_request,omitempty"`
+	PruneScan             *endpoint.PruneScanResult            `json:"prune_scan,omitempty"`
+	PruneExec             *endpoint.PruneExecRequest           `json:"prune_exec,omitempty"`
+	PruneResult           *endpoint.PruneExecResult            `json:"prune_result,omitempty"`
+	PruneError            string                               `json:"prune_error,omitempty"`
 	IdleRequest           uint64                               `json:"idle_request,omitempty"`
 	IdlePanes             *endpoint.IdlePanes                  `json:"idle_panes,omitempty"`
 	IdleDelete            *endpoint.IdleDelete                 `json:"idle_delete,omitempty"`

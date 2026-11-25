@@ -17,11 +17,14 @@ import (
 type GitError struct {
 	Args   []string
 	Output string
+	err    error
 }
 
 func (e *GitError) Error() string {
 	return fmt.Sprintf("git %s: %s", strings.Join(e.Args, " "), e.Output)
 }
+
+func (e *GitError) Unwrap() error { return e.err }
 
 func git(cwd string, args ...string) (string, error) {
 	return gitWithEnv(cwd, nil, args...)
@@ -41,7 +44,7 @@ func gitWithEnvContext(ctx context.Context, cwd string, environment []string, ar
 		if ctx.Err() != nil {
 			return "", ctx.Err()
 		}
-		return "", &GitError{Args: args, Output: strings.TrimSpace(string(b))}
+		return "", &GitError{Args: args, Output: strings.TrimSpace(string(b)), err: err}
 	}
 	return strings.TrimSpace(string(b)), nil
 }

@@ -49,6 +49,7 @@ type rightMachineHarness struct {
 
 // legacyIdleStream changes only the welcome sent by a real server in this test.
 type legacyIdleStream struct {
+	omit func(string) bool
 	net.Conn
 	reader  *bufio.Reader
 	welcome *bytes.Reader
@@ -70,7 +71,7 @@ func (c *legacyIdleStream) Read(p []byte) (int, error) {
 		}
 		methods := welcome.Methods[:0]
 		for _, method := range welcome.Methods {
-			if method != "idle_panes" && method != "idle_delete" {
+			if !c.omit(method) {
 				methods = append(methods, method)
 			}
 		}
@@ -89,6 +90,13 @@ func (c *legacyIdleStream) Read(p []byte) (int, error) {
 
 func (h *rightMachineHarness) api(id, method string, params any) {
 	h.t.Helper()
+	if response := h.request(id, method, params); response.Err != nil {
+		h.t.Fatalf("%s: %+v", method, response)
+	}
+}
+
+func (h *rightMachineHarness) request(id, method string, params any) *api.Response {
+	h.t.Helper()
 	conn, err := net.DialTimeout("unix", api.APISocketPath(h.dirs[id]), time.Second)
 	if err != nil {
 		h.t.Fatal(err)
@@ -99,9 +107,10 @@ func (h *rightMachineHarness) api(id, method string, params any) {
 		h.t.Fatal(err)
 	}
 	response, err := api.ReadResponse(bufio.NewReader(conn))
-	if err != nil || response.Err != nil {
+	if err != nil {
 		h.t.Fatalf("%s: %+v %v", method, response, err)
 	}
+	return response
 }
 func (h *rightMachineHarness) until(label string, pred func() bool) {
 	h.t.Helper()
@@ -129,6 +138,10 @@ func newRightMachineHarness(t *testing.T, idleFixture ...bool) *rightMachineHarn
 }
 
 func newRightMachineHarnessConfigured(t *testing.T, setup func(string) string, idleFixture ...bool) *rightMachineHarness {
+	return newRightMachineHarnessPeers(t, setup, []string{"local", "remote"}, idleFixture...)
+}
+
+func newRightMachineHarnessPeers(t *testing.T, setup func(string) string, peers []string, idleFixture ...bool) *rightMachineHarness {
 	teststate.Lock(t)
 	root, err := os.MkdirTemp("/tmp", "ikesu-right-")
 	if err != nil {
@@ -159,7 +172,7 @@ func newRightMachineHarnessConfigured(t *testing.T, setup func(string) string, i
 	}
 	t.Cleanup(func() { out.Close() })
 	ctx, cancel := context.WithCancel(context.Background())
-	m := &machineClient{ctx: ctx, session: "right-local", active: "local", order: []string{"local", "remote"}, out: out, settings: &localSettings{config: &cfg, path: filepath.Join(root, "preferences.json")}, size: tui.Winsize{Cols: 160, Rows: 35}, events: make(chan endpointEvent, 128), endpoints: map[string]*managedEndpoint{}}
+	m := &machineClient{ctx: ctx, session: "right-local", active: "local", order: peers, out: out, settings: &localSettings{config: &cfg, path: filepath.Join(root, "preferences.json")}, size: tui.Winsize{Cols: 160, Rows: 35}, events: make(chan endpointEvent, 128), endpoints: map[string]*managedEndpoint{}}
 	h := &rightMachineHarness{m: m, t: t, dirs: map[string]string{}}
 	exe, err := os.Executable()
 	if err != nil {
@@ -224,6 +237,9 @@ func newRightMachineHarnessConfigured(t *testing.T, setup func(string) string, i
 		if binary := os.Getenv("IKESU_RIGHT_TEST_SERVER_BIN"); binary != "" {
 			cmd = exec.Command(binary, "--session", session, "server")
 		}
+		if id == "legacy" && os.Getenv("IKESU_PRUNE_TEST_LEGACY_BIN") != "" {
+			cmd = exec.Command(os.Getenv("IKESU_PRUNE_TEST_LEGACY_BIN"), "--session", session, "server")
+		}
 		cmd.Dir = root
 		cmd.Env = append(os.Environ(), "IKESU_RIGHT_SERVER_TEST="+session, "IKESU_STATE_DIR="+root, "IKESU_CONFIG="+cfgPath, "IKESU_DISABLE_SOUND=1", "SHELL=/bin/sh")
 		cmd.Stdout = log
@@ -245,7 +261,10 @@ func newRightMachineHarnessConfigured(t *testing.T, setup func(string) string, i
 			t.Fatal(err)
 		}
 		if id == "remote" && len(idleFixture) > 1 && idleFixture[1] {
-			stream = &legacyIdleStream{Conn: stream}
+			stream = &legacyIdleStream{Conn: stream, omit: func(method string) bool { return method == "idle_panes" || method == "idle_delete" }}
+		}
+		if id == "legacy" && os.Getenv("IKESU_PRUNE_TEST_LEGACY_BIN") == "" {
+			stream = &legacyIdleStream{Conn: stream, omit: func(method string) bool { return method == endpoint.PruneScan || method == endpoint.PruneExec }}
 		}
 		stream.SetDeadline(time.Now().Add(10 * time.Second))
 		connection, err := connectEndpoint(stream, id != "local", m.size, m.settings, "", nil)
@@ -269,7 +288,14 @@ func newRightMachineHarnessConfigured(t *testing.T, setup func(string) string, i
 			}
 		}(id, connection)
 	}
-	h.until("both snapshots", func() bool { return m.endpoints["local"].snapshot != nil && m.endpoints["remote"].snapshot != nil })
+	h.until("server snapshots", func() bool {
+		for _, id := range m.order {
+			if m.endpoints[id].snapshot == nil {
+				return false
+			}
+		}
+		return true
+	})
 	if len(idleFixture) > 0 && idleFixture[0] {
 		return h
 	}

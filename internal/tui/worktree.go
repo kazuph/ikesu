@@ -34,6 +34,12 @@ func (a *App) openWorktreeItems(src api.WorktreeSourceInfo, path string, label *
 		return WorktreeOutcome{}, fmt.Errorf("checkout not found")
 	}
 	path = info.Path
+	if err := a.CheckPruneCwd(path); err != nil {
+		return WorktreeOutcome{}, err
+	}
+	if err := a.CheckPruneCwd(src.RepoRoot); err != nil {
+		return WorktreeOutcome{}, err
+	}
 	// The main checkout anchors the repo group. Bare repos can anchor a
 	// group too: their pane starts in the repository directory.
 	parent := -1

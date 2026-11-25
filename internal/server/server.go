@@ -6,6 +6,7 @@ package server
 
 import (
 	"bufio"
+	"context"
 	"crypto/rand"
 	"fmt"
 	"github.com/kazuph/ikesu/internal/benchstage"
@@ -44,6 +45,11 @@ import (
 //
 //	{"type":"input","data":"<base64>"}|{"type":"resize","cols":N,"rows":M}
 type clientMsg struct {
+	PruneRequest          uint64                               `json:"prune_request,omitempty"`
+	PruneScan             *endpoint.PruneScanResult            `json:"prune_scan,omitempty"`
+	PruneExec             *endpoint.PruneExecRequest           `json:"prune_exec,omitempty"`
+	PruneResult           *endpoint.PruneExecResult            `json:"prune_result,omitempty"`
+	PruneError            string                               `json:"prune_error,omitempty"`
 	IdleRequest           uint64                               `json:"idle_request,omitempty"`
 	IdlePanes             *endpoint.IdlePanes                  `json:"idle_panes,omitempty"`
 	IdleDelete            *endpoint.IdleDelete                 `json:"idle_delete,omitempty"`
@@ -243,6 +249,9 @@ var clientWriteTimeout = 5 * time.Second
 
 // clientConn is one attached display client.
 type clientConn struct {
+	pruneMu        sync.Mutex
+	pruneScan      *displayPruneScan
+	pruneExecuting bool
 	clientView     *api.ClientView // guarded by Server.mu
 	terminal       *endpoint.Terminal
 	directGraphics bool
@@ -633,6 +642,7 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 	s.app.SetClosedSpaceHooks(s.recordClosedSpace, s.listClosedSpaces, s.reopenClosedSpace)
 	s.jobCache.wake = make(chan struct{}, 1)
 	s.app.SetJobSource(s.cachedJobSnapshot)
+	s.app.SetPruneJobCwds(s.pruneJobCwds)
 	s.app.SetWorkspaceTokenSource(s.workspaceTokens)
 	s.app.SetConfigChanged(s.screenPromptConfig)
 	s.app.SetPaneMetadataSource(s.paneMetadataView)
@@ -1071,6 +1081,8 @@ func (s *Server) attach(conn net.Conn) {
 		return
 	}
 	defer s.dropConn(c)
+	pruneCtx, cancelPrune := context.WithCancel(context.Background())
+	defer cancelPrune()
 	var pendingInput *clientMsg
 	var bufferedInputErr error
 	for {
@@ -1092,6 +1104,10 @@ func (s *Server) attach(conn net.Conn) {
 			continue
 		}
 		switch m.Type {
+		case endpoint.PruneScanCancel:
+			c.cancelPruneScan(m.PruneRequest)
+		case endpoint.PruneScan, endpoint.PruneExec:
+			s.pruneDisplayRequest(pruneCtx, c, m)
 		case "idle_panes":
 			s.app.Do(func() {
 				list := c.viewer.IdlePanes(s.app)

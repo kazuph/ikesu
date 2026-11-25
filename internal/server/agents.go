@@ -220,10 +220,12 @@ func (s *Server) agentStart(id string, p api.AgentStartParams) api.Response {
 		}
 		// Implicit pane add: split the traversal-last leaf, appended to
 		// logical order (SPEC G1).
-		s.app.ExecCmd(model.CmdSplitImplicit{
+		if err := s.app.ExecCmd(model.CmdSplitImplicit{
 			Workspace: wsIdx, Tab: tabIdx, Dir: dir,
 			Ratio: 0.5, Focus: p.Focus, Cwd: cwd, Env: env, Argv: p.Argv, AgentCommand: true,
-		})
+		}); err != nil {
+			return api.Failure(id, api.ErrInvalidRequest, err.Error())
+		}
 		pids := ws.Tabs[tabIdx].Layout.PaneIDs()
 		if len(pids) == 0 {
 			return api.Failure(id, api.ErrInvalidRequest, "split failed")
@@ -234,9 +236,11 @@ func (s *Server) agentStart(id string, p api.AgentStartParams) api.Response {
 			return api.Failure(id, api.ErrInvalidRequest,
 				"--tab requires --split (a tab holds panes; a new pane without --split opens a new tab)")
 		}
-		s.app.ExecCmd(model.CmdNewTab{
+		if err := s.app.ExecCmd(model.CmdNewTab{
 			Workspace: wsIdx, Cwd: cwd, Env: env, NoFocus: !p.Focus, Argv: p.Argv, AgentCommand: true,
-		})
+		}); err != nil {
+			return api.Failure(id, api.ErrInvalidRequest, err.Error())
+		}
 		ws := st.Workspaces[wsIdx]
 		tabIdx = len(ws.Tabs) - 1
 		pid = ws.Tabs[tabIdx].Layout.Focused()

@@ -55,6 +55,7 @@ func (m *machineClient) refreshMachineCatalog() error {
 			if e.cancel != nil {
 				e.cancel()
 			}
+			m.pruneDisconnect(id)
 			e.attempt++
 			e.connection = nil
 			e.retry = retryPolicy{}

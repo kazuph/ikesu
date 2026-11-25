@@ -259,17 +259,21 @@ func (s *Server) paneSplit(id string, p api.PaneSplitParams) api.Response {
 	}
 	var newID int
 	if implicit {
-		s.app.ExecCmd(model.CmdSplitImplicit{
+		if err := s.app.ExecCmd(model.CmdSplitImplicit{
 			Workspace: wsIdx, Tab: targetTab, Dir: dir,
 			Ratio: ratio, Focus: p.Focus, Cwd: cwd, Env: p.Env,
-		})
+		}); err != nil {
+			return api.Failure(id, api.ErrInvalidRequest, err.Error())
+		}
 		pids := st.Workspaces[wsIdx].Tabs[targetTab].Layout.PaneIDs()
 		newID = pids[len(pids)-1]
 	} else {
-		s.app.ExecCmd(model.CmdSplitPane{
+		if err := s.app.ExecCmd(model.CmdSplitPane{
 			Workspace: wsIdx, Pane: target, Dir: dir,
 			Ratio: ratio, Focus: p.Focus, Cwd: cwd, Env: p.Env,
-		})
+		}); err != nil {
+			return api.Failure(id, api.ErrInvalidRequest, err.Error())
+		}
 		// New pane is inserted right after target in the tab's logical
 		// order (PaneIDs keeps creation order).
 		pids := st.Workspaces[wsIdx].Tabs[targetTab].Layout.PaneIDs()

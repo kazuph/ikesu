@@ -295,7 +295,7 @@ func TestG2FooterBlankAndSectionBody(t *testing.T) {
 			labels = append(labels, it.Label)
 		}
 	}
-	want := []string{"new workspace", "new tab", "delete idle panes…", "--", "settings", "Android pairing QR...", "keybinds", "reload config", "koi: off", "sidebar narrow", "sidebar normal", "sidebar wide", "--", "restore agents...", "reopen closed space…", "--", "detach", "--", "add machine...", "remove machine...", "--", "stop server", "restart"}
+	want := []string{"new workspace", "new tab", "delete idle panes…", "prune merged workspaces…", "--", "settings", "Android pairing QR...", "keybinds", "reload config", "koi: off", "sidebar narrow", "sidebar normal", "sidebar wide", "--", "restore agents...", "reopen closed space…", "--", "detach", "--", "add machine...", "remove machine...", "--", "stop server", "restart"}
 	if !reflect.DeepEqual(labels, want) {
 		t.Fatal(labels)
 	}

@@ -164,6 +164,10 @@ func (m *machineClient) input(event input.Event) error {
 	if handled, err := m.approvalInputEvent(m.mouse.CellEvent(event, m.size)); handled || err != nil {
 		return err
 	}
+	if m.prune != nil {
+		m.pruneInput(event)
+		return m.paint()
+	}
 	phoneSpaceKey := m.settings != nil && m.settings.config != nil && m.settings.config.UI.NativeMenus &&
 		(event.Kind == input.KindKey || event.Kind == input.KindKeyRelease) && event.Key.Mod == 0 &&
 		(event.Key.Code == uv.KeyF9 || event.Key.Code == uv.KeyF10)

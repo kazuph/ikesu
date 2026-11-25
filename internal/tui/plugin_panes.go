@@ -24,7 +24,9 @@ func (a *App) OpenPluginPane(workspace, target int, placement, direction, cwd st
 	a.lastSpawnError = nil
 	switch placement {
 	case "tab":
-		a.exec(model.CmdNewTab{Workspace: workspace, Cwd: cwd, Argv: argv, Env: env, NoFocus: !focus})
+		if err := a.exec(model.CmdNewTab{Workspace: workspace, Cwd: cwd, Argv: argv, Env: env, NoFocus: !focus}); err != nil {
+			return 0, err
+		}
 	case "split", "zoomed":
 		dir := layout.Vertical
 		switch direction {
@@ -34,7 +36,9 @@ func (a *App) OpenPluginPane(workspace, target int, placement, direction, cwd st
 		default:
 			return 0, fmt.Errorf("invalid split direction %q", direction)
 		}
-		a.exec(model.CmdSplitPane{Workspace: workspace, Pane: target, Dir: dir, Ratio: 0.5, Focus: focus, Cwd: cwd, Argv: argv, Env: env})
+		if err := a.exec(model.CmdSplitPane{Workspace: workspace, Pane: target, Dir: dir, Ratio: 0.5, Focus: focus, Cwd: cwd, Argv: argv, Env: env}); err != nil {
+			return 0, err
+		}
 	default:
 		return 0, fmt.Errorf("unsupported pane placement: %s", placement)
 	}

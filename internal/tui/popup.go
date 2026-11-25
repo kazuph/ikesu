@@ -45,7 +45,9 @@ func (a *App) OpenPluginPopup(cwd string, argv []string, env map[string]string, 
 		return api.PopupSize{Percent: popupDefaultPercent}
 	}
 	a.lastSpawnError = nil
-	a.exec(model.CmdOpenPopup{WorkspaceID: w.ID, Cwd: cwd, Argv: argv, Env: env, Width: dimension(width), Height: dimension(height)})
+	if err := a.exec(model.CmdOpenPopup{WorkspaceID: w.ID, Cwd: cwd, Argv: argv, Env: env, Width: dimension(width), Height: dimension(height)}); err != nil {
+		return "", err
+	}
 	if a.lastSpawnError != nil {
 		err := a.lastSpawnError
 		a.exec(model.CmdClosePopup{})

@@ -97,6 +97,9 @@ func (s *Server) runStart(id string, p api.RunStartParams) api.Response {
 	if p.Cwd != "" {
 		cwd = p.Cwd
 	}
+	if err := s.app.CheckPruneCwd(cwd); err != nil {
+		return api.Failure(id, api.ErrInvalidRequest, err.Error())
+	}
 	store, err := s.db()
 	if err != nil {
 		return api.Failure(id, api.ErrJobStore, err.Error())

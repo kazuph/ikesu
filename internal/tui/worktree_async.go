@@ -223,14 +223,9 @@ func (a *App) ExecuteWorktree(req WorktreeRequest) (result WorktreeResult, err e
 		}
 		return false
 	}
-	if req.Operation == "create" || req.Operation == "remove" {
-		ok := false
-		a.Do(func() { ok = sameWorkspace(true) })
-		if !ok {
-			return result, fmt.Errorf("workspace changed during worktree operation")
-		}
+	if mutating {
+		branch := value(req.Branch)
 		if req.Operation == "create" {
-			branch := value(req.Branch)
 			if branch == "" {
 				branch = "worktree/" + rand.Text()
 			}
@@ -238,6 +233,24 @@ func (a *App) ExecuteWorktree(req WorktreeRequest) (result WorktreeResult, err e
 				path = filepath.Join(*src.CheckoutPathPrefix, worktree.Slug(branch))
 			}
 			path = filepath.Clean(path)
+		}
+		ok := false
+		a.Do(func() {
+			ok = sameWorkspace(true)
+			if ok {
+				err = a.CheckPruneCwd(path)
+			}
+			if ok && err == nil {
+				err = a.CheckPruneCwd(src.RepoRoot)
+			}
+		})
+		if !ok {
+			return result, fmt.Errorf("workspace changed during worktree operation")
+		}
+		if err != nil {
+			return result, err
+		}
+		if req.Operation == "create" {
 			err = worktree.CreateContext(ctx, src.RepoRoot, path, branch, value(req.Base))
 		} else {
 			err = worktree.RemoveContext(ctx, src.RepoRoot, path, req.Force)

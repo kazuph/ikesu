@@ -998,6 +998,28 @@ func itoa(i int) string {
 // SpawnCwd returns the best-known cwd of a pane (for new workspaces).
 func (p *Pane) SpawnCwd() string { return p.Snapshot().Cwd }
 
+// LiveCwds probes the shell and every member of the current foreground
+// process group. A pipeline stage can change directory independently.
+func (p *Pane) LiveCwds() []string {
+	job := platform.ForegroundJobOf(p.ptyFD)
+	pids := map[int]struct{}{p.ShellPID(): {}, job.ProcessGroupID: {}}
+	for _, process := range job.Processes {
+		pids[process.PID] = struct{}{}
+	}
+	var cwds []string
+	for pid := range pids {
+		if pid > 0 {
+			if cwd := platform.ProcCwd(pid); cwd != "" {
+				cwds = append(cwds, cwd)
+			}
+		}
+	}
+	if len(cwds) == 0 {
+		cwds = append(cwds, p.SpawnCwd())
+	}
+	return cwds
+}
+
 // SpawnArgv returns the command argv the pane was spawned with, or nil
 // for the default login shell.
 func (p *Pane) SpawnArgv() []string { return p.spawnArgv }
