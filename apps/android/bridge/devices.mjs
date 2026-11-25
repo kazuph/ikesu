@@ -2,9 +2,10 @@
 // 壊れたファイルは失敗として扱い、推測で直さない。書くときは 0600 で一時ファイルから置き換える。
 import { createHash, createPublicKey, randomBytes } from 'node:crypto';
 import os from 'node:os';
-import { constants } from 'node:fs';
+import { constants, lstatSync, unlinkSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import dh from 'noise-handshake/dh.js';
 import { appTag, MAX_ALLOW } from './relay-client.mjs';
 
@@ -94,20 +95,100 @@ export async function loadDevices(configDir) {
 
 export async function saveDevices(configDir, devices) { await writeJson(path.join(configDir, 'devices.json'), { devices }); }
 
-export async function addDevice(configDir, device) {
-  const devices = await loadDevices(configDir);
-  if (devices.length >= MAX_ALLOW) throw Error(`登録できる端末は ${MAX_ALLOW} 台までです`);
-  devices.push(device);
-  await saveDevices(configDir, devices);
-  return device;
+const DEVICE_LOCK_FLAGS = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW;
+const DEVICE_LOCK_STALE_MS = 30_000;
+const DEVICE_LOCK_WAIT_MS = 10_000;
+const DEVICE_LOCK_RETRY_MS = 20;
+
+function unlinkDevicesLock(file, owner) {
+  try {
+    // Keep the identity check and unlink together without yielding to the event loop.
+    const current = lstatSync(file);
+    if (current.dev === owner.dev && current.ino === owner.ino) unlinkSync(file);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
 }
 
-export async function revokeDevice(configDir, id) {
-  const devices = await loadDevices(configDir);
-  const kept = devices.filter(device => device.device !== id);
-  if (kept.length === devices.length) return false;
-  await saveDevices(configDir, kept);
-  return true;
+function lockOwnerExited(text) {
+  const pid = Number(text.trim());
+  // A new owner may have created the file but not yet written its PID.
+  if (!Number.isInteger(pid) || pid <= 0 || pid > 0x7fffffff) return false;
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch (error) {
+    if (error.code === 'ESRCH') return true;
+    if (error.code === 'EPERM') return false;
+    throw error;
+  }
+}
+
+async function reclaimDevicesLock(file) {
+  let lock;
+  try { lock = await fs.open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK); }
+  catch (error) {
+    if (error.code === 'ENOENT') return true;
+    throw error;
+  }
+  try {
+    const owner = await lock.stat();
+    if (!owner.isFile()) return false;
+    if (Date.now() - owner.mtimeMs <= DEVICE_LOCK_STALE_MS && !lockOwnerExited(await lock.readFile('utf8'))) return false;
+    unlinkDevicesLock(file, owner);
+    return true;
+  } finally {
+    await lock.close();
+  }
+}
+
+export async function withDevicesLock(configDir, fn) {
+  await fs.mkdir(configDir, { recursive: true, mode: 0o700 });
+  const file = path.join(configDir, 'devices.lock');
+  const deadline = performance.now() + DEVICE_LOCK_WAIT_MS;
+  while (performance.now() < deadline) {
+    let lock;
+    try { lock = await fs.open(file, DEVICE_LOCK_FLAGS, 0o600); }
+    catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      if (!await reclaimDevicesLock(file)) {
+        await delay(Math.min(DEVICE_LOCK_RETRY_MS, Math.max(0, deadline - performance.now())));
+      }
+      continue;
+    }
+    try {
+      const owner = await lock.stat();
+      try {
+        await lock.writeFile(String(process.pid));
+        return await fn();
+      } finally {
+        unlinkDevicesLock(file, owner);
+      }
+    } finally {
+      await lock.close();
+    }
+  }
+  throw Error('devices.json の更新が混み合っています。もう一度試してください');
+}
+
+export function addDevice(configDir, device) {
+  return withDevicesLock(configDir, async () => {
+    const devices = await loadDevices(configDir);
+    if (devices.length >= MAX_ALLOW) throw Error(`登録できる端末は ${MAX_ALLOW} 台までです`);
+    devices.push(device);
+    await saveDevices(configDir, devices);
+    return device;
+  });
+}
+
+export function revokeDevice(configDir, id) {
+  return withDevicesLock(configDir, async () => {
+    const devices = await loadDevices(configDir);
+    const kept = devices.filter(device => device.device !== id);
+    if (kept.length === devices.length) return false;
+    await saveDevices(configDir, kept);
+    return true;
+  });
 }
 
 // 公開鍵を手で登録する（アプリを QR で読めないとき）。接続情報（1行の JSON）を返す。秘密は含めない。
