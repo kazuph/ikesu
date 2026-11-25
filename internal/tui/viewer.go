@@ -26,6 +26,7 @@ type Viewer struct {
 	display             displayState
 	legacySidebarRows   bool
 	rightSidebarPlugins bool
+	copyText            func(string, error)
 }
 
 func (v *Viewer) SetContinuousSidebarRows(supported bool) {
@@ -111,6 +112,10 @@ func (a *App) NewViewer(out io.Writer, cols, rows int, detach func(string)) *Vie
 
 func (v *Viewer) SetLinkOpener(open func(string) error) {
 	v.app.openLink = open
+}
+
+func (v *Viewer) SetTextCopier(copyText func(string, error)) {
+	v.copyText = copyText
 }
 
 func (v *Viewer) with(a *App, fn func(*App)) {

@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -435,6 +436,21 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 				m.notify("open link: " + err.Error())
 			}
 		}
+	case endpoint.CopyTextMessage:
+		if e.connection == nil || !endpoint.Allows(e.connection.writer.available, 1, e.connection.writer.methods, endpoint.CopyTextMessage) {
+			break
+		}
+		if message.Reason != "" {
+			m.notify("コピーできませんでした: " + message.Reason)
+		} else {
+			lines, err := writeSnapshotCopy(m.out, message.Data)
+			if err != nil {
+				m.notify("コピーできませんでした: " + err.Error())
+			} else {
+				m.notify(fmt.Sprintf("handoff snapshot をコピーしました（%d 行）", lines))
+			}
+		}
+		_ = m.paint()
 	case "output":
 		if data, err := base64.StdEncoding.DecodeString(message.Data); err == nil {
 			if m.keyboardOutput(e, data) {
@@ -523,6 +539,25 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		m.notify(message.Reason)
 	}
 	return 0, false
+}
+
+func writeSnapshotCopy(out io.Writer, encoded string) (int, error) {
+	const maxBytes = 1 << 20
+	decoder := base64.NewDecoder(base64.StdEncoding, strings.NewReader(encoded))
+	text, err := io.ReadAll(io.LimitReader(decoder, maxBytes+1))
+	if len(text) > maxBytes {
+		return 0, errors.New("handoff snapshot が 1 MiB の上限を超えています")
+	}
+	if err != nil {
+		return 0, err
+	}
+	sequence := "\x1b]52;c;" + base64.StdEncoding.EncodeToString(text) + "\a"
+	if n, err := io.WriteString(out, sequence); err != nil {
+		return 0, err
+	} else if n != len(sequence) {
+		return 0, io.ErrShortWrite
+	}
+	return bytes.Count(text, []byte("\n")) + 1, nil
 }
 
 func (m *machineClient) configureOtherEndpoints(source string) {

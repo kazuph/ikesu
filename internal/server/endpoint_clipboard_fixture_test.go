@@ -24,7 +24,7 @@ func startClipboardEndpoint(t *testing.T) (*Server, <-chan string) {
 	return startClipboardEndpointImported(t, nil, nil)
 }
 
-func startClipboardEndpointImported(t *testing.T, states []runtime.PaneTransfer, files []*os.File) (*Server, <-chan string) {
+func startClipboardEndpointImported(t *testing.T, states []runtime.PaneTransfer, files []*os.File, setup ...func(*Server)) (*Server, <-chan string) {
 	t.Helper()
 	pinTestConfig(t)
 	teststate.Setenv(t, "SHELL", "/bin/sh")
@@ -76,6 +76,9 @@ func startClipboardEndpointImported(t *testing.T, states []runtime.PaneTransfer,
 			t.Fatal(err)
 		}
 		s.sup.StartImported()
+	}
+	for _, configure := range setup {
+		configure(s)
 	}
 	appDone, apiDone, clientDone := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	go func() { s.app.Run(); close(appDone) }()

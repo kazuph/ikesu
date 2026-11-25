@@ -1063,6 +1063,18 @@ func (s *Server) attach(conn net.Conn) {
 				return nil
 			})
 		}
+		if endpoint.Allows(available, 1, hello.Methods, endpoint.CopyTextMessage) &&
+			endpoint.Allows(available, 1, s.endpointPeer.Methods, endpoint.CopyTextMessage) {
+			c.viewer.SetTextCopier(func(text string, err error) {
+				result := clientMsg{Type: endpoint.CopyTextMessage}
+				if err != nil {
+					result.Reason = err.Error()
+				} else {
+					result.Data = encode64([]byte(text))
+				}
+				c.post(result)
+			})
+		}
 		legacySidebar := !endpoint.Allows(available, endpoint.MachineGeneration, hello.Methods, "workspace_new")
 		menuRight := !legacySidebar && !endpoint.Allows(available, endpoint.MachineGeneration, hello.Methods, endpoint.SidebarMenuLeft)
 		c.viewer.SetLegacySidebarControls(legacySidebar, menuRight)

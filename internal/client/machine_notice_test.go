@@ -1,6 +1,8 @@
 package client
 
 import (
+	"fmt"
+	"io"
 	"os"
 	"reflect"
 	"strings"
@@ -8,13 +10,14 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/vt"
+	"github.com/kazuph/ikesu/internal/cellwidth"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/render"
 	"github.com/kazuph/ikesu/internal/tui"
 )
 
 func TestMachineNoticeUsesAvailableCellsAndExpiresAtTenSeconds(t *testing.T) {
-	for _, cols := range []int{160, 80} {
+	for _, cols := range []int{250, 160, 80} {
 		state := model.New(t.TempDir(), cols, 25)
 		in := render.Input{State: state}
 		base := render.Compose(in)
@@ -101,5 +104,74 @@ func TestMachineNoticeUsesAvailableCellsAndExpiresAtTenSeconds(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestMachineNoticeKeepsJapaneseCellWidths(t *testing.T) {
+	const rows = 25
+	const notice = "handoff snapshot をコピーしました（24 行）"
+	const decomposed = "か\u3099"
+	for _, cols := range []int{250, 80} {
+		t.Run(fmt.Sprint(cols), func(t *testing.T) {
+			state := model.New(t.TempDir(), cols, rows)
+			in := render.Input{State: state}
+			path := t.TempDir() + "/terminal"
+			out, err := os.Create(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer out.Close()
+			m := &machineClient{active: "local", order: []string{"local"}, out: out, size: tui.Winsize{Cols: cols, Rows: rows}, endpoints: map[string]*managedEndpoint{"local": {snapshot: &in}}}
+			emu := vt.NewEmulator(cols, rows)
+			defer emu.Close()
+			go io.Copy(io.Discard, emu)
+			var offset int
+			check := func(text, want string, x, y, end int) {
+				t.Helper()
+				m.notify(text)
+				if err := m.paint(); err != nil {
+					t.Fatal(err)
+				}
+				data, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := emu.Write(data[offset:]); err != nil {
+					t.Fatal(err)
+				}
+				offset = len(data)
+				var got strings.Builder
+				for col := x; col < end; col++ {
+					if cell := emu.CellAt(col, y); cell != nil {
+						got.WriteString(cell.Content)
+					}
+				}
+				if got.String() != want {
+					t.Fatalf("rendered notice = %q, want %q", got.String(), want)
+				}
+				if index := strings.Index(want, decomposed); index >= 0 {
+					col := x + cellwidth.String(want[:index])
+					if cell := emu.CellAt(col, y); cell == nil || cell.Content != decomposed {
+						t.Fatalf("combining mark did not stay in its base cell: %+v", cell)
+					}
+				}
+			}
+			base := render.Compose(in)
+			if cols == 250 {
+				bar := base.ActionBar
+				x := bar.Copy.X + bar.Copy.W
+				check(notice, notice, x, bar.Area.Y, x+cellwidth.String(notice))
+				check(decomposed, decomposed, x, bar.Area.Y, x+2)
+				return
+			}
+			end := state.SidebarArea().W - 1
+			y := render.SidebarFooter(state).Y
+			check(notice, "handoff snapshot をコピ…", 1, y, end)
+			prefix := strings.Repeat("a", end-3)
+			check(prefix+"あい", prefix+" …", 1, y, end)
+			check(prefix+decomposed+"い", prefix+" …", 1, y, end)
+			prefix = prefix[:len(prefix)-1]
+			check(prefix+decomposed+"い", prefix+decomposed+"…", 1, y, end)
+		})
 	}
 }

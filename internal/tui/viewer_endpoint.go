@@ -12,7 +12,7 @@ func (v *Viewer) SetLegacySidebarControls(legacy, menuRight bool) {
 }
 
 // Hidden machine endpoints still supply sidebar snapshots, but cannot mark
-// panes seen or receive clipboard writes until this terminal displays them.
+// panes seen or receive clipboard writes carried in terminal output.
 func (v *Viewer) SetVisible(a *App, visible bool) {
 	v.hidden = !visible
 	if !visible {

@@ -4,6 +4,7 @@ package endpoint
 import "fmt"
 
 const OpenLinkMessage = "open_link"
+const CopyTextMessage = "copy_text"
 
 const ProtocolVersion = 1
 const Generation = 5
@@ -44,7 +45,7 @@ const RightSidebarPlugins = "right_sidebar_plugins"
 
 func Current() Peer {
 	peer := Peer{Protocol: ProtocolVersion, Generation: Generation, MinGeneration: MinGeneration,
-		Methods: []string{"client_view", "input", "paste", "resize", "rendered", "preferences_error", "config_result", "visibility", "workspace_select", "workspace_select_generation", "workspace_menu", "workspace_new", "section_toggle", SidebarMenuLeft, "oyagoi_view", "oyagoi_check", "view_config", "machine_menu", "decision_answer", "sidebar_panel", "sidebar_continuous", RightSidebarPlugins, "input_receipt", "idle_panes", "idle_delete", PruneScan, PruneExec, PruneScanCancel, OpenLinkMessage, Runaway}}
+		Methods: []string{"client_view", "input", "paste", "resize", "rendered", "preferences_error", "config_result", "visibility", "workspace_select", "workspace_select_generation", "workspace_menu", "workspace_new", "section_toggle", SidebarMenuLeft, "oyagoi_view", "oyagoi_check", "view_config", "machine_menu", "decision_answer", "sidebar_panel", "sidebar_continuous", RightSidebarPlugins, "input_receipt", "idle_panes", "idle_delete", PruneScan, PruneExec, PruneScanCancel, OpenLinkMessage, CopyTextMessage, Runaway}}
 	if ExperimentalFlatDiff {
 		peer.SurfaceCodecs = []string{FlatDiffCodec}
 	}

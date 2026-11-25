@@ -784,9 +784,16 @@ func (a *App) copyHandoffSnapshot(pid int) {
 	go func() {
 		text, err := hook(pid)
 		a.Do(func() {
-			if viewer := a.viewerContext; viewer != nil && viewer.hidden {
-				viewer.snapshotCopyCanceled = true
-				return
+			viewer := a.viewerContext
+			if viewer != nil {
+				if viewer.copyText != nil {
+					viewer.copyText(text, err)
+					return
+				}
+				if viewer.hidden {
+					viewer.snapshotCopyCanceled = true
+					return
+				}
 			}
 			if err == nil {
 				err = a.writeLinkClipboard(text)

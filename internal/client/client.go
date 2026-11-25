@@ -245,7 +245,9 @@ func pump(conn net.Conn, in, out *os.File, leave func(), settings *localSettings
 	}
 	w := &writer{conn: conn}
 	peer := endpoint.Current()
-	peer.Methods = slices.DeleteFunc(peer.Methods, func(method string) bool { return method == endpoint.Runaway })
+	peer.Methods = slices.DeleteFunc(peer.Methods, func(method string) bool {
+		return method == endpoint.Runaway || method == endpoint.CopyTextMessage
+	})
 	if err := w.send(msg{Terminal: endpoint.LocalTerminal(), Peer: peer, Type: "hello", Cols: ws.Cols, Rows: ws.Rows, Xpixel: ws.Xpixel, Ypixel: ws.Ypixel, Config: settings.config, ConfigWarning: settings.warning, Preferences: settings.preferences}); err != nil {
 		leave()
 		fmt.Fprintf(out, "ikesu: attach: %v\n", err)

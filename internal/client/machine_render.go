@@ -5,9 +5,13 @@ import "github.com/kazuph/ikesu/internal/benchstage"
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/kazuph/ikesu/internal/cellwidth"
 	"github.com/kazuph/ikesu/internal/render"
 	"github.com/kazuph/ikesu/internal/tui"
 )
@@ -121,7 +125,9 @@ func (m *machineClient) paint() error {
 	f := composed.Frame
 	if m.notice != "" {
 		x, y, end := composed.ActionBar.Copy.X+composed.ActionBar.Copy.W, composed.ActionBar.Area.Y, composed.ActionBar.Cycle.X
-		if end-x < len([]rune(m.notice)) {
+		text := noticeDisplayText(m.notice)
+		width := cellwidth.String(text)
+		if end-x < width {
 			x = 1
 			y = f.H - 1
 			end = max(x, in.State.SidebarArea().W-1)
@@ -129,20 +135,37 @@ func (m *machineClient) paint() error {
 				y = render.SidebarFooter(in.State).Y
 			}
 		}
-		for _, r := range m.notice {
-			if x >= end {
-				break
-			}
-			if runawayDialog.id != "" && composed.DialogRect.Contains(x, y) {
-				x++
+		if available := end - x; available > 0 && width > available && len(text) != utf8.RuneCountInString(text) {
+			const ellipsis = "…"
+			prefixWidth := available - cellwidth.String(ellipsis)
+			prefix := cellwidth.Cut(text, 0, prefixWidth)
+			text = prefix + strings.Repeat(" ", prefixWidth-cellwidth.String(prefix)) + ellipsis
+		}
+		for text != "" {
+			r, size := utf8.DecodeRuneInString(text)
+			width := cellwidth.Scalar(r)
+			if width == 0 {
+				text = text[size:]
 				continue
 			}
-			if cell := f.Cell(x, y); cell != nil {
+			if x+width > end {
+				break
+			}
+			for size < len(text) {
+				next, n := utf8.DecodeRuneInString(text[size:])
+				if cellwidth.Scalar(next) != 0 {
+					break
+				}
+				size += n
+			}
+			if cell := f.Cell(x, y); cell != nil && (runawayDialog.id == "" ||
+				!composed.DialogRect.Contains(x, y) && !composed.DialogRect.Contains(x+width-1, y)) {
 				style := cell.Style
 				style.Fg = f.Palette.Text
-				f.Set(x, y, string(r), style)
+				f.Set(x, y, text[:size], style)
 			}
-			x++
+			text = text[size:]
+			x += width
 		}
 	}
 	if in.SidebarConfig.UI.HostCursor == "drawn" && composed.AnchorVisible && composed.AnchorShape == 0 {
@@ -233,6 +256,26 @@ func (m *machineClient) paint() error {
 		}
 	}
 	return nil
+}
+
+func noticeDisplayText(text string) string {
+	var display strings.Builder
+	display.Grow(len(text))
+	previousSpace := false
+	for len(text) > 0 {
+		r, size := utf8.DecodeRuneInString(text)
+		rawC1 := size == 1 && text[0] >= 0x80 && text[0] <= 0x9f
+		text = text[size:]
+		if rawC1 || unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			r = ' '
+		}
+		space := r == ' '
+		if !space || !previousSpace {
+			display.WriteRune(r)
+		}
+		previousSpace = space
+	}
+	return display.String()
 }
 
 // writeNativeMenu tells a host app ([ui] native_menus) what menu or dialog

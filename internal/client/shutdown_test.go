@@ -190,6 +190,9 @@ func TestLegacyPumpACKBrokenPipeDrainsRestartAndExit(t *testing.T) {
 			if err := json.NewDecoder(server).Decode(&hello); err != nil {
 				t.Fatal(err)
 			}
+			if endpoint.Allows(hello.Generation, 1, hello.Methods, endpoint.CopyTextMessage) {
+				t.Fatal("legacy pump advertised copy_text")
+			}
 			encoder := json.NewEncoder(server)
 			if err := encoder.Encode(msg{Type: "welcome", Peer: endpoint.Current()}); err != nil {
 				t.Fatal(err)
