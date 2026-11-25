@@ -105,6 +105,8 @@ func (e *Encoder) Frame(f *Frame, anchorX, anchorY int, anchorVisible bool, shap
 	var koiData []byte
 	if !f.RetainGraphics {
 		koiData = e.encodeKoi(koi, full)
+	} else if f.hideKoiPond {
+		e.clearKoiPond(&b)
 	}
 	e.imageFence = e.imageFence || bytes.Contains(koiData, []byte("\x1b_Ga=t,"))
 	b.Write(koiData)

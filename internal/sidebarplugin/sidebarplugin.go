@@ -54,6 +54,8 @@ func ParseName(file string) (string, time.Duration, bool) {
 // Item is one plugin's latest result.
 type Item struct {
 	File, Name string
+	Position   Position
+	Order      int
 	Lines      []string // lines before "---" of the last successful run; SGR colors kept
 	Err        string   // why the last run failed, empty on success
 	Ran        bool     // false until the first run finished
@@ -64,13 +66,14 @@ type Runner struct {
 	Dir      string
 	OnChange func()
 	// Columns, when set, is passed to scripts as IKESU_SIDEBAR_COLUMNS so they can fit the sidebar.
-	Columns func() int
+	Columns func(Position) int
 
 	mu      sync.Mutex
 	running map[string]bool
 	items   map[string]*Item
 	next    map[string]time.Time
 	every   map[string]time.Duration
+	files   map[string]os.FileInfo
 }
 
 // maxOutput is how much of a script's output is kept; the rest is read and dropped
@@ -91,7 +94,7 @@ func Dir(configPath string) string {
 	return filepath.Join(filepath.Dir(configPath), "plugins", "sidebar")
 }
 
-// Items returns the current results sorted by file name.
+// Items returns the current results sorted by order, then file name.
 func (r *Runner) Items() []Item {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -99,7 +102,16 @@ func (r *Runner) Items() []Item {
 	for _, it := range r.items {
 		out = append(out, *it)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].File < out[j].File })
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Order != b.Order {
+			return a.Order < b.Order
+		}
+		if aName, bName := filepath.Base(a.File), filepath.Base(b.File); aName != bName {
+			return aName < bName
+		}
+		return a.File < b.File
+	})
 	return out
 }
 
@@ -127,35 +139,52 @@ func (r *Runner) Run(ctx context.Context) {
 }
 
 func (r *Runner) scan(now time.Time) {
-	entries, _ := os.ReadDir(r.Dir)
 	seen := map[string]bool{}
 	r.mu.Lock()
 	if r.items == nil {
 		r.items, r.next, r.every = map[string]*Item{}, map[string]time.Time{}, map[string]time.Duration{}
+		r.files = map[string]os.FileInfo{}
 	}
 	changed := false
-	for _, e := range entries {
-		name, every, ok := ParseName(e.Name())
-		if !ok || e.IsDir() {
-			continue
-		}
-		info, err := e.Info()
-		if err != nil || info.Mode()&0o111 == 0 {
-			continue
-		}
-		seen[e.Name()] = true
-		if _, ok := r.items[e.Name()]; !ok {
-			r.items[e.Name()] = &Item{File: e.Name(), Name: name}
-			r.next[e.Name()] = now
+	for _, subdir := range []string{"", string(Left), string(Right)} {
+		entries, _ := os.ReadDir(filepath.Join(r.Dir, subdir))
+		for _, e := range entries {
+			name, every, ok := ParseName(e.Name())
+			if !ok || e.IsDir() {
+				continue
+			}
+			file := filepath.Join(subdir, e.Name())
+			path := filepath.Join(r.Dir, file)
+			info, err := os.Stat(path)
+			if err != nil || !info.Mode().IsRegular() || info.Mode()&0o111 == 0 {
+				continue
+			}
+			seen[file] = true
+			r.every[file] = every
+			if prev := r.files[file]; prev != nil && os.SameFile(prev, info) && prev.ModTime().Equal(info.ModTime()) && prev.Size() == info.Size() {
+				continue
+			}
+			r.files[file] = info
+			position := Left
+			if subdir == string(Right) {
+				position = Right
+			}
+			item := Item{File: file, Name: name, Position: position}
+			readMetadata(path, &item)
+			if prev := r.items[file]; prev != nil {
+				item.Lines, item.Err, item.Ran = prev.Lines, prev.Err, prev.Ran
+			}
+			r.items[file] = &item
+			r.next[file] = now
 			changed = true
 		}
-		r.every[e.Name()] = every
 	}
 	for file := range r.items {
 		if !seen[file] {
 			delete(r.items, file)
 			delete(r.next, file)
 			delete(r.every, file)
+			delete(r.files, file)
 			changed = true
 		}
 	}
@@ -199,13 +228,19 @@ func (r *Runner) runOne(ctx context.Context, file string) {
 		delete(r.running, file)
 		r.mu.Unlock()
 	}()
+	r.mu.Lock()
+	item := r.items[file]
+	r.mu.Unlock()
+	if item == nil {
+		return
+	}
 	ctx, cancel := context.WithTimeout(ctx, RunTimeout)
 	defer cancel()
 	cmd := childenv.CommandContextGroup(ctx, filepath.Join(r.Dir, file))
 	cmd.Dir = r.Dir
 	cmd.WaitDelay = time.Second
 	if r.Columns != nil {
-		if n := r.Columns(); n > 0 {
+		if n := r.Columns(item.Position); n > 0 {
 			cmd.Env = append(cmd.Env, "IKESU_SIDEBAR_COLUMNS="+strconv.Itoa(n))
 		}
 	}
@@ -226,7 +261,7 @@ func (r *Runner) runOne(ctx context.Context, file string) {
 	r.mu.Lock()
 	it := r.items[file]
 	changed := false
-	if it != nil {
+	if it == item {
 		prevLines, prevErr, prevRan := it.Lines, it.Err, it.Ran
 		if errText == "" {
 			it.Lines = lines

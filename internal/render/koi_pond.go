@@ -163,9 +163,7 @@ func koiMotionPose(agent KoiAgent, pond layout.Rect, in Input, w, h int) KoiFish
 // pane grid or server snapshot is composed on a decoration tick.
 func AnimateKoi(scene KoiScene, in Input) *Frame {
 	next := scene
-	next.Ripple = in.KoiRipple
-	next.Fish = koiResidents(next.Agents, next.Capacity, scene.Pond, in)
-	sort.SliceStable(next.Fish, func(i, j int) bool { return next.Fish[i].Depth > next.Fish[j].Depth })
+	populateKoiPond(&next, in)
 	next.Mini = nil
 	for _, band := range scene.Bands {
 		next.Mini = append(next.Mini, koiResidentsFor(band.Agents, band.Capacity, band.Lane, in, band.ID, 6, 1)...)
@@ -177,6 +175,18 @@ func AnimateKoi(scene KoiScene, in Input) *Frame {
 	f.KoiActive = f.KoiActive || len(next.Mini) > 0 || next.Ripple != nil
 	drawKoiGraphics(f, next, in)
 	return f
+}
+
+// Capacity controls admissions, so a zero capacity alone does not hide
+// residents already in motion. Jobs frames suppress the entire right pond.
+func populateKoiPond(scene *KoiScene, in Input) {
+	scene.Fish, scene.Ripple = nil, nil
+	if in.JobsPanel || scene.Pond.W <= 1 || scene.Pond.H <= 0 {
+		return
+	}
+	scene.Ripple = in.KoiRipple
+	scene.Fish = koiResidents(scene.Agents, scene.Capacity, scene.Pond, in)
+	sort.SliceStable(scene.Fish, func(i, j int) bool { return scene.Fish[i].Depth > scene.Fish[j].Depth })
 }
 
 func (s KoiScene) UpdateInterval() time.Duration {

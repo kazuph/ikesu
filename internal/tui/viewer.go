@@ -13,21 +13,26 @@ import (
 type Viewer struct {
 	receivedInput, processedInput uint64
 
-	app               *App
-	workspace         int
-	tabs              map[int]int
-	cols, rows        int
-	toastSequence     uint64
-	pendingAt         time.Time
-	focusUntil        time.Time
-	focusEpoch        uint64
-	heldKeys          []input.Event
-	display           displayState
-	legacySidebarRows bool
+	app                 *App
+	workspace           int
+	tabs                map[int]int
+	cols, rows          int
+	toastSequence       uint64
+	pendingAt           time.Time
+	focusUntil          time.Time
+	focusEpoch          uint64
+	heldKeys            []input.Event
+	display             displayState
+	legacySidebarRows   bool
+	rightSidebarPlugins bool
 }
 
 func (v *Viewer) SetContinuousSidebarRows(supported bool) {
 	v.legacySidebarRows = !supported
+}
+
+func (v *Viewer) SetRightSidebarPlugins(supported bool) {
+	v.rightSidebarPlugins = supported
 }
 
 type viewSelection struct {

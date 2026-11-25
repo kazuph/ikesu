@@ -11,6 +11,12 @@ import (
 	"sync/atomic"
 )
 
+const (
+	koiPondPane   = -1
+	koiMiniPane   = -2
+	koiRipplePane = -4
+)
+
 type koiSpriteKey struct{ Variety, Direction, Wag, W, H int }
 
 var koiSpriteCache = koiCache[koiSpriteKey, koiRaster]{maxEntries: koiSpriteEntries, maxBytes: koiSpriteBytes}
@@ -49,7 +55,11 @@ func drawKoiGraphics(f *Frame, scene KoiScene, in Input) {
 	if cw <= 0 || ch <= 0 {
 		return
 	}
-	for group, fishList := range [][]KoiFish{scene.Fish, scene.Mini} {
+	for _, group := range []struct {
+		pane int
+		fish []KoiFish
+	}{{koiPondPane, scene.Fish}, {koiMiniPane, scene.Mini}} {
+		fishList := group.fish
 		if len(fishList) == 0 {
 			continue
 		}
@@ -64,7 +74,7 @@ func drawKoiGraphics(f *Frame, scene KoiScene, in Input) {
 			if visible.Empty() {
 				continue
 			}
-			g := Graphic{Pane: -1 - group, Placement: kitty.Placement{Image: img, X: visible.Min.X / cw, Y: visible.Min.Y / ch, OffsetX: visible.Min.X % cw, OffsetY: visible.Min.Y % ch, Cols: fish.Rect.W, Rows: fish.Rect.H, Z: -1 - int(fish.Depth*100)}, Koi: true}
+			g := Graphic{Pane: group.pane, Placement: kitty.Placement{Image: img, X: visible.Min.X / cw, Y: visible.Min.Y / ch, OffsetX: visible.Min.X % cw, OffsetY: visible.Min.Y % ch, Cols: fish.Rect.W, Rows: fish.Rect.H, Z: -1 - int(fish.Depth*100)}, Koi: true}
 			if visible != bounds {
 				g.Source = visible.Sub(bounds.Min)
 				// Natural-size source crops preserve the integer source-dot grid.

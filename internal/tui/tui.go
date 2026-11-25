@@ -770,7 +770,7 @@ func (a *App) Run() {
 	for !a.quit {
 		a.loopTiming.advance(time.Now())
 		var koiReady <-chan time.Time
-		if a.snapshotSink == nil && a.drawViewers == nil && !a.windowBlurred && !a.koiNext.IsZero() {
+		if a.snapshotSink == nil && a.drawViewers == nil && !a.windowBlurred && !a.koiNext.IsZero() && drawReady == nil {
 			remaining := max(time.Duration(0), time.Until(a.koiNext))
 			if koiTimer == nil {
 				koiTimer = time.NewTimer(remaining)
@@ -844,12 +844,7 @@ func (a *App) Run() {
 		case <-drawReady:
 			drawReady = nil
 		case <-koiReady:
-			a.koiNext = time.Time{}
-			if a.dirty || !a.koiInput.KoiKitty {
-				a.dirty = true
-			} else {
-				a.paintKoi(time.Now())
-			}
+			a.onKoiDeadline(time.Now())
 		case <-tick.C:
 			a.onTick()
 		case <-spin.C:

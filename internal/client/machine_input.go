@@ -275,7 +275,9 @@ func (m *machineClient) input(event input.Event) error {
 		active := m.endpoints[m.active]
 		// Overlay hit areas belong to the selected server and take precedence.
 		if active.snapshot != nil && active.snapshot.Menu == nil && active.snapshot.Dialog == nil && active.snapshot.Help == nil {
-			if event.Kind == input.KindMouseWheel && len(m.sidebar.Groups) > 1 && contains(active.snapshot.State.RightSidebarArea().X, 0, active.snapshot.State.RightSidebarArea().W, m.size.Rows, event.Mouse.X, event.Mouse.Y) {
+			right := active.snapshot.State.RightSidebarArea()
+			list := render.RightSidebarListRect(active.snapshot.State, active.snapshot.RightSidebarPanel)
+			if event.Kind == input.KindMouseWheel && len(m.sidebar.Groups) > 1 && contains(right.X, right.Y, right.W, list.Y+list.H-right.Y, event.Mouse.X, event.Mouse.Y) {
 				switch event.Mouse.Button {
 				case uv.MouseWheelUp:
 					m.sidebar.RightScroll--

@@ -39,9 +39,12 @@ func HasGraphicsPatches(peer Peer) bool {
 // SidebarMenuLeft advertises the menu position used for display input.
 const SidebarMenuLeft = "sidebar_menu_left"
 
+// RightSidebarPlugins advertises that the display reserves rows for right plugins.
+const RightSidebarPlugins = "right_sidebar_plugins"
+
 func Current() Peer {
 	peer := Peer{Protocol: ProtocolVersion, Generation: Generation, MinGeneration: MinGeneration,
-		Methods: []string{"client_view", "input", "paste", "resize", "rendered", "preferences_error", "config_result", "visibility", "workspace_select", "workspace_select_generation", "workspace_menu", "workspace_new", "section_toggle", SidebarMenuLeft, "oyagoi_view", "oyagoi_check", "view_config", "machine_menu", "decision_answer", "sidebar_panel", "sidebar_continuous", "input_receipt", "idle_panes", "idle_delete", OpenLinkMessage}}
+		Methods: []string{"client_view", "input", "paste", "resize", "rendered", "preferences_error", "config_result", "visibility", "workspace_select", "workspace_select_generation", "workspace_menu", "workspace_new", "section_toggle", SidebarMenuLeft, "oyagoi_view", "oyagoi_check", "view_config", "machine_menu", "decision_answer", "sidebar_panel", "sidebar_continuous", RightSidebarPlugins, "input_receipt", "idle_panes", "idle_delete", OpenLinkMessage}}
 	if ExperimentalFlatDiff {
 		peer.SurfaceCodecs = []string{FlatDiffCodec}
 	}

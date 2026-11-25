@@ -7,6 +7,7 @@ import "image"
 func (f *Frame) Viewport(width, height int) *Frame {
 	clipped := NewFrame(width, height)
 	clipped.Palette = f.Palette
+	clipped.hideKoiPond = f.hideKoiPond
 	clipped.GraphicsNamespace = f.GraphicsNamespace
 	clipped.GraphicsSources = f.GraphicsSources
 	for y := 0; y < min(f.H, clipped.H); y++ {

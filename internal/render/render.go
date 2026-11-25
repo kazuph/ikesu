@@ -137,6 +137,7 @@ type Input struct {
 	State              *model.AppState
 	SidebarConfig      config.Config
 	SidebarPanel       *SidebarPanel // the usage and plugin block at the bottom of the left sidebar
+	RightSidebarPanel  *SidebarPanel
 	WorkspaceTokens    map[int]map[string]string
 	Panes              map[int]*PaneSnap
 	Scroll             map[int]int
@@ -321,6 +322,7 @@ func composeInto(in Input, machines *MachineSidebar, version string, notice bool
 	if machines != nil {
 		machines.draw(f, in)
 	}
+	drawSidebarPanelAt(f, in.RightSidebarPanel, RightSidebarPanelRect(s, in.RightSidebarPanel))
 	drawKoiDecoration(f, in, machines)
 	drawTabBar(f, s, in, out)
 	previewPalette := f.Palette

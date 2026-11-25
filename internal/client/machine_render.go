@@ -93,10 +93,7 @@ func (m *machineClient) paint() error {
 		}
 		m.sidebar.Groups = append(m.sidebar.Groups, render.MachineGroup{ID: id, Label: group.profile.Label, Status: group.status, Reason: group.reason, Input: input})
 	}
-	m.koiClock.Apply(&in, &m.sidebar, time.Now(), tui.FossilExpiry())
-	if m.koiInput.KoiKitty && in.KoiKitty && (in.KoiRipple == nil || m.koiInput.KoiRipple != nil && in.KoiRipple.Start == m.koiInput.KoiRipple.Start) {
-		in.KoiTime = m.koiInput.KoiTime
-	}
+	m.koiClock.ApplyFrame(&in, m.koiInput, &m.sidebar, time.Now(), tui.FossilExpiry())
 
 	var composed *render.Output
 	if len(m.sidebar.Groups) == 1 && e.connection != nil && m.sidebar.Oyagoi == nil {

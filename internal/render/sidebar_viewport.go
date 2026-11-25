@@ -30,13 +30,16 @@ func SidebarSplitY(s *model.AppState) int {
 }
 
 func SidebarViewFor(s *model.AppState, panes map[int]*PaneSnap, cfg config.Config, workspaceScroll, agentScroll int, serverUI bool, selected *int) SidebarView {
+	return sidebarViewFor(s, panes, cfg, workspaceScroll, agentScroll, serverUI, selected, nil)
+}
+
+func sidebarViewFor(s *model.AppState, panes map[int]*PaneSnap, cfg config.Config, workspaceScroll, agentScroll int, serverUI bool, selected *int, rightPanel *SidebarPanel) SidebarView {
 	a := s.SidebarArea()
 	iw := max(0, a.W-1)
 	mid := SidebarSplitY(s)
-	right := s.RightSidebarArea()
 	view := SidebarView{
 		Workspace: SidebarViewport{Rect: layout.Rect{X: a.X, Y: a.Y + 2, W: iw, H: max(0, mid-a.Y-3-s.SidebarPanelRows)}},
-		Agents:    SidebarViewport{Rect: layout.Rect{X: right.X + 1, Y: 2, W: max(0, right.W-1), H: max(0, right.H-2)}},
+		Agents:    SidebarViewport{Rect: RightSidebarListRect(s, rightPanel)},
 	}
 	if serverUI {
 		if len(cfg.UI.Sidebar.Agents.Rows) == 0 {

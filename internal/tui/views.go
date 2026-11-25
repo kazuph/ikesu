@@ -12,6 +12,7 @@ import (
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/render"
 	"github.com/kazuph/ikesu/internal/runtime"
+	"github.com/kazuph/ikesu/internal/sidebarplugin"
 	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"
@@ -84,13 +85,16 @@ func paneStatusGlyph(key string, spin int, palette render.Palette, sudo bool) re
 
 // draw composes and writes one frame.
 func (a *App) draw() {
+	a.drawAt(time.Now())
+}
+
+func (a *App) drawAt(started time.Time) {
 	if a.sizeViewer != nil {
 		a.sizeViewer.with(a, func(ui *App) { ui.flushResize() })
 	} else {
 		a.flushResize()
 	}
 	defer benchstage.Span("ui.draw")()
-	started := time.Now()
 	defer func() { a.lastDraw = started }()
 	if a.drawViewers != nil {
 		a.drawViewers()
@@ -189,6 +193,7 @@ func (a *App) draw() {
 	panel := a.layoutSidebarPanel()
 	in := render.Input{
 		SidebarPanel:        panel,
+		RightSidebarPanel:   a.sidebarPanel(sidebarplugin.Right),
 		RestoreFailures:     a.restoreWarnings,
 		ServerUI:            a.serverUI,
 		PanePalette:         a.panePalette,
@@ -264,13 +269,18 @@ func (a *App) draw() {
 		return
 	}
 	in.Koi = a.viewerOwner == nil && a.sidebarConfig.KoiEnabled()
-	if in.Koi {
-		a.koiClock.Apply(&in, nil, time.Now(), fossilExpiry)
-	}
 	if file, ok := a.out.(*os.File); ok {
 		in.KoiKitty = kitty.SupportsImages(os.Stdin, file) && a.cellW > 0 && a.cellH > 0
 	}
 	in.KoiCellW, in.KoiCellH = a.cellW, a.cellH
+	koiDue := !a.koiNext.IsZero() && !started.Before(a.koiNext)
+	if in.Koi {
+		if koiDue {
+			a.koiClock.Apply(&in, nil, started, fossilExpiry)
+		} else {
+			a.koiClock.ApplyFrame(&in, a.koiInput, nil, started, fossilExpiry)
+		}
+	}
 	out := render.ComposeClient(in, nil, a.clientVersion, false)
 	a.koiScene = out.Frame.KoiScene
 	a.koiLocalActive = out.Frame.KoiActive && !a.windowBlurred
@@ -279,8 +289,8 @@ func (a *App) draw() {
 	a.koiAnchor.Frame = nil
 	if !a.koiLocalActive {
 		a.koiNext = time.Time{}
-	} else if a.koiNext.IsZero() {
-		a.koiNext = time.Now().Add(a.koiScene.UpdateInterval())
+	} else if koiDue || a.koiNext.IsZero() {
+		a.koiNext = started.Add(a.koiScene.UpdateInterval())
 	}
 	if g := a.tabGesture; g != nil && g.moved && g.ws == a.st.Active {
 		render.DrawTabDrop(out, g.drop, a.serverUI)

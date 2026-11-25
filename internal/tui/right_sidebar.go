@@ -20,6 +20,9 @@ func (a *App) rightSidebarClick(m uv.Mouse) {
 		a.beginSidebarDivider(m, true, time.Now())
 		return
 	}
+	if m.Button == uv.MouseLeft && a.sidebarPanelClick(m.X, m.Y) {
+		return
+	}
 	if a.legacyCompactSidebar() {
 		a.legacyRightSidebarClick(m)
 		return

@@ -13,14 +13,18 @@ type koiImageKey struct {
 	ID   uint32
 	W, H int
 }
-type koiEncodedPlacement struct {
-	ID      uint32
-	Graphic Graphic
+
+// Kitty identifies a placement by the pair (image ID, placement ID).
+// Number repeated placements of each sprite independently so removing a
+// pond fish cannot invalidate a mini koi's placement.
+type koiPlacementKey struct {
+	image, placement uint32
 }
 type koiImageUse struct {
-	key   koiImageKey
-	size  int
-	frame uint64
+	key        koiImageKey
+	size       int
+	frame      uint64
+	placements uint32
 }
 type koiImagePool struct {
 	order list.List
@@ -28,7 +32,7 @@ type koiImagePool struct {
 }
 type koiEncoder struct {
 	images     map[koiImageKey]uint32
-	placements []koiEncodedPlacement
+	placements map[koiPlacementKey]Graphic
 	used       map[koiImageKey]*list.Element
 	pools      [2]koiImagePool
 	bytes      int
@@ -58,7 +62,12 @@ func withoutKoi(f *Frame) (*Frame, []Graphic) {
 // Images remain reusable across frames and overlays while retained. Under
 // pressure retire least recently used images that are absent from this frame.
 func (e *Encoder) encodeKoi(graphics []Graphic, force bool) []byte {
-	var next []koiEncodedPlacement
+	var next map[koiPlacementKey]Graphic
+	var order []koiPlacementKey
+	if len(graphics) > 0 {
+		next = make(map[koiPlacementKey]Graphic, len(graphics))
+		order = make([]koiPlacementKey, 0, len(graphics))
+	}
 	var b bytes.Buffer
 	if e.koi.images == nil {
 		e.koi.images = map[koiImageKey]uint32{}
@@ -69,7 +78,7 @@ func (e *Encoder) encodeKoi(graphics []Graphic, force bool) []byte {
 		p := g.Placement
 		key := koiImageKey{g.Pane, p.Image.ID, p.Image.Width, p.Image.Height}
 		pool := &e.koi.pools[0]
-		if key.Pane == -4 {
+		if key.Pane == koiRipplePane {
 			pool = &e.koi.pools[1]
 		}
 		id := e.koi.images[key]
@@ -83,7 +92,7 @@ func (e *Encoder) encodeKoi(graphics []Graphic, force bool) []byte {
 			id = e.nextGraphicID
 			e.koi.images[key] = id
 			size := 4*p.Image.Width*p.Image.Height + len(p.Image.Data)
-			e.koi.used[key] = pool.order.PushFront(&koiImageUse{key, size, e.koi.frame})
+			e.koi.used[key] = pool.order.PushFront(&koiImageUse{key: key, size: size})
 			e.koi.bytes += size
 			pool.bytes += size
 			data := base64.StdEncoding.EncodeToString(p.Image.Data)
@@ -105,24 +114,31 @@ func (e *Encoder) encodeKoi(graphics []Graphic, force bool) []byte {
 		}
 		el := e.koi.used[key]
 		use := el.Value.(*koiImageUse)
-		use.frame = e.koi.frame
+		if use.frame != e.koi.frame {
+			use.frame = e.koi.frame
+			use.placements = 0
+		}
 		pool.order.MoveToFront(el)
-		next = append(next, koiEncodedPlacement{id, g})
+		use.placements++
+		placement := koiPlacementKey{id, use.placements}
+		next[placement] = g
+		order = append(order, placement)
 	}
-	for i, old := range e.koi.placements {
-		if i >= len(next) || old.ID != next[i].ID {
-			fmt.Fprintf(&b, "\x1b_Ga=d,d=i,i=%d,p=%d,q=2;\x1b\\", old.ID, i+1)
+	for key := range e.koi.placements {
+		if _, ok := next[key]; !ok {
+			fmt.Fprintf(&b, "\x1b_Ga=d,d=i,i=%d,p=%d,q=2;\x1b\\", key.image, key.placement)
 		}
 	}
-	for i, item := range next {
-		if !force && i < len(e.koi.placements) && reflect.DeepEqual(item, e.koi.placements[i]) {
+	for _, key := range order {
+		item := next[key]
+		if !force && reflect.DeepEqual(item, e.koi.placements[key]) {
 			continue
 		}
-		p := item.Graphic.Placement
+		p := item.Placement
 		b.WriteString(cup(p.Y, p.X))
-		fmt.Fprintf(&b, "\x1b_Ga=p,i=%d,p=%d,c=%d,r=%d,z=%d,C=1,q=2", item.ID, i+1, p.Cols, p.Rows, p.Z)
-		if !item.Graphic.Source.Empty() {
-			r := item.Graphic.Source
+		fmt.Fprintf(&b, "\x1b_Ga=p,i=%d,p=%d,c=%d,r=%d,z=%d,C=1,q=2", key.image, key.placement, p.Cols, p.Rows, p.Z)
+		if !item.Source.Empty() {
+			r := item.Source
 			fmt.Fprintf(&b, ",x=%d,y=%d,w=%d,h=%d", r.Min.X, r.Min.Y, r.Dx(), r.Dy())
 		}
 		if p.OffsetX != 0 {
@@ -159,6 +175,17 @@ func (e *Encoder) encodeKoi(graphics []Graphic, force bool) []byte {
 	}
 	e.koi.placements = next
 	return b.Bytes()
+}
+
+// A Jobs frame takes ownership of the right sidebar even while the
+// endpoint is preparing a matching-size frame for the rest of the screen.
+func (e *Encoder) clearKoiPond(b *bytes.Buffer) {
+	for key, g := range e.koi.placements {
+		if g.Pane == koiPondPane || g.Pane == koiRipplePane {
+			fmt.Fprintf(b, "\x1b_Ga=d,d=i,i=%d,p=%d,q=2;\x1b\\", key.image, key.placement)
+			delete(e.koi.placements, key)
+		}
+	}
 }
 
 // KoiFrame advances only decorations. Cells, native images, hit regions and

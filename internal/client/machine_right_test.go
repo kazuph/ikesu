@@ -125,18 +125,28 @@ func (h *rightMachineHarness) until(label string, pred func() bool) {
 	}
 }
 func newRightMachineHarness(t *testing.T, idleFixture ...bool) *rightMachineHarness {
+	return newRightMachineHarnessConfigured(t, nil, idleFixture...)
+}
+
+func newRightMachineHarnessConfigured(t *testing.T, setup func(string) string, idleFixture ...bool) *rightMachineHarness {
 	teststate.Lock(t)
 	root, err := os.MkdirTemp("/tmp", "ikesu-right-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(root) })
-	cfg, err := config.Decode([]byte("onboarding=false\n[session]\nresume_agents_on_restore=false\n[ui]\nagent_panel_scope='all'\n[ui.sound]\nenabled=false\n"))
+	cfgPath := filepath.Join(root, "config.toml")
+	configText := "onboarding=false\n[session]\nresume_agents_on_restore=false\n[ui.sound]\nenabled=false\n"
+	presentation := "onboarding=false\n[session]\nresume_agents_on_restore=false\n[ui]\nagent_panel_scope='all'\n[ui.sound]\nenabled=false\n"
+	if setup != nil {
+		extra := setup(cfgPath)
+		configText += extra
+		presentation += extra
+	}
+	cfg, err := config.Decode([]byte(presentation))
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfgPath := filepath.Join(root, "config.toml")
-	configText := "onboarding=false\n[session]\nresume_agents_on_restore=false\n[ui.sound]\nenabled=false\n"
 	if os.Getenv("IKESU_RIGHT_TEST_SERVER_BIN") != "" {
 		configText += "[experimental]\nallow_nested=true\n"
 	}

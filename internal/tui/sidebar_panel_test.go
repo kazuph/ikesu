@@ -29,10 +29,10 @@ func TestSidebarPanelHeadingFolds(t *testing.T) {
 	if before != 5 {
 		t.Fatalf("panel rows = %d", before)
 	}
-	if a.panel.columns.Load() <= 0 {
+	if a.panel.columns(sidebarplugin.Left) <= 0 {
 		t.Fatal("sidebar width not passed to plugins")
 	}
-	heads := render.SidebarPanelLayout(a.st, a.sidebarPanel())
+	heads := render.SidebarPanelLayout(a.st, a.sidebarPanel(sidebarplugin.Left))
 	if len(heads) != 2 || heads[0].Key != "usage.30s.sh" {
 		t.Fatalf("headings = %+v", heads)
 	}
@@ -44,7 +44,7 @@ func TestSidebarPanelHeadingFolds(t *testing.T) {
 	if a.st.SidebarPanelRows != before-2 {
 		t.Fatalf("folded rows = %d", a.st.SidebarPanelRows)
 	}
-	heads = render.SidebarPanelLayout(a.st, a.sidebarPanel())
+	heads = render.SidebarPanelLayout(a.st, a.sidebarPanel(sidebarplugin.Left))
 	a.sidebarClick(uv.Mouse{X: heads[0].Rect.X, Y: heads[0].Rect.Y, Button: uv.MouseLeft})
 	if a.panel.collapsed["usage.30s.sh"] {
 		t.Fatal("second click did not open it")
@@ -81,7 +81,7 @@ func TestSidebarPanelWidthKnownBeforeFirstRun(t *testing.T) {
 	done := make(chan struct{})
 	defer close(done)
 	a.startSidebarPanel(done)
-	if got := a.panel.columns.Load(); got <= 0 || got != int64(a.st.ExpandedSidebarWidth()-2) {
+	if got := a.panel.columns(sidebarplugin.Left); got <= 0 || got != a.st.ExpandedSidebarWidth()-2 {
 		t.Fatalf("columns = %d", got)
 	}
 }
@@ -92,13 +92,13 @@ func TestSidebarPanelRerunsForLatestWidth(t *testing.T) {
 	a.panel = &sidebarPanelState{runner: &sidebarplugin.Runner{}}
 	a.layoutSidebarPanel() // 最初の幅で1回
 	first := a.panel.rerunAt
-	a.st.SidebarSize += 4
-	a.layoutSidebarPanel() // 30秒以内の変更は保留
+	a.st.RightSidebarSize = a.st.ExpandedRightSidebarWidth() + 4
+	a.layoutSidebarPanel() // 右側の30秒以内の変更は保留
 	if !a.panel.rerunAt.Equal(first) || !a.panel.rerunDue {
 		t.Fatalf("width change inside the gap was not held: due=%v", a.panel.rerunDue)
 	}
 	a.panel.rerunAt = a.panel.rerunAt.Add(-widthRerunGap)
-	a.layoutSidebarPanel() // 幅は変わらないまま、間隔が過ぎたら実行する
+	a.rerunSidebarPlugins(time.Now()) // 再描画がなくても tick で実行する
 	if a.panel.rerunDue || a.panel.rerunAt.Equal(first.Add(-widthRerunGap)) {
 		t.Fatal("held width change was never run")
 	}
@@ -118,7 +118,7 @@ func TestSidebarPanelOptInOnReload(t *testing.T) {
 	a := NewApp(model.New(t.TempDir(), 120, 40), runtime.NewSupervisor(), &bytes.Buffer{}, "")
 	defer close(a.doneCh)
 	a.startSidebarPanel(a.doneCh)
-	if a.panel.runner != nil || a.sidebarPanel() != nil {
+	if a.panel.runner != nil || a.sidebarPanel(sidebarplugin.Left) != nil {
 		t.Fatal("plugins started with a fresh config")
 	}
 	enabled := true
@@ -144,7 +144,7 @@ func TestSidebarPanelOptInOnReload(t *testing.T) {
 		t.Fatalf("unexpected script output: %v", got)
 	}
 	a.SetSidebarConfig(config.Config{}, false)
-	if a.panel.runner != nil || a.panel.cancel != nil || a.sidebarPanel() != nil {
+	if a.panel.runner != nil || a.panel.cancel != nil || a.sidebarPanel(sidebarplugin.Left) != nil {
 		t.Fatal("disabled plugins still running or displayed")
 	}
 	a.SetSidebarConfig(c, false)
@@ -152,4 +152,39 @@ func TestSidebarPanelOptInOnReload(t *testing.T) {
 		t.Fatal("re-enabling did not start a new runner")
 	}
 	a.SetSidebarConfig(config.Config{}, false)
+}
+
+func TestRightSidebarPluginHeadingFoldsOnlyItsSection(t *testing.T) {
+	a := NewApp(model.New(t.TempDir(), 160, 40), runtime.NewSupervisor(), &bytes.Buffer{}, "")
+	a.st.SidebarVisible = true
+	a.st.SidebarMin, a.st.SidebarSize, a.st.RightSidebarSize = 16, 26, 16
+	a.jobsPanel = true
+	a.panel = &sidebarPanelState{plugins: []sidebarplugin.Item{
+		{File: "left/usage.30s.sh", Name: "Left", Position: sidebarplugin.Left, Lines: []string{"left body"}, Ran: true},
+		{File: "right/usage.30s.sh", Name: "Right", Position: sidebarplugin.Right, Lines: []string{"right body"}, Ran: true},
+		{File: "right/other.30s.sh", Name: "Other", Position: sidebarplugin.Right, Lines: []string{"other body"}, Ran: true},
+	}}
+	a.layoutSidebarPanel()
+	if a.panel.columns(sidebarplugin.Left) != 24 || a.panel.columns(sidebarplugin.Right) != 14 {
+		t.Fatal("plugin columns did not follow their side")
+	}
+	panel := a.sidebarPanel(sidebarplugin.Right)
+	heads := render.SidebarPanelHeadings(panel, render.RightSidebarPanelRect(a.st, panel))
+	if len(heads) != 2 {
+		t.Fatalf("right headings = %+v", heads)
+	}
+	height := a.sidebarView().Agents.Rect.H
+	a.click(uv.Mouse{X: heads[0].Rect.X + 1, Y: heads[0].Rect.Y, Button: uv.MouseLeft})
+	if !a.panel.collapsed[heads[0].Key] || a.panel.collapsed[heads[1].Key] || a.panel.collapsed["left/usage.30s.sh"] {
+		t.Fatalf("folded = %+v", a.panel.collapsed)
+	}
+	if got := a.sidebarView().Agents.Rect.H; got != height+1 {
+		t.Fatalf("jobs viewport after folding = %d, want %d", got, height+1)
+	}
+	panel = a.sidebarPanel(sidebarplugin.Right)
+	r := render.RightSidebarPanelRect(a.st, panel)
+	a.click(uv.Mouse{X: r.X + 1, Y: r.Y, Button: uv.MouseLeft})
+	if a.panel.collapsed[heads[0].Key] {
+		t.Fatal("second click did not reopen right plugin")
+	}
 }

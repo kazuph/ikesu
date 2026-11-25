@@ -19,7 +19,7 @@ type JobRow struct {
 }
 
 func SidebarViewForInput(in Input) SidebarView {
-	view := SidebarViewFor(in.State, in.Panes, in.SidebarConfig, in.SidebarScroll, in.AgentScroll, in.ServerUI, in.SelectedWorkspace)
+	view := sidebarViewFor(in.State, in.Panes, in.SidebarConfig, in.SidebarScroll, in.AgentScroll, in.ServerUI, in.SelectedWorkspace, in.RightSidebarPanel)
 	if !in.JobsPanel {
 		return view
 	}

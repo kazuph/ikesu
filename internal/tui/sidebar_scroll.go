@@ -5,6 +5,7 @@ import (
 	"github.com/kazuph/ikesu/internal/input"
 	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/render"
+	"github.com/kazuph/ikesu/internal/sidebarplugin"
 )
 
 type sidebarScrollDrag struct {
@@ -13,7 +14,7 @@ type sidebarScrollDrag struct {
 }
 
 func (a *App) sidebarView() render.SidebarView {
-	in := render.Input{ServerUI: a.serverUI, State: a.st, Panes: a.paneSnaps(), SidebarConfig: a.sidebarConfig, SidebarScroll: a.sidebarScroll, AgentScroll: a.agentScroll, Jobs: a.jobRows, JobsPanel: a.jobsPanel, JobScroll: a.jobScroll}
+	in := render.Input{RightSidebarPanel: a.sidebarPanel(sidebarplugin.Right), ServerUI: a.serverUI, State: a.st, Panes: a.paneSnaps(), SidebarConfig: a.sidebarConfig, SidebarScroll: a.sidebarScroll, AgentScroll: a.agentScroll, Jobs: a.jobRows, JobsPanel: a.jobsPanel, JobScroll: a.jobScroll}
 	if a.workspaceNavigate {
 		in.SelectedWorkspace = &a.navigateSelected
 	}

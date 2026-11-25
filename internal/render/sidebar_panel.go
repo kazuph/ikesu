@@ -12,9 +12,8 @@ import (
 	"github.com/rivo/uniseg"
 )
 
-// SidebarPanel is the block at the bottom of the left sidebar, above the
-// sidebar controls: one section per sidebar plugin with its output. Each
-// section folds from its heading like a space section.
+// SidebarPanel is a block at the bottom of a sidebar, with one section
+// per plugin and its output. Click a heading to fold its section.
 type SidebarPanel struct {
 	Sections []SidebarPanelSection
 }
@@ -60,18 +59,42 @@ type SidebarPanelHeading struct {
 
 // SidebarPanelLayout returns where each heading is drawn, for click tests.
 func SidebarPanelLayout(s *model.AppState, p *SidebarPanel) []SidebarPanelHeading {
-	rows := s.SidebarPanelRows
-	if p == nil || rows <= 0 {
+	return SidebarPanelHeadings(p, leftSidebarPanelRect(s))
+}
+
+func leftSidebarPanelRect(s *model.AppState) layout.Rect {
+	r := SidebarFooter(s)
+	r.H = s.SidebarPanelRows
+	r.Y -= r.H
+	return r
+}
+
+func RightSidebarPanelRect(s *model.AppState, p *SidebarPanel) layout.Rect {
+	r := s.RightSidebarArea()
+	if p == nil || r.W <= 1 || s.RightSidebarCompact() {
+		return layout.Rect{}
+	}
+	rows := SidebarPanelRows(p, r.H-2) // the first two rows belong to the tabs
+	return layout.Rect{X: r.X + 1, Y: r.Y + r.H - rows, W: r.W - 1, H: rows}
+}
+
+func RightSidebarListRect(s *model.AppState, p *SidebarPanel) layout.Rect {
+	r := s.RightSidebarArea()
+	rows := RightSidebarPanelRect(s, p).H
+	return layout.Rect{X: r.X + 1, Y: r.Y + 2, W: max(0, r.W-1), H: max(0, r.H-2-rows)}
+}
+
+func SidebarPanelHeadings(p *SidebarPanel, r layout.Rect) []SidebarPanelHeading {
+	if p == nil || r.H <= 0 {
 		return nil
 	}
-	fr := SidebarFooter(s)
-	y, end := fr.Y-rows, fr.Y
+	y, end := r.Y, r.Y+r.H
 	var out []SidebarPanelHeading
 	for _, sec := range p.Sections {
 		if y >= end {
 			break
 		}
-		out = append(out, SidebarPanelHeading{Key: sec.Key, Rect: layout.Rect{X: fr.X, Y: y, W: fr.W, H: 1}})
+		out = append(out, SidebarPanelHeading{Key: sec.Key, Rect: layout.Rect{X: r.X, Y: y, W: r.W, H: 1}})
 		y++
 		if !sec.Collapsed {
 			y += len(sec.Lines)
@@ -81,15 +104,16 @@ func SidebarPanelLayout(s *model.AppState, p *SidebarPanel) []SidebarPanelHeadin
 }
 
 func drawSidebarPanel(f *Frame, s *model.AppState, in Input) {
-	p := in.SidebarPanel
-	rows := s.SidebarPanelRows
-	if p == nil || rows <= 0 {
+	drawSidebarPanelAt(f, in.SidebarPanel, leftSidebarPanelRect(s))
+}
+
+func drawSidebarPanelAt(f *Frame, p *SidebarPanel, r layout.Rect) {
+	if p == nil || r.H <= 0 {
 		return
 	}
-	fr := SidebarFooter(s)
-	x, w := fr.X, fr.W
-	y, end := fr.Y-rows, fr.Y
-	f.Fill(x, y, w, rows, " ", uv.Style{})
+	x, w := r.X, r.W
+	y, end := r.Y, r.Y+r.H
+	f.Fill(x, y, w, r.H, " ", uv.Style{})
 	for _, sec := range p.Sections {
 		if y >= end {
 			return
@@ -119,12 +143,14 @@ func drawANSIText(f *Frame, x, y, limit int, text string, base uv.Style) {
 	style := base
 	for i := 0; i < len(text) && x < limit; {
 		if text[i] == 0x1b {
-			end := strings.IndexByte(text[i:], 'm')
-			if end < 0 {
-				break
+			seq, _, n, _ := ansi.DecodeSequence(text[i:], ansi.NormalState, nil)
+			if len(seq) >= 3 && strings.HasPrefix(seq, "\x1b[") && seq[len(seq)-1] == 'm' {
+				params := seq[2 : len(seq)-1]
+				if !strings.ContainsFunc(params, func(r rune) bool { return (r < '0' || r > '9') && r != ';' }) {
+					style = applySGR(style, base, params)
+				}
 			}
-			style = applySGR(style, base, text[i+2:i+end])
-			i += end + 1
+			i += n
 			continue
 		}
 		// 書記素クラスタ（結合文字・ZWJ の絵文字）を1つのセルにまとめて描く。

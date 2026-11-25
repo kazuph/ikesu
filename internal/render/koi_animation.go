@@ -14,6 +14,17 @@ type KoiAnimation struct {
 	motion      map[string]koiMotion
 }
 
+// ApplyFrame preserves the last Kitty animation pose when repainting UI cells.
+func (a *KoiAnimation) ApplyFrame(in *Input, previous Input, machines *MachineSidebar, now time.Time, expiry time.Duration) {
+	a.Apply(in, machines, now, expiry)
+	if previous.KoiKitty && in.KoiKitty && (in.KoiRipple == nil || previous.KoiRipple != nil && in.KoiRipple.Start == previous.KoiRipple.Start) {
+		in.KoiTime = previous.KoiTime
+		if in.KoiRipple != nil {
+			in.KoiRipple.Time = in.KoiTime
+		}
+	}
+}
+
 func (a *KoiAnimation) Apply(in *Input, machines *MachineSidebar, now time.Time, expiry time.Duration) {
 	if a.epoch.IsZero() {
 		a.epoch = now
@@ -24,6 +35,10 @@ func (a *KoiAnimation) Apply(in *Input, machines *MachineSidebar, now time.Time,
 	}
 	in.KoiMotion = a.motion
 	in.KoiRipple = nil
+	if in.JobsPanel {
+		a.ripple = nil
+		a.freshRipple = false
+	}
 	if a.ripple != nil {
 		if a.freshRipple {
 			a.ripple.Start = in.KoiTime

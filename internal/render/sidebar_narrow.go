@@ -17,6 +17,9 @@ func sidebarReferenceInput(in Input) Input {
 		s.SidebarVisible, s.SidebarSize = true, model.SidebarMinDefault
 	}
 	if s.RightSidebarArea().W > 0 && s.RightSidebarArea().W < model.SidebarMinDefault {
+		if s.RightSidebarCompact() {
+			in.RightSidebarPanel = nil
+		}
 		s.RightSidebarMode, s.RightSidebarSize = "", model.SidebarMinDefault
 	}
 	s.Cols = max(s.Cols, s.ExpandedSidebarWidth()+s.ExpandedRightSidebarWidth()+model.MinimumPaneAreaWidth)

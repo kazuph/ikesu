@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"fmt"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/kazuph/ikesu/internal/config"
 	"github.com/kazuph/ikesu/internal/input"
@@ -11,6 +12,8 @@ import (
 	"github.com/kazuph/ikesu/internal/tui"
 	"os"
 	"reflect"
+	"regexp"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -255,5 +258,107 @@ func TestKoiOctantTickSchedulesFutureDeadline(t *testing.T) {
 	}
 	if !m.koiNext.After(now) {
 		t.Fatal("expired koi deadline starves reconnect timers", m.koiNext, now)
+	}
+}
+
+func TestJobsSnapshotPaintDoesNotReplaceMiniKoi(t *testing.T) {
+	for _, multi := range []bool{false, true} {
+		t.Run(fmt.Sprintf("multi=%t", multi), func(t *testing.T) {
+			enabled := true
+			var cfg config.Config
+			cfg.Theme.Custom = map[string]string{"panel_bg": "transparent"}
+			cfg.UI.Koi, cfg.UI.TransparentSidebarCards = &enabled, true
+			snapshot := func() *render.Input {
+				state := model.New(t.TempDir(), 160, 45)
+				state.SidebarVisible, state.SidebarSize, state.RightSidebarSize = true, 26, 30
+				return &render.Input{State: state, SidebarConfig: cfg, ServerUI: true,
+					Panes: map[int]*render.PaneSnap{1: {Agent: "codex", Status: render.StatusGlyph{Key: "working"}}},
+					Jobs:  []render.JobRow{{Label: "timer", Status: "running", Elapsed: "1s"}}}
+			}
+			file, err := os.CreateTemp(t.TempDir(), "output")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer file.Close()
+			m := &machineClient{active: "local", order: []string{"local"}, out: file, koiKitty: true,
+				size: tui.Winsize{Cols: 160, Rows: 45, Xpixel: 1280, Ypixel: 720}, settings: &localSettings{},
+				endpoints: map[string]*managedEndpoint{"local": {snapshot: snapshot(), profile: machine.Profile{ID: "local", Enabled: true}}}}
+			if multi {
+				m.order = append(m.order, "remote")
+				m.endpoints["remote"] = &managedEndpoint{snapshot: snapshot(), profile: machine.Profile{ID: "remote", Enabled: true}}
+			}
+			if err := m.paint(); err != nil {
+				t.Fatal(err)
+			}
+			now := time.Now()
+			for i := 1; i <= 3; i++ {
+				if err := m.paintKoi(now.Add(time.Duration(i) * render.KoiInterval)); err != nil {
+					t.Fatal(err)
+				}
+				m.outputFence.Accept([]byte("\x1b[0n"))
+			}
+			if len(m.koiScene.Fish) == 0 || len(m.koiScene.Mini) == 0 {
+				t.Fatal("fixture must include both kinds of koi")
+			}
+			updatedSnapshot := func(id, elapsed string, jobs bool) {
+				t.Helper()
+				next := *m.endpoints[id].snapshot
+				next.JobsPanel = jobs
+				next.Jobs = append([]render.JobRow(nil), next.Jobs...)
+				next.Jobs[0].Elapsed = elapsed
+				if _, done := m.event(endpointEvent{id: id, message: msg{Type: "snapshot", snapshot: &next}}); done {
+					t.Fatal("client ended on snapshot")
+				}
+			}
+			offset := func() int64 {
+				t.Helper()
+				n, err := file.Seek(0, 1)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return n
+			}
+			since := func(at int64) []byte {
+				t.Helper()
+				data, err := os.ReadFile(file.Name())
+				if err != nil {
+					t.Fatal(err)
+				}
+				return data[at:]
+			}
+			at := offset()
+			updatedSnapshot("local", "1s", true)
+			if data := since(at); !bytes.Contains(data, []byte("a=d,")) || bytes.Contains(data, []byte("a=p,")) {
+				t.Fatal("opening Jobs did not delete just the right koi")
+			}
+			at = offset()
+			updatedSnapshot("local", "2s", true)
+			if multi {
+				updatedSnapshot("remote", "3s", false)
+				updatedSnapshot("remote", "4s", true)
+			}
+			if data := since(at); bytes.Contains(data, []byte("\x1b_G")) {
+				t.Fatal("elapsed-time snapshot changed graphics")
+			}
+			if multi {
+				m.active = "remote"
+				if err := m.paint(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if !m.koiInput.JobsPanel || len(m.koiScene.Fish) != 0 {
+				t.Fatal("Jobs view has a right koi after repaint")
+			}
+			at = offset()
+			if err := m.paintKoi(now.Add(5 * render.KoiInterval)); err != nil {
+				t.Fatal(err)
+			}
+			for _, match := range regexp.MustCompile("\x1b\\[[0-9]+;([0-9]+)H\x1b_Ga=p,").FindAllSubmatch(since(at), -1) {
+				x, _ := strconv.Atoi(string(match[1]))
+				if x > m.koiScene.Pond.X {
+					t.Fatal("decoration tick restored a right koi in Jobs")
+				}
+			}
+		})
 	}
 }

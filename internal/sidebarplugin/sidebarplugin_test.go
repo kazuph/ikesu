@@ -50,7 +50,7 @@ func TestRunnerRunsExecutableScripts(t *testing.T) {
 	write("off.1h.sh", "#!/bin/sh\necho never\n", 0o644)
 	write("fail.1h.sh", "#!/bin/sh\nexit 3\n", 0o755)
 	changed := make(chan struct{}, 16)
-	r := &Runner{Dir: dir, OnChange: func() { changed <- struct{}{} }, Columns: func() int { return 24 }}
+	r := &Runner{Dir: dir, OnChange: func() { changed <- struct{}{} }, Columns: func(Position) int { return 24 }}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go r.Run(ctx)
@@ -134,5 +134,105 @@ func TestCappedBufferKeepsOnlyTheLimit(t *testing.T) {
 	}
 	if c.buf.Len() != maxOutput {
 		t.Fatalf("kept %d bytes, want %d", c.buf.Len(), maxOutput)
+	}
+}
+
+func TestRunnerSidebarMetadataAndWidths(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	for _, side := range []Position{Left, Right} {
+		if err := os.Mkdir(filepath.Join(dir, string(side)), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write := func(name, metadata string) {
+		t.Helper()
+		body := "#!/bin/sh\n" + metadata + "\nprintf '%s\\n' \"$IKESU_SIDEBAR_COLUMNS\"\n"
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("usage.30s.sh", "")
+	write("left/status.30s.sh", "# IKESU.Position = RiGhT  \n# ikesu.title = 稼働状況 \n# ikesu.order = -4")
+	write("right/status.30s.sh", "# ikesu.position = invalid\n# ikesu.order = 2")
+	write("right/alpha.30s.sh", "# ikesu.position = LEFT\n# ikesu.order = 2")
+	write("right/beta.30s.sh", "# ikesu.order = invalid")
+	widths := map[Position]int{Left: 22, Right: 32}
+	r := &Runner{Dir: dir, Columns: func(side Position) int { return widths[side] }}
+	runDue := func(now time.Time) {
+		t.Helper()
+		for _, file := range r.due(now) {
+			r.runOne(context.Background(), file)
+		}
+	}
+	now := time.Now()
+	r.scan(now)
+	runDue(now)
+	items := r.Items()
+	want := []struct {
+		file, title string
+		side        Position
+		order       int
+	}{
+		{"left/status.30s.sh", "稼働状況", Right, -4},
+		{"right/beta.30s.sh", "beta", Right, 0},
+		{"usage.30s.sh", "usage", Left, 0},
+		{"right/alpha.30s.sh", "alpha", Left, 2},
+		{"right/status.30s.sh", "status", Right, 2},
+	}
+	if len(items) != len(want) {
+		t.Fatalf("plugins = %+v", items)
+	}
+	for i, w := range want {
+		got := items[i]
+		if got.File != w.file || got.Name != w.title || got.Position != w.side || got.Order != w.order ||
+			!got.Ran || got.Err != "" || len(got.Lines) != 1 || got.Lines[0] != strconv.Itoa(widths[w.side]) {
+			t.Errorf("plugin %d = %+v, want %+v and width %d", i, got, w, widths[w.side])
+		}
+	}
+	write("left/status.30s.sh", "# ikesu.title = A different title\n# ikesu.order = -9")
+	r.scan(now.Add(time.Second))
+	runDue(now.Add(time.Second))
+	if got := r.Items()[0]; got.Name != "A different title" || got.Position != Left || got.Order != -9 || len(got.Lines) != 1 || got.Lines[0] != "22" {
+		t.Fatalf("updated metadata/columns = %+v", got)
+	}
+	widths[Right] = 38
+	r.RerunAll()
+	runDue(time.Now())
+	for _, got := range r.Items() {
+		if got.Err != "" || len(got.Lines) != 1 || got.Lines[0] != strconv.Itoa(widths[got.Position]) {
+			t.Errorf("width rerun = %+v", got)
+		}
+	}
+}
+
+func TestRunnerBoundsSidebarMetadata(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(exe, filepath.Join(dir, "binary.30s")); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"large.30s.sh": "#!/bin/sh\n# ikesu.title = " + strings.Repeat("x", metadataBytes*2) + "\n# ikesu.position = right\n",
+		"lines.30s.sh": "#!/bin/sh\n" + strings.Repeat("# line\n", 18) + "# ikesu.title = accepted\n# ikesu.position = right\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := &Runner{Dir: dir}
+	r.scan(time.Now())
+	items := r.Items()
+	if len(items) != 3 || items[0].Name != "binary" || items[1].Name != "large" || items[2].Name != "accepted" {
+		t.Fatalf("unexpected scan results: %.400v", items)
+	}
+	for _, item := range items {
+		if item.Position != Left {
+			t.Errorf("read metadata past scan limit or in binary: %s", item.File)
+		}
 	}
 }

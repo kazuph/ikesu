@@ -48,7 +48,7 @@ func drawKoiRippleGraphics(f *Frame, scene KoiScene, in Input) {
 		return
 	}
 	img := koiRippleCached(koiRingGeometry(scene, in.KoiCellW, in.KoiCellH))
-	g := Graphic{Koi: true, Pane: -4, Placement: kitty.Placement{Image: img, X: fish.Rect.X, Y: fish.Rect.Y, Cols: fish.Rect.W, Rows: fish.Rect.H, Z: 400}}
+	g := Graphic{Koi: true, Pane: koiRipplePane, Placement: kitty.Placement{Image: img, X: fish.Rect.X, Y: fish.Rect.Y, Cols: fish.Rect.W, Rows: fish.Rect.H, Z: 400}}
 	visible := image.Rect(fish.Rect.X, fish.Rect.Y, fish.Rect.X+fish.Rect.W, fish.Rect.Y+fish.Rect.H).Intersect(image.Rect(scene.Pond.X, scene.Pond.Y, scene.Pond.X+scene.Pond.W, scene.Pond.Y+scene.Pond.H))
 	if !visible.Empty() {
 		f.Graphics = append(f.Graphics, cropGraphic(g, visible))

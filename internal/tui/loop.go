@@ -285,6 +285,7 @@ func (a *App) onTick() {
 	a.popupSelectionAutoScroll()
 	a.selectionAutoScroll(now)
 	a.refreshJobDots(now)
+	a.rerunSidebarPlugins(now)
 	a.detectChanged(now)
 }
 

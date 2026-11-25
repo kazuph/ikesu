@@ -71,14 +71,10 @@ func (m *MachineSidebar) rightRows(active Input) []machineRightRow {
 	return rows
 }
 func (m *MachineSidebar) drawRight(f *Frame, active Input) {
-	area := active.State.RightSidebarArea()
-	if area.W == 0 {
+	area := RightSidebarListRect(active.State, active.RightSidebarPanel)
+	if active.State.RightSidebarArea().W == 0 {
 		return
 	}
-	area.X++
-	area.W--
-	area.Y = 2
-	area.H = max(0, area.H-2)
 	rows := m.rightRows(active)
 	m.RightMaxScroll = max(0, len(rows)-area.H)
 	m.RightScroll = max(0, min(m.RightScroll, m.RightMaxScroll))

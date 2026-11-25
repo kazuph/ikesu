@@ -12,6 +12,7 @@ import (
 type Frame struct {
 	KoiScene          KoiScene `json:"-"`
 	KoiActive         bool     `json:"-"`
+	hideKoiPond       bool
 	Graphics          []Graphic
 	GraphicsSources   []Graphic `json:"-"`
 	Placeholders      []Placeholder

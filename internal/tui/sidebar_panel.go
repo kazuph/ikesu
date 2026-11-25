@@ -7,22 +7,23 @@ import (
 	"time"
 
 	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/model"
 	"github.com/kazuph/ikesu/internal/render"
 	"github.com/kazuph/ikesu/internal/sidebarplugin"
 )
 
 // sidebarPanelState holds the sidebar plugins' outputs shown at the bottom of
-// the left sidebar, and which plugin sections are folded. It is shared by
+// both sidebars, and which plugin sections are folded. It is shared by
 // every viewer of the App.
 type sidebarPanelState struct {
-	done      <-chan struct{}
-	cancel    context.CancelFunc
-	plugins   []sidebarplugin.Item
-	collapsed map[string]bool // by plugin file name
-	columns   atomic.Int64    // the sidebar's content width, passed to scripts
-	runner    *sidebarplugin.Runner
-	rerunAt   time.Time // the last re-run for a width change
-	rerunDue  bool      // a width change waits for widthRerunGap to pass
+	done                      <-chan struct{}
+	cancel                    context.CancelFunc
+	plugins                   []sidebarplugin.Item
+	collapsed                 map[string]bool // by path relative to the plugin directory
+	leftColumns, rightColumns atomic.Int64
+	runner                    *sidebarplugin.Runner
+	rerunAt                   time.Time // the last re-run for a width change
+	rerunDue                  bool      // a width change waits for widthRerunGap to pass
 }
 
 // widthRerunGap keeps viewers of different widths (a PC and the phone) from
@@ -41,7 +42,7 @@ func (a *App) startSidebarPanel(done <-chan struct{}) {
 		return
 	}
 	// 最初の実行の前に幅を決める（サイドバーを閉じて起動しても、開いたときの幅を渡す）。
-	panel.columns.Store(int64(max(0, a.st.ExpandedSidebarWidth()-2)))
+	panel.updateColumns(a.st)
 	ctx, cancel := context.WithCancel(context.Background())
 	panel.cancel = cancel
 	go func() {
@@ -51,7 +52,7 @@ func (a *App) startSidebarPanel(done <-chan struct{}) {
 		case <-ctx.Done():
 		}
 	}()
-	runner := &sidebarplugin.Runner{Dir: sidebarplugin.Dir(config.Path()), Columns: func() int { return int(panel.columns.Load()) }}
+	runner := &sidebarplugin.Runner{Dir: sidebarplugin.Dir(config.Path()), Columns: panel.columns}
 	// 結果は画面に反映する時点で読む。通知が前後しても、古い結果で新しい結果を上書きしない。
 	runner.OnChange = func() {
 		a.Do(func() {
@@ -85,13 +86,19 @@ func (a *App) updateSidebarPanel() {
 	}
 }
 
-// sidebarPanel builds the render input for the panel; nil without plugins.
-func (a *App) sidebarPanel() *render.SidebarPanel {
+// sidebarPanel builds the render input for one side.
+func (a *App) sidebarPanel(position sidebarplugin.Position) *render.SidebarPanel {
 	if a.panel == nil || len(a.panel.plugins) == 0 {
+		return nil
+	}
+	if position == sidebarplugin.Right && a.viewerContext != nil && !a.viewerContext.rightSidebarPlugins {
 		return nil
 	}
 	p := &render.SidebarPanel{}
 	for _, it := range a.panel.plugins {
+		if (it.Position == sidebarplugin.Right) != (position == sidebarplugin.Right) {
+			continue
+		}
 		sec := render.SidebarPanelSection{Key: it.File, Title: it.Name, Collapsed: a.panel.collapsed[it.File]}
 		switch {
 		case !it.Ran:
@@ -107,24 +114,40 @@ func (a *App) sidebarPanel() *render.SidebarPanel {
 		}
 		p.Sections = append(p.Sections, sec)
 	}
+	if len(p.Sections) == 0 {
+		return nil
+	}
 	return p
+}
+
+func (p *sidebarPanelState) columns(position sidebarplugin.Position) int {
+	if position == sidebarplugin.Right {
+		return int(p.rightColumns.Load())
+	}
+	return int(p.leftColumns.Load())
+}
+
+func (p *sidebarPanelState) updateColumns(s *model.AppState) bool {
+	left, right := s.ExpandedSidebarWidth(), s.ExpandedRightSidebarWidth()
+	if width := s.SidebarArea().W; s.SidebarVisible && width > 1 {
+		left = width
+	}
+	if width := s.RightSidebarArea().W; width > 1 && !s.RightSidebarCompact() {
+		right = width
+	}
+	l, r := int64(max(0, left-2)), int64(max(0, right-2))
+	leftChanged := p.leftColumns.Swap(l) != l
+	rightChanged := p.rightColumns.Swap(r) != r
+	return leftChanged || rightChanged
 }
 
 // layoutSidebarPanel decides the panel's rows for this frame.
 func (a *App) layoutSidebarPanel() *render.SidebarPanel {
-	p := a.sidebarPanel()
+	p := a.sidebarPanel(sidebarplugin.Left)
 	a.st.SidebarPanelRows = 0
-	if a.panel != nil {
-		// 幅はサイドバーを開いたときの幅。変わったら、新しい幅で全部のプラグインを実行し直す。
-		if cols := int64(max(0, a.st.ExpandedSidebarWidth()-2)); a.panel.columns.Swap(cols) != cols {
-			a.panel.rerunDue = true
-		}
-		// 30秒より短い間に幅が続けて変わっても、最後の幅で必ず1回は実行し直す。
-		if a.panel.rerunDue && a.panel.runner != nil && time.Since(a.panel.rerunAt) >= widthRerunGap {
-			a.panel.rerunDue = false
-			a.panel.rerunAt = time.Now()
-			a.panel.runner.RerunAll()
-		}
+	if a.panel != nil && a.panel.updateColumns(a.st) {
+		a.panel.rerunDue = true
+		a.rerunSidebarPlugins(time.Now())
 	}
 	if p == nil || !a.st.SidebarVisible {
 		return p
@@ -134,9 +157,28 @@ func (a *App) layoutSidebarPanel() *render.SidebarPanel {
 	return p
 }
 
+// A second width change inside the gap waits for a tick, even when no
+// further changes mark the view dirty.
+func (a *App) rerunSidebarPlugins(now time.Time) {
+	p := a.panel
+	if p == nil || !p.rerunDue || p.runner == nil || now.Sub(p.rerunAt) < widthRerunGap {
+		return
+	}
+	p.rerunDue = false
+	p.rerunAt = now
+	p.runner.RerunAll()
+}
+
 // sidebarPanelClick folds or opens a plugin's section when its heading is clicked.
 func (a *App) sidebarPanelClick(x, y int) bool {
-	for _, h := range render.SidebarPanelLayout(a.st, a.sidebarPanel()) {
+	var headings []render.SidebarPanelHeading
+	if pointIn(x, y, a.st.RightSidebarArea()) {
+		panel := a.sidebarPanel(sidebarplugin.Right)
+		headings = render.SidebarPanelHeadings(panel, render.RightSidebarPanelRect(a.st, panel))
+	} else {
+		headings = render.SidebarPanelLayout(a.st, a.sidebarPanel(sidebarplugin.Left))
+	}
+	for _, h := range headings {
 		if !pointIn(x, y, h.Rect) || strings.TrimSpace(h.Key) == "" {
 			continue
 		}

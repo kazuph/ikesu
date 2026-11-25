@@ -68,7 +68,8 @@ func (m *machineClient) rightSidebarBytes(hit render.MachineHit, event input.Eve
 		return nil
 	}
 	var rows []render.SidebarRow
-	offset, height, y := in.AgentScroll, max(0, area.H-2), 2
+	list := render.RightSidebarListRect(in.State, in.RightSidebarPanel)
+	offset, height, y := in.AgentScroll, list.H, list.Y
 	legacy := in.State.RightSidebarCompact() && !endpoint.Allows(e.connection.writer.available, 1, e.connection.writer.methods, "sidebar_continuous")
 	jobs := hit.Row.Kind == render.RowJob
 	if !legacy && jobs != in.JobsPanel && !jobs {

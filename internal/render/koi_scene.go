@@ -92,6 +92,7 @@ func KoiSceneFor(f *Frame, in Input, machines *MachineSidebar) KoiScene {
 		}
 	}
 	a := s.RightSidebarArea()
+	a.H -= RightSidebarPanelRect(s, in.RightSidebarPanel).H
 	scene.ClickPond = layout.Rect{X: a.X + 1, Y: last, W: max(0, a.W-1), H: max(0, a.Y+a.H-last)}
 	scene.Pond = layout.Rect{X: a.X + 1, Y: a.Y, W: max(0, a.W-1), H: a.H}
 	agents := KoiAgentsFor(in, machines)
@@ -103,17 +104,11 @@ func KoiSceneFor(f *Frame, in Input, machines *MachineSidebar) KoiScene {
 		n = 0
 	}
 	scene.Agents, scene.Capacity = agents, n
-	if !in.JobsPanel && a.W > 1 {
-		scene.Fish = koiResidents(agents, n, scene.Pond, in)
-	}
-	sort.SliceStable(scene.Fish, func(i, j int) bool { return scene.Fish[i].Depth > scene.Fish[j].Depth })
-	scene.Ripple = in.KoiRipple
+	populateKoiPond(&scene, in)
 	for _, fish := range scene.Fish {
 		scene.Active = scene.Active || fish.Swimming || fish.Agent.State == "blocked" || fish.Agent.Glow
 	}
-	if in.KoiRipple != nil {
-		scene.Active = true
-	}
+	scene.Active = scene.Active || scene.Ripple != nil
 	left := s.SidebarArea()
 	if left.W > 1 && !in.Dragging && in.Copied == "" {
 		band := func(src Input, key string, row SidebarRow, header bool, y int) {
@@ -216,6 +211,7 @@ func itoa(n int) string { // IDs only, not user-facing labels.
 }
 
 func drawKoiDecoration(f *Frame, in Input, machines *MachineSidebar) {
+	f.hideKoiPond = in.JobsPanel
 	scene := KoiSceneFor(f, in, machines)
 	f.KoiScene = scene
 	f.KoiActive = scene.Active || len(scene.Mini) > 0

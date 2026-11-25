@@ -5,6 +5,15 @@ import (
 	"time"
 )
 
+// Leave the deadline in place when the next full frame will advance the koi.
+func (a *App) onKoiDeadline(now time.Time) {
+	if a.dirty || !a.koiInput.KoiKitty {
+		a.dirty = true
+		return
+	}
+	a.paintKoi(now)
+}
+
 // Standalone owns the same local decoration clock as a connected presenter.
 // The shared server and viewers never schedule this deadline.
 func (a *App) paintKoi(now time.Time) {
