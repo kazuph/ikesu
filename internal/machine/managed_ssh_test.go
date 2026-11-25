@@ -1,13 +1,15 @@
 package machine
 
 import (
-	"github.com/kazuph/ikesu/internal/config"
-	"github.com/kazuph/ikesu/internal/teststate"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/kazuph/ikesu/internal/config"
+	"github.com/kazuph/ikesu/internal/teststate"
 )
 
 func TestManagedSSHPrivateConfigPreservesUserKeepaliveAndCleansUp(t *testing.T) {
@@ -27,6 +29,9 @@ func TestManagedSSHPrivateConfigPreservesUserKeepaliveAndCleansUp(t *testing.T) 
 		t.Fatal(err)
 	}
 	defer m.Close()
+	if !slices.Contains(m.Options, "ControlPersist=30") {
+		t.Fatalf("unexpected SSH options: %q", m.Options)
+	}
 	for _, tc := range []struct{ target, want string }{{"example", "serveraliveinterval 91\n"}, {"other.invalid", "serveraliveinterval 15\n"}} {
 		out, err := exec.Command("/usr/bin/ssh", m.Args([]string{"-G", tc.target})...).Output()
 		if err != nil {

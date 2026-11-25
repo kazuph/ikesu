@@ -3,12 +3,16 @@ package machine
 import (
 	"context"
 	"fmt"
-	"github.com/kazuph/ikesu/internal/childenv"
-	"github.com/kazuph/ikesu/internal/config"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/kazuph/ikesu/internal/childenv"
+	"github.com/kazuph/ikesu/internal/config"
 )
+
+// Bound idle master lifetime even when exec or forced termination skips Close.
+const controlPersistSeconds = 30
 
 // ManagedSSH owns a private config and control socket for one attachment.
 // Include precedes fallbacks, preserving OpenSSH's first-value-wins rule.
@@ -37,9 +41,10 @@ func PrepareSSH(c config.Config, target string) (*ManagedSSH, error) {
 		os.RemoveAll(m.Dir)
 		return nil, err
 	}
-	m.Options = []string{"-F", path, "-S", filepath.Join(m.Dir, "ctl"), "-o", "ControlMaster=auto", "-o", "ControlPersist=yes"}
+	m.Options = []string{"-F", path, "-S", filepath.Join(m.Dir, "ctl"), "-o", "ControlMaster=auto", "-o", fmt.Sprintf("ControlPersist=%d", controlPersistSeconds)}
 	return m, nil
 }
+
 func (m *ManagedSSH) Args(args []string) []string {
 	return append(append([]string{}, m.Options...), args...)
 }

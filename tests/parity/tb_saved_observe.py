@@ -60,7 +60,7 @@ out = a.out.resolve()
 out.mkdir(parents=True, exist_ok=True)
 ssh_config = out/'ssh-config'
 control_path = '/tmp/tb-ssh-'+uuid.uuid4().hex[:12]
-ssh_config.write_text('Host *\n  ControlMaster auto\n  ControlPersist yes\n  ControlPath '+control_path+
+ssh_config.write_text('Host *\n  ControlMaster auto\n  ControlPersist 30\n  ControlPath '+control_path+
                       '\n  ConnectionAttempts 3\nInclude "'+str(Path.home()/'.ssh/config')+'"\n')
 ssh_args = ['/usr/bin/ssh', '-F', str(ssh_config)]
 observer_source = Path(__file__).read_bytes()
