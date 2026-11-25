@@ -95,6 +95,8 @@ func TestDangerWordLineKeepsInlineRequestReasonOnObservedClaudeBootstraps(t *tes
 		{"legacy", `{ shopt -u extglob || setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL; }`},
 		{"builtin_no_equals", `{ \builtin shopt -u extglob || \builtin setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL NO_BRACE_CCL NO_MAGIC_EQUAL_SUBST; }`},
 		{"builtin_with_equals", `{ \builtin shopt -u extglob || \builtin setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL NO_BRACE_CCL NO_MAGIC_EQUAL_SUBST NO_EQUALS; }`},
+		// Observed 2026-11-25: Claude Code added NO_RC_QUOTES before NO_EQUALS.
+		{"builtin_with_rc_quotes", `{ \builtin shopt -u extglob || \builtin setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL NO_BRACE_CCL NO_MAGIC_EQUAL_SUBST NO_RC_QUOTES NO_EQUALS; }`},
 	}
 	bashCheck := `{ case "${BASH_VERSINFO-}" in '2'|'3') \builtin printf '%s\n' '__CLAUDE_CODE_DID_NOT_RUN_BASH_TOO_OLD='"${BASH_VERSION-}" >&2; \builtin exit 126; \exit 126;; esac; } && `
 	for _, opt := range optBlocks {
