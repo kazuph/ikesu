@@ -22,6 +22,15 @@ function b64urlDecode(s) {
   }
 }
 
+function b64urlEncode(bytes) {
+  return btoa(String.fromCharCode(...bytes)).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+function canonical(segment, length) {
+  const bytes = b64urlDecode(segment);
+  return bytes?.length === length && b64urlEncode(bytes) === segment ? bytes : null;
+}
+
 function fromHex(h) {
   const out = new Uint8Array(h.length / 2);
   for (let i = 0; i < out.length; i++) out[i] = parseInt(h.slice(i * 2, i * 2 + 2), 16);
@@ -77,23 +86,23 @@ export default {
     if (want === undefined || seg.length !== 2 + want) return bad(404, "not found");
     if (request.method !== "GET") return bad(405, "method not allowed");
 
-    const room = b64urlDecode(seg[2]);
-    if (!room || room.length !== 32) return bad(400, "bad room");
+    const room = canonical(seg[2], 32);
+    if (!room) return bad(400, "bad room");
     let label, rest, role, extra;
     if (kind === "bridge") {
       label = "bridge";
       rest = new Uint8Array(0);
       role = 0;
     } else if (kind === "app") {
-      const dev = b64urlDecode(seg[3]);
-      if (!dev || dev.length !== 16) return bad(400, "bad device");
+      const dev = canonical(seg[3], 16);
+      if (!dev) return bad(400, "bad device");
       label = "app";
       rest = dev;
       role = 1;
       extra = dev;
     } else {
-      const pid = b64urlDecode(seg[3]);
-      if (!pid || pid.length !== 16) return bad(400, "bad pairing");
+      const pid = canonical(seg[3], 16);
+      if (!pid) return bad(400, "bad pairing");
       if (!/^[0-9]{1,15}$/.test(seg[4])) return bad(400, "bad exp");
       const exp = Number(seg[4]);
       label = "pair";

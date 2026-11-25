@@ -1,4 +1,5 @@
-import { SELF } from "cloudflare:test";
+import { SELF, evictDurableObject, runInDurableObject } from "cloudflare:test";
+import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 
 const enc = new TextEncoder();
@@ -49,11 +50,45 @@ async function connect(path, tagHex) {
 }
 
 const newRoom = () => rnd(32);
+const roomStub = (room) => env.ROOM.get(env.ROOM.idFromName(b64u(room)));
 async function bridgeOf(room) {
   return connect(`/v1/bridge/${b64u(room)}`, await tag(enc.encode("bridge"), room));
 }
 async function appOf(room, device = rnd(16)) {
   return connect(`/v1/app/${b64u(room)}/${b64u(device)}`, await tag(enc.encode("app"), room, device));
+}
+
+async function pairOf(room) {
+  const pid = rnd(16);
+  const exp = Math.floor(Date.now() / 1000) + 300;
+  return connect(`/v1/pair/${b64u(room)}/${b64u(pid)}/${exp}`, await tag(enc.encode("pair"), room, pid, u64(exp)));
+}
+
+const allowFrame = (...ids) => cat([0x04], new Uint8Array(16), ...ids);
+const marker = Uint8Array.of(0x55);
+
+// 通常の DATA が届くまで待ち、その前に送った枠の処理と順序を確かめる。
+async function sendBeforeData(bridge, frame, recipient, id) {
+  bridge.ws.send(frame);
+  bridge.ws.send(cat([0x02], id, marker));
+  expect(await recipient.next()).toEqual(marker);
+}
+
+async function publishAllow(room, bridge, frame) {
+  const pair = await pairOf(room);
+  const id = (await bridge.next()).slice(1, 17);
+  await sendBeforeData(bridge, frame, pair, id);
+  pair.ws.close(1000, "done");
+  expect(await bridge.next()).toEqual(cat([0x03], id));
+}
+
+function alternateLastCharacter(bytes) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  const canonical = b64u(bytes);
+  const alternate = canonical.slice(0, -1) + alphabet[alphabet.indexOf(canonical.at(-1)) + 1];
+  const base64 = alternate.replaceAll("-", "+").replaceAll("_", "/").padEnd(Math.ceil(alternate.length / 4) * 4, "=");
+  expect(Uint8Array.from(atob(base64), character => character.charCodeAt(0))).toEqual(bytes);
+  return alternate;
 }
 
 describe("接続", () => {
@@ -248,5 +283,187 @@ describe("上限と切断", () => {
     a2.ws.send(Uint8Array.of(1));
     expect((await b2.next())[0]).toBe(0x02);
     expect(b2.closed).toBe(null);
+  });
+});
+
+describe("端末の許可一覧", () => {
+  it("R1 room は bridge・app・pair の全経路で正規表記だけを通す", async () => {
+    const room = newRoom();
+    const device = rnd(16);
+    const pid = rnd(16);
+    const exp = Math.floor(Date.now() / 1000) + 300;
+    const alternate = alternateLastCharacter(room);
+    const routes = [
+      ["bridge", "", []],
+      ["app", "/" + b64u(device), [device]],
+      ["pair", "/" + b64u(pid) + "/" + exp, [pid, u64(exp)]],
+    ];
+    for (const [role, suffix, parts] of routes) {
+      const validTag = await tag(enc.encode(role), room, ...parts);
+      const rejected = await connect(`/v1/${role}/${alternate}${suffix}`, validTag);
+      expect(rejected.res.status).toBe(400);
+      expect(await rejected.res.text()).toBe("bad room");
+      expect((await connect(`/v1/${role}/${b64u(room)}${suffix}`, validTag)).res.status).toBe(101);
+    }
+  });
+
+  it("R2 device と pairing の非正規表記を 400 で断る", async () => {
+    const room = newRoom();
+    const device = rnd(16);
+    const pid = rnd(16);
+    const exp = Math.floor(Date.now() / 1000) + 300;
+    const app = await connect(`/v1/app/${b64u(room)}/${alternateLastCharacter(device)}`, await tag(enc.encode("app"), room, device));
+    expect(app.res.status).toBe(400);
+    expect(await app.res.text()).toBe("bad device");
+    const pair = await connect(`/v1/pair/${b64u(room)}/${alternateLastCharacter(pid)}/${exp}`, await tag(enc.encode("pair"), room, pid, u64(exp)));
+    expect(pair.res.status).toBe(400);
+    expect(await pair.res.text()).toBe("bad pairing");
+  });
+
+  it("R3 一覧を受けていない部屋は異なる端末からの app を通す", async () => {
+    const room = newRoom();
+    await bridgeOf(room);
+    expect((await appOf(room, rnd(16))).res.status).toBe(101);
+    expect((await appOf(room, rnd(16))).res.status).toBe(101);
+  });
+
+  it("R4 一覧外の端末を枠検査の前に断り、一覧内は4本まで通す", async () => {
+    const room = newRoom();
+    const bridge = await bridgeOf(room);
+    const a = rnd(16), b = rnd(16);
+    await publishAllow(room, bridge, allowFrame(a));
+    expect((await appOf(room, a)).res.status).toBe(101);
+    expect((await appOf(room, b)).res.status).toBe(403);
+    for (let i = 1; i < 4; i++) expect((await appOf(room, a)).res.status).toBe(101);
+    const rejected = await appOf(room, b);
+    expect(rejected.res.status).toBe(403);
+    expect(await rejected.res.text()).toBe("device not allowed");
+    expect((await appOf(room, a)).res.status).toBe(429);
+  });
+
+  it("R5 一覧から外した app だけを切り、CLOSE は1回で枠が空く", async () => {
+    const room = newRoom();
+    const bridge = await bridgeOf(room);
+    const a = rnd(16), b = rnd(16);
+    const kept = await appOf(room, a);
+    const keptId = (await bridge.next()).slice(1, 17);
+    await appOf(room, a);
+    await bridge.next();
+    const revoked = await appOf(room, b);
+    const revokedId = (await bridge.next()).slice(1, 17);
+    const pair = await pairOf(room);
+    const pairId = (await bridge.next()).slice(1, 17);
+    expect((await appOf(room, a)).res.status).toBe(429);
+
+    bridge.ws.send(allowFrame(a));
+    expect(await revoked.waitClose()).toBe(1008);
+    expect(await bridge.next()).toEqual(cat([0x03], revokedId));
+    bridge.ws.send(cat([0x02], keptId, marker));
+    bridge.ws.send(cat([0x02], pairId, marker));
+    expect(await kept.next()).toEqual(marker);
+    expect(await pair.next()).toEqual(marker);
+    expect((await appOf(room, a)).res.status).toBe(101);
+    expect((await bridge.next())[0]).toBe(0x01);
+  });
+
+  it("R6 bridge 切断と Durable Object の退避後も保存済み一覧が残る", async () => {
+    const room = newRoom();
+    const bridge = await bridgeOf(room);
+    const a = rnd(16), b = rnd(16);
+    await publishAllow(room, bridge, allowFrame(a));
+    const connected = await appOf(room, a);
+    expect(connected.res.status).toBe(101);
+    bridge.ws.close(1000, "done");
+    expect(await connected.waitClose()).toBe(1001);
+    await evictDurableObject(roomStub(room));
+    expect((await appOf(room, b)).res.status).toBe(403);
+    expect((await bridgeOf(room)).res.status).toBe(101);
+    expect((await appOf(room, b)).res.status).toBe(403);
+    expect((await appOf(room, a)).res.status).toBe(101);
+  });
+
+  it("R7 空の一覧は app を全て断り、pair は通す", async () => {
+    const room = newRoom();
+    const bridge = await bridgeOf(room);
+    await publishAllow(room, bridge, allowFrame());
+    expect((await appOf(room, rnd(16))).res.status).toBe(403);
+    expect((await appOf(room, rnd(16))).res.status).toBe(403);
+    expect((await pairOf(room)).res.status).toBe(101);
+  });
+
+  it("R8 不正な3種類の枠で切断しても一覧は残り、4095件は受理する", async () => {
+    const room = newRoom();
+    const a = rnd(16), b = rnd(16);
+    const nonzeroId = allowFrame(b);
+    nonzeroId[1] = 1;
+    const malformed = [nonzeroId, cat(allowFrame(), [1]), cat(allowFrame(), new Uint8Array(4096 * 16))];
+    const maximum = rnd(4095 * 16);
+    maximum.set(a, maximum.length - 16);
+
+    const first = await bridgeOf(room);
+    await publishAllow(room, first, cat(allowFrame(), maximum));
+    const stub = roomStub(room);
+    const stored = await runInDurableObject(stub, (_room, state) => state.storage.get("allow"));
+    expect(stored).toHaveLength(4095);
+    expect(stored).toContain(hex(a));
+    expect((await appOf(room, b)).res.status).toBe(403);
+    let bridge = first;
+    for (const frame of malformed) {
+      bridge.ws.send(frame);
+      expect(await bridge.waitClose()).toBe(1002);
+      bridge = await bridgeOf(room);
+      expect((await appOf(room, b)).res.status).toBe(403);
+      expect((await appOf(room, a)).res.status).toBe(101);
+      expect(await runInDurableObject(stub, (_room, state) => state.storage.get("allow"))).toEqual(stored);
+    }
+  });
+
+  it("R9 置き換えられた bridge の ALLOW が配送されても一覧は変わらない", async () => {
+    const room = newRoom();
+    const first = await bridgeOf(room);
+    const a = rnd(16), b = rnd(16);
+    await publishAllow(room, first, allowFrame(a));
+    const stub = roomStub(room);
+    let replaced;
+    await runInDurableObject(stub, (_room, state) => { [replaced] = state.getWebSockets("bridge"); });
+    const second = await bridgeOf(room);
+    expect(second.res.status).toBe(101);
+    await first.waitClose();
+
+    // 切断済みの client からは送れないため、旧接続の実物で遅延配送を再現する。
+    await runInDurableObject(stub, async (instance, state) => {
+      expect(replaced.deserializeAttachment()).toEqual({ role: 0, replaced: true });
+      await instance.webSocketMessage(replaced, allowFrame(b).buffer);
+      expect(await state.storage.get("allow")).toEqual([hex(a)]);
+    });
+    expect((await appOf(room, b)).res.status).toBe(403);
+    expect((await appOf(room, a)).res.status).toBe(101);
+  });
+
+  it("R10 pair が DATA を受け取った直後に新しい許可端末が接続できる", async () => {
+    const room = newRoom();
+    const bridge = await bridgeOf(room);
+    const a = rnd(16), c = rnd(16);
+    await publishAllow(room, bridge, allowFrame(a));
+    expect((await appOf(room, c)).res.status).toBe(403);
+    const pair = await pairOf(room);
+    const pairId = (await bridge.next()).slice(1, 17);
+
+    await sendBeforeData(bridge, allowFrame(a, c), pair, pairId);
+    expect((await appOf(room, c)).res.status).toBe(101);
+  });
+
+  it("R11 CLOSE は16バイトなら bridge を切り、17なら app を切り、18なら無視する", async () => {
+    const room = newRoom();
+    const bridge = await bridgeOf(room);
+    const app = await appOf(room);
+    const id = (await bridge.next()).slice(1, 17);
+    await sendBeforeData(bridge, cat([0x03], id, [0]), app, id);
+    expect(app.closed).toBe(null);
+    expect(bridge.closed).toBe(null);
+    bridge.ws.send(cat([0x03], id));
+    expect(await app.waitClose()).toBe(1000);
+    bridge.ws.send(cat([0x03], id.slice(0, 15)));
+    expect(await bridge.waitClose()).toBe(1002);
   });
 });

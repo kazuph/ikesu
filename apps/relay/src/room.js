@@ -8,6 +8,8 @@ const MAX_BYTES_PER_SEC = 4 * 1024 * 1024;
 const OPEN = 0x01;
 const DATA = 0x02;
 const CLOSE = 0x03;
+const ALLOW = 0x04;
+const MAX_ALLOW = 4095;
 
 const hex = (u) => Array.from(u, (b) => b.toString(16).padStart(2, "0")).join("");
 const unhex = (h) => Uint8Array.from(h.match(/../g), (x) => parseInt(x, 16));
@@ -17,6 +19,14 @@ const unhex = (h) => Uint8Array.from(h.match(/../g), (x) => parseInt(x, 16));
 export class Room extends DurableObject {
   // 毎秒の上限の数え方は、接続が起きている間だけ持つメモリ上の値。
   rate = new WeakMap();
+
+  constructor(ctx, env) {
+    super(ctx, env);
+    ctx.blockConcurrencyWhile(async () => {
+      const stored = await ctx.storage.get("allow");
+      this.allow = Array.isArray(stored) ? new Set(stored) : undefined;
+    });
+  }
 
   // 今つながっている bridge（置き換え済み・閉じかけのものは除く）。
   bridge(except) {
@@ -29,6 +39,10 @@ export class Room extends DurableObject {
 
   async fetch(request) {
     const role = Number(request.headers.get("x-ikesu-role"));
+    const peer = request.headers.get("x-ikesu-id");
+    if (role === 1 && this.allow && !this.allow.has(peer)) {
+      return new Response("device not allowed", { status: 403 });
+    }
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
 
@@ -60,7 +74,7 @@ export class Room extends DurableObject {
     const att = {
       role,
       id: idHex,
-      peer: request.headers.get("x-ikesu-id"),
+      peer,
       at: Date.now(),
     };
     this.ctx.acceptWebSocket(server, ["app", "c:" + idHex]);
@@ -139,7 +153,7 @@ export class Room extends DurableObject {
 
   async webSocketMessage(ws, message) {
     const att = ws.deserializeAttachment() || {};
-    if (att.role === 0) return this.fromBridge(ws, message);
+    if (att.role === 0) return await this.fromBridge(ws, message);
     // アプリ: 素の Noise メッセージ1通。
     if (att.dropped) return;
     if (typeof message === "string") return this.dropApp(ws, 1003, "binary only", true);
@@ -154,23 +168,46 @@ export class Room extends DurableObject {
     b.send(out.buffer);
   }
 
-  fromBridge(ws, message) {
+  async fromBridge(ws, message) {
+    if (this.bridge() !== ws) return;
     if (typeof message === "string" || message.byteLength < 17) {
       return ws.close(1002, "bad frame");
     }
     const frame = new Uint8Array(message);
     const type = frame[0];
-    const idHex = hex(frame.subarray(1, 17));
-    const [app] = this.ctx.getWebSockets("c:" + idHex);
+    if (type === ALLOW) return await this.setAllow(ws, frame);
+    if (type !== DATA && !(type === CLOSE && frame.byteLength === 17)) return;
+    const [app] = this.ctx.getWebSockets("c:" + hex(frame.subarray(1, 17)));
+    if (!app) return;
     if (type === DATA) {
-      if (!app) return;
       const body = frame.subarray(17);
       if (body.length > MAX_MSG) return this.dropApp(app, 1009, "message too big", true);
       app.send(body.slice().buffer);
-    } else if (type === CLOSE) {
-      if (app) this.dropApp(app, 1000, "closed by bridge", false);
+    } else {
+      this.dropApp(app, 1000, "closed by bridge", false);
     }
-    // それ以外の種類は無視する。
+  }
+
+  async setAllow(ws, frame) {
+    const body = frame.subarray(17);
+    if (frame.subarray(1, 17).some(byte => byte !== 0) || body.length % 16 !== 0 || body.length / 16 > MAX_ALLOW) {
+      return ws.close(1002, "bad frame");
+    }
+    const allow = new Set();
+    for (let i = 0; i < body.length; i += 16) allow.add(hex(body.subarray(i, i + 16)));
+    if (this.allow?.size === allow.size && [...allow].every(peer => this.allow.has(peer))) return;
+    try {
+      await this.ctx.storage.put("allow", [...allow]);
+    } catch {
+      return ws.close(1011, "allow store failed");
+    }
+    this.allow = allow;
+    for (const app of this.ctx.getWebSockets("app")) {
+      const att = app.deserializeAttachment();
+      if (att?.role === 1 && !att.dropped && !allow.has(att.peer)) {
+        this.dropApp(app, 1008, "device revoked", true);
+      }
+    }
   }
 
   async webSocketClose(ws, code, reason) {
