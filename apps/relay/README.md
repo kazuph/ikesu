@@ -19,7 +19,7 @@ bun install
 bun run test
 ```
 
-workerd をローカルで動かして、26 件の試験を流します（`@cloudflare/vitest-plugin`）。
+workerd をローカルで動かして、27 件の試験を流します（`@cloudflare/vitest-plugin`）。
 
 ## ボタンでデプロイ（自分の Cloudflare アカウントへ）
 

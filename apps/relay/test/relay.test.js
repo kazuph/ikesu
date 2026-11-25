@@ -1,6 +1,6 @@
 import { SELF, evictDurableObject, runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 const enc = new TextEncoder();
 const KEY = new Uint8Array(32).fill(1);
@@ -465,5 +465,41 @@ describe("端末の許可一覧", () => {
     expect(await app.waitClose()).toBe(1000);
     bridge.ws.send(cat([0x03], id.slice(0, 15)));
     expect(await bridge.waitClose()).toBe(1002);
+  });
+
+  it("R12 一覧の保存に失敗すると旧一覧が残り、再接続後の再送で反映する", async () => {
+    const room = newRoom();
+    const first = await bridgeOf(room);
+    const a = rnd(16), b = rnd(16);
+    await publishAllow(room, first, allowFrame(a));
+    const stub = roomStub(room);
+    const change = allowFrame(b);
+    let put;
+    try {
+      await runInDurableObject(stub, (_room, state) => {
+        put = vi.spyOn(state.storage, "put").mockRejectedValue(new Error("storage unavailable"));
+      });
+      first.ws.send(change);
+      expect(await first.waitClose()).toBe(1011);
+      await runInDurableObject(stub, async (_room, state) => {
+        expect(put).toHaveBeenCalledExactlyOnceWith("allow", [hex(b)]);
+        expect(await state.storage.get("allow")).toEqual([hex(a)]);
+      });
+      expect((await appOf(room, b)).res.status).toBe(403);
+    } finally {
+      if (put) await runInDurableObject(stub, () => { put.mockRestore(); });
+    }
+
+    const second = await bridgeOf(room);
+    expect(second.res.status).toBe(101);
+    const app = await appOf(room, a);
+    expect(app.res.status).toBe(101);
+    const id = (await second.next()).slice(1, 17);
+    app.ws.close(1000, "done");
+    expect(await second.next()).toEqual(cat([0x03], id));
+    await publishAllow(room, second, change);
+    expect(await runInDurableObject(stub, (_room, state) => state.storage.get("allow"))).toEqual([hex(b)]);
+    expect((await appOf(room, a)).res.status).toBe(403);
+    expect((await appOf(room, b)).res.status).toBe(101);
   });
 });
