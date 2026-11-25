@@ -3,7 +3,7 @@ import path from 'node:path';
 import { createReadStream } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { Assembler, encodeMessage, NoiseResponder } from './noise-channel.mjs';
-import { addDevice, b64u, loadDevices } from './devices.mjs';
+import { addDevice, b64u, loadDevices, revokeDevice } from './devices.mjs';
 import { constantEqual, Pairing, verifyOperate } from './pairing.mjs';
 import { appTag } from './relay-client.mjs';
 import { validateAnswer, validateShown } from './messages.mjs';
@@ -369,6 +369,12 @@ export class MobileHub {
     await this.reloadDevices();
     const session = candidate.session;
     if (session.closed || !this.devices.some(current => current.device === device.device)) {
+      try {
+        await revokeDevice(this.configDir, device.device);
+        await this.reloadDevices();
+      } catch (error) {
+        this.log(`登録できなかった端末の取り消しに失敗しました: ${error.message}`);
+      }
       throw Error('登録を反映できませんでした');
     }
     session.send({ type: 'paired', device: device.device, tag: this.appTag(Buffer.from(device.device, 'base64url')), name: pairing.name, permissions: pairing.permissions });

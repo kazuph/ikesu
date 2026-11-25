@@ -87,13 +87,15 @@ test('保存中に古い QR を閉じて新しい QR を開始しても、新し
   const newApp = new FakeApp(env.relay, 'pair', current.id, env.bridgePublic);
   assert.ok(await newApp.handshake());
   await failed;
+  assert.deepEqual(await loadDevices(env.configDir), []);
   assert.ok(env.hub.pairing === current, 'new QR remains current');
   assert.equal(current.active, true);
   newApp.sendJson(newApp.pairMessage(current.secret));
   await until(() => current.candidates.length === 1);
-  assert.ok(await env.hub.confirmPairing(newApp.sas(current.secret)));
+  const registered = await env.hub.confirmPairing(newApp.sas(current.secret));
+  assert.ok(registered);
   assert.equal(env.hub.pairing, null);
-  assert.equal((await loadDevices(env.configDir)).length, 2);
+  assert.deepEqual(await loadDevices(env.configDir), [registered]);
 });
 
 test('ペアリング: 6桁が違うと許可リストに入らない。5回外れると QR が無効になる', async t => {

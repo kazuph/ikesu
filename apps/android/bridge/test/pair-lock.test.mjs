@@ -151,17 +151,19 @@ test('サイズ変更待ちの Esc はロックを解放する', async t => {
   await assert.rejects(fs.stat(f.lockPath), { code: 'ENOENT' });
 });
 
-test('B8 確定後の devices.json 読込に失敗すると paired を送らず、PC の pair は失敗する', async t => {
+test('B8 確定後の読込に失敗すると paired を送らず、PC の pair は失敗し、追加した端末が残らない', async t => {
   const f = await fixture(t);
-  let failedRead = false;
+  let failedDevice;
   const hub = await f.startDaemon({
     async loadDevices(dir) {
       const devices = await loadDevices(dir);
-      if (!devices.length) return devices;
-      // 登録が保存された後、hub が反映する前にファイルが壊れた場合の実際の読込エラーを起こす。
-      await fs.writeFile(path.join(dir, 'devices.json'), '{broken');
-      failedRead = true;
-      return loadDevices(dir);
+      if (!devices.length || failedDevice) return devices;
+      const file = path.join(dir, 'devices.json');
+      failedDevice = devices[0].device;
+      // 一度だけ実際の読込エラーを起こし、後続の revoke には正しい権限を戻す。
+      await fs.chmod(file, 0o644);
+      try { return await loadDevices(dir); }
+      finally { await fs.chmod(file, 0o600); }
     },
   });
   const term = f.open();
@@ -177,7 +179,8 @@ test('B8 確定後の devices.json 読込に失敗すると paired を送らず�
   assert.equal((await term.result).exitCode, 1);
   assert.match(term.output, /登録に失敗しました: 登録を反映できませんでした/);
   assert.doesNotMatch(term.output, /登録しました/);
-  assert.ok(failedRead);
+  assert.ok(failedDevice);
+  assert.deepEqual(await loadDevices(f.configDir), []);
   assert.deepEqual(hub.devices, []);
   await until(() => app.conn.closed);
   assert.ok(!f.relay.frames.some(frame => frame[0] === 0x02 && frame.subarray(1, 17).equals(app.conn.key)));
