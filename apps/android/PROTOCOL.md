@@ -128,4 +128,8 @@ bridge は開いたら `{"type":"screen_opened","screen","cols","rows"}`、閉�
 
 ## 5. 取り消しと入れ替え
 
-`node apps/android/bridge/main.mjs devices` で登録済みの端末を出し、`… revoke <device>` で外す。反映されると、bridge の再起動なしに外した端末の接続を切り、中継でも新しい app 接続を断る。手動登録と revoke は bridge のファイル監視または定期確認で反映されるため、定期確認の間隔（最大 `pollMs`、既定1秒）だけ時間差がある。端末を無くして PC に触れないときは、Cloudflare で `RELAY_KEY` を入れ替える。すべての端末がつながらなくなる。bridge の鍵を入れ替えたら、すべての端末をペアリングし直す。
+`node apps/android/bridge/main.mjs devices` で登録済みの端末を出し、`… revoke <device>` で外す。PC 側の bridge は手動登録と revoke をファイル監視または定期確認（間隔は `pollMs`、既定1秒）で読み込み、再起動なしに外した端末の接続を切る。
+
+中継は更新した一覧を受け取って保存した時点から、外した端末の新しい app 接続を断る。bridge が中継につながっていない間は保存済みの一覧が残り、次に接続したときに bridge が全件を送り直す。許可一覧に対応する前の bridge に戻した部屋でも、中継には保存済みの一覧が残るため、新しく登録した端末が 403 で断られることがある。一覧に対応した bridge を再接続すると、現在の一覧が反映される。
+
+端末を無くして PC に触れないときは、Cloudflare で `RELAY_KEY` を入れ替える。すべての端末がつながらなくなる。bridge の鍵を入れ替えたら、すべての端末をペアリングし直す。
