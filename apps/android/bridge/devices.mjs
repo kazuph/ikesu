@@ -2,7 +2,7 @@
 // 壊れたファイルは失敗として扱い、推測で直さない。書くときは 0600 で一時ファイルから置き換える。
 import { createHash, createPublicKey, randomBytes } from 'node:crypto';
 import os from 'node:os';
-import { constants, lstatSync, unlinkSync } from 'node:fs';
+import { constants } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -95,54 +95,14 @@ export async function loadDevices(configDir) {
 
 export async function saveDevices(configDir, devices) { await writeJson(path.join(configDir, 'devices.json'), { devices }); }
 
-const DEVICE_LOCK_FLAGS = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW;
-const DEVICE_LOCK_STALE_MS = 30_000;
+// macOS open(2) flag. Node does not expose O_EXLOCK in fs.constants.
+const O_EXLOCK = 0x20;
+const DEVICE_LOCK_FLAGS = constants.O_RDWR | constants.O_CREAT | constants.O_NOFOLLOW | O_EXLOCK | constants.O_NONBLOCK;
 const DEVICE_LOCK_WAIT_MS = 10_000;
 const DEVICE_LOCK_RETRY_MS = 20;
 
-function unlinkDevicesLock(file, owner) {
-  try {
-    // Keep the identity check and unlink together without yielding to the event loop.
-    const current = lstatSync(file);
-    if (current.dev === owner.dev && current.ino === owner.ino) unlinkSync(file);
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
-  }
-}
-
-function lockOwnerExited(text) {
-  const pid = Number(text.trim());
-  // A new owner may have created the file but not yet written its PID.
-  if (!Number.isInteger(pid) || pid <= 0 || pid > 0x7fffffff) return false;
-  try {
-    process.kill(pid, 0);
-    return false;
-  } catch (error) {
-    if (error.code === 'ESRCH') return true;
-    if (error.code === 'EPERM') return false;
-    throw error;
-  }
-}
-
-async function reclaimDevicesLock(file) {
-  let lock;
-  try { lock = await fs.open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK); }
-  catch (error) {
-    if (error.code === 'ENOENT') return true;
-    throw error;
-  }
-  try {
-    const owner = await lock.stat();
-    if (!owner.isFile()) return false;
-    if (Date.now() - owner.mtimeMs <= DEVICE_LOCK_STALE_MS && !lockOwnerExited(await lock.readFile('utf8'))) return false;
-    unlinkDevicesLock(file, owner);
-    return true;
-  } finally {
-    await lock.close();
-  }
-}
-
 export async function withDevicesLock(configDir, fn) {
+  if (process.platform !== 'darwin') throw Error('devices.json の排他は macOS だけに対応しています');
   await fs.mkdir(configDir, { recursive: true, mode: 0o700 });
   const file = path.join(configDir, 'devices.lock');
   const deadline = performance.now() + DEVICE_LOCK_WAIT_MS;
@@ -150,20 +110,12 @@ export async function withDevicesLock(configDir, fn) {
     let lock;
     try { lock = await fs.open(file, DEVICE_LOCK_FLAGS, 0o600); }
     catch (error) {
-      if (error.code !== 'EEXIST') throw error;
-      if (!await reclaimDevicesLock(file)) {
-        await delay(Math.min(DEVICE_LOCK_RETRY_MS, Math.max(0, deadline - performance.now())));
-      }
+      if (error.code !== 'EAGAIN' && error.code !== 'EWOULDBLOCK') throw error;
+      await delay(Math.min(DEVICE_LOCK_RETRY_MS, Math.max(0, deadline - performance.now())));
       continue;
     }
     try {
-      const owner = await lock.stat();
-      try {
-        await lock.writeFile(String(process.pid));
-        return await fn();
-      } finally {
-        unlinkDevicesLock(file, owner);
-      }
+      return await fn();
     } finally {
       await lock.close();
     }
