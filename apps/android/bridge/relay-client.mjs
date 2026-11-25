@@ -9,6 +9,8 @@ export const appTag = (relay, device16) => relayTag(relay.relayKey, 'app', fromB
 export const pairTag = (relay, pairing16, exp) => relayTag(relay.relayKey, 'pair', fromB64u(relay.room, 32), pairing16, expBytes(exp));
 
 const OPEN = 0x01, DATA = 0x02, CLOSE = 0x03;
+export const ALLOW = 0x04;
+export const MAX_ALLOW = 4095;
 export const MAX_FRAME = 65535;
 
 export class RelayClient {
@@ -26,6 +28,7 @@ export class RelayClient {
     this.ws = ws;
     let waiting = false, pinger = null;
     ws.on('open', () => {
+      if (this.allowFrame) ws.send(this.allowFrame);
       this.delay = this.minDelay; this.log('中継につながりました');
       pinger = setInterval(() => {
         if (waiting) { this.log('中継から pong が来ないので、つなぎ直します'); ws.terminate(); return; }
@@ -39,7 +42,7 @@ export class RelayClient {
       try {
         if (kind === OPEN && bytes.length === 17 + 1 + 16 && (bytes[17] === 1 || bytes[17] === 2)) this.onOpen(key, bytes[17] === 1 ? 'app' : 'pair', Buffer.from(bytes.subarray(18)));
         else if (kind === DATA) this.onData(key, Buffer.from(bytes.subarray(17)));
-        else if (kind === CLOSE) this.onClose(key);
+        else if (kind === CLOSE && bytes.length === 17) this.onClose(key);
       } catch (error) { this.log(`枠の処理に失敗: ${error.message}`); this.closeConn(key); }
     });
     ws.on('error', error => this.log(`中継のエラー: ${error.message}`));
@@ -51,6 +54,16 @@ export class RelayClient {
       this.timer = setTimeout(() => { this.timer = null; this.connect(); }, this.delay);
       this.delay = Math.min(this.delay * 2, this.maxDelay);
     });
+  }
+  setAllow(ids) {
+    if (ids.length > MAX_ALLOW) {
+      this.log('登録端末が多すぎて中継へ一覧を送れません。中継ではすべての端末を断ります');
+      ids = [];
+    }
+    const header = Buffer.alloc(17);
+    header[0] = ALLOW;
+    this.allowFrame = Buffer.concat([header, ...ids]);
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(this.allowFrame);
   }
   frame(kind, key, body = Buffer.alloc(0)) { return Buffer.concat([Buffer.from([kind]), Buffer.from(key, 'hex'), body]); }
   sendData(key, buffer) {

@@ -269,8 +269,8 @@ class Session {
 export class MobileHub {
   constructor({ configDir, noiseKey, relay, transport, snapshot, answer, later, shown = async () => {}, videoPath = () => null, createdOf,
     now = Date.now, log = () => {}, beatMs = 5000, idleMs = 600_000, handshakeMs = 10_000,
-    ikesuBin = 'ikesu', serverAlive: alive, openScreen, saveFile }) {
-    Object.assign(this, { configDir, noiseKey, relay, room: relay.room, transport, snapshot, answer, later, shown, videoPath, createdOf, now, log, beatMs, idleMs, handshakeMs });
+    ikesuBin = 'ikesu', serverAlive: alive, openScreen, saveFile, loadDevices: readDevices = loadDevices }) {
+    Object.assign(this, { configDir, noiseKey, relay, room: relay.room, transport, snapshot, answer, later, shown, videoPath, createdOf, now, log, beatMs, idleMs, handshakeMs, readDevices });
     this.nextScreenId = 1;
     this.serverAlive = alive ?? (() => serverAlive(ikesuBin));
     this.openScreen = openScreen ?? (options => new Screen({ ...options, ikesuBin }));
@@ -278,8 +278,31 @@ export class MobileHub {
     this.roomBytes = Buffer.from(relay.room, 'base64url');
     this.sessions = new Map(); this.devices = []; this.pairing = null; this.failures = new Map();
   }
-  async reloadDevices() {
-    this.devices = await loadDevices(this.configDir);
+  reloadDevices() {
+    this.reloadWanted = true;
+    this.reloadRun ??= (async () => {
+      try {
+        while (this.reloadWanted) {
+          this.reloadWanted = false;
+          await this.applyDevicesOnce();
+        }
+      } finally {
+        this.reloadRun = null;
+      }
+    })();
+    return this.reloadRun;
+  }
+  async applyDevicesOnce() {
+    let readFailed = false;
+    try {
+      this.devices = await this.readDevices(this.configDir);
+    } catch (error) {
+      this.log(`devices.json を読めません。すべての接続を切ります: ${error.message}`);
+      this.devices = [];
+      readFailed = true;
+    }
+    this.onDevices?.(this.devices);
+    if (readFailed) return this.onReset();
     for (const session of [...this.sessions.values()]) {
       if (session.role !== 'app') continue;
       const current = this.devices.find(device => device.device === session.device?.device);

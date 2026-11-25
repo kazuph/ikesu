@@ -37,6 +37,7 @@ export class FakeRelay {
   constructor(relayKey, room) { Object.assign(this, { relayKey, room, apps: new Map(), bridgeAuth: [], bridge: null }); }
   async bridgeUp() { await until(() => this.bridge?.readyState === 1); }
   fromBridge(frame) {
+    this.frames?.push(frame);
     const app = this.apps.get(frame.subarray(1, 17).toString('hex'));
     if (!app) return;
     if (frame[0] === 0x02) app.inbox.push(frame.subarray(17));

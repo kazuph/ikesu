@@ -4,7 +4,8 @@ import { randomBytes, generateKeyPairSync, sign } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { startMobile, remotePairing, connect } from '../mobile-runtime.mjs';
-import { addDeviceByHand, saveRelay, loadDevices, loadRelay, revokeDevice, b64u, writeJson } from '../devices.mjs';
+import { MobileHub } from '../mobile-hub.mjs';
+import { addDeviceByHand, saveDevices, saveRelay, loadDevices, loadRelay, revokeDevice, b64u, writeJson } from '../devices.mjs';
 import { pairTag, appTag } from '../relay-client.mjs';
 import { sasCode, pairProof, proofMatches, verifyOperate, PAIR_TTL_SECONDS } from '../pairing.mjs';
 import { FakeApp, FakeRelay, sleep, tmpDir, until } from './mobile-harness.mjs';
@@ -761,4 +762,100 @@ test('監査: 接続を作り直しても、サーバーの確認は bridge 全�
   assert.equal(checks, 1);
   answer(true);
   await apps[2].recv(m => m.type === 'screen_opened');
+});
+
+const allowHeader = Buffer.concat([Buffer.of(0x04), Buffer.alloc(16)]);
+const allowFor = (...devices) => Buffer.concat([allowHeader, ...devices.map(device => Buffer.from(device.device, 'base64url'))]);
+
+test('B3 重なった読み直しは直列で進み、最後の一覧に B が戻らない', async () => {
+  const a = { device: b64u(randomBytes(16)) };
+  const b = { device: b64u(randomBytes(16)) };
+  const firstRead = Promise.withResolvers();
+  const releaseFirst = Promise.withResolvers();
+  let fileDevices = [a, b];
+  let reads = 0;
+  const published = [];
+  const hub = new MobileHub({
+    relay: { room: b64u(randomBytes(32)) },
+    loadDevices: async () => {
+      const snapshot = fileDevices;
+      if (++reads === 1) {
+        firstRead.resolve();
+        await releaseFirst.promise;
+      }
+      return snapshot;
+    },
+  });
+  hub.onDevices = devices => published.push(devices);
+  const older = hub.reloadDevices();
+  await firstRead.promise;
+  fileDevices = [a];
+  const newer = hub.reloadDevices();
+  const coalesced = hub.reloadDevices();
+  assert.equal(reads, 1);
+  releaseFirst.resolve();
+  await Promise.all([older, newer, coalesced]);
+  assert.equal(reads, 2);
+  assert.deepEqual(hub.devices, [a]);
+  assert.deepEqual(published, [[a, b], [a]]);
+});
+
+test('B4 壊れた devices.json でも起動して最初に空の ALLOW を送り、修復後に A を送る', async t => {
+  const configDir = await tmpDir();
+  const relayKey = randomBytes(32), room = b64u(randomBytes(32));
+  const relay = await FakeRelay.start(relayKey, room);
+  relay.frames = [];
+  let mobile;
+  t.after(async () => {
+    await mobile?.stop();
+    await relay.stop();
+    await fs.rm(configDir, { recursive: true, force: true });
+  });
+  await saveRelay(configDir, { url: relay.url, room, relayKey });
+  await fs.writeFile(path.join(configDir, 'devices.json'), '{broken', { mode: 0o600 });
+  const logs = [];
+  mobile = await startMobile({ configDir, stateDir: configDir, decisions: {}, control: false, pollMs: 20, log: message => logs.push(message) });
+  await until(() => relay.frames.length);
+  assert.deepEqual(relay.frames[0], allowHeader);
+  assert.ok(logs.some(message => message.startsWith('devices.json を読めません。')));
+
+  const a = {
+    device: b64u(randomBytes(16)), noise_pub: b64u(mobile.hub.noiseKey.publicKey),
+    operate_pub: new FakeApp(relay, 'app', randomBytes(16), mobile.hub.noiseKey.publicKey).operatePub,
+    name: 'A', permissions: ['notify'], created: new Date().toISOString(),
+  };
+  await saveDevices(configDir, [a]);
+  await until(() => relay.frames.some(frame => frame.equals(allowFor(a))));
+});
+
+test('B5 revoke は空の ALLOW を送ってから対象セッションの CLOSE を送る', async t => {
+  const env = await setup(t);
+  const { app, paired, device } = await pairDevice(env);
+  const connected = await connectApp(env, paired, app);
+  assert.ok(await connected.handshake());
+  await connected.recv(message => message.type === 'notice');
+  env.relay.frames = [];
+  const close = Buffer.concat([Buffer.of(0x03), connected.conn.key]);
+
+  assert.equal(await revokeDevice(env.configDir, device.device), true);
+  await until(() => connected.conn.closed);
+  const allowAt = env.relay.frames.findIndex(frame => frame.equals(allowHeader));
+  const closeAt = env.relay.frames.findIndex(frame => frame.equals(close));
+  assert.ok(allowAt >= 0 && closeAt > allowAt);
+});
+
+test('B6 confirmPairing は新端末を含む ALLOW を paired の DATA より先に送る', async t => {
+  const env = await setup(t);
+  const pairing = env.hub.startPairing({ name: 'PC', permissions: ['notify'] });
+  const app = new FakeApp(env.relay, 'pair', pairing.id, env.bridgePublic);
+  assert.ok(await app.handshake());
+  app.sendJson(app.pairMessage(pairing.secret));
+  await until(() => pairing.candidates.length === 1);
+  env.relay.frames = [];
+
+  const device = await env.hub.confirmPairing(app.sas(pairing.secret));
+  assert.equal((await app.recv(message => message.type === 'paired')).device, device.device);
+  const allowAt = env.relay.frames.findIndex(frame => frame.equals(allowFor(device)));
+  const dataAt = env.relay.frames.findIndex(frame => frame[0] === 0x02 && frame.subarray(1, 17).equals(app.conn.key));
+  assert.ok(allowAt >= 0 && dataAt > allowAt);
 });

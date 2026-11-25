@@ -14,11 +14,9 @@ export async function startMobile({ configDir, stateDir, decisions, log, control
   const client = new RelayClient({ relay, log, onOpen: (...args) => hub.onOpen(...args), onData: (...args) => hub.onData(...args), onClose: key => hub.onClose(key) });
   client.onReset = () => hub.onReset();
   hub.transport = client;
-  const reload = async () => {
-    try { await hub.reloadDevices(); }
-    catch (error) { log(`devices.json を読めません。すべての接続を切ります: ${error.message}`); hub.devices = []; hub.onReset(); }
-  };
-  await hub.reloadDevices();
+  hub.onDevices = devices => client.setAllow(devices.map(device => Buffer.from(device.device, 'base64url')));
+  const reload = () => hub.reloadDevices();
+  await reload();
   let watcher = null;
   try { watcher = fs.watch(configDir, (_event, name) => { if (name === 'devices.json') void reload(); }); } catch { /* 下の定期確認で補う */ }
   let lastMtime = 0;
