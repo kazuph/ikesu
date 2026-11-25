@@ -2,23 +2,24 @@
 
 ikesu の Android アプリと、各 PC の bridge をつなぐ中継です。Cloudflare Worker と Durable Object で動きます。約束は `apps/android/PROTOCOL.md` の「2. 中継」です。
 
-中継は暗号文を渡すだけで、Noise の鍵は持ちません。HMAC の接続タグの照合、部屋ごとの接続のつなぎ合わせ、上限の強制だけを行います。
+中継は Noise の鍵を持たずに暗号文を渡します。HMAC の接続タグを照合し、部屋ごとに端末の許可一覧と接続の上限を適用します。
 
 ## 仕組み
 
 - `GET /v1/bridge/<room>`、`GET /v1/app/<room>/<device>`、`GET /v1/pair/<room>/<pairing>/<exp>` の3つ。すべて WebSocket で、`Authorization: IKESU-RELAY <16進のタグ>` を付けます。
-- Worker が `RELAY_KEY` で HMAC-SHA256 を定数時間で照合します。合わなければ Durable Object を作らずに 401、長さ不正は 400、pair の期限切れは 401 です。
+- Worker が `RELAY_KEY` で HMAC-SHA256 を定数時間で照合します。合わなければ Durable Object を作らずに 401、ID の長さや base64url の正規表記が不正なら 400、pair の期限切れは 401 です。
 - 部屋（room）ごとに Durable Object が1つ。bridge 1本（新しいものが古いものを置き換える）とアプリ4本まで。Hibernation の WebSocket API を使い、役割と ID は `serializeAttachment` に置きます。
+- bridge から受けた許可一覧を部屋に保存します。一覧外の app 接続は 403 で断り、接続中なら 1008 で切ります。一覧を受けていない部屋は従来どおり有効なタグを持つ app を受け付けます。pair 接続には一覧を適用しません。
 - 1通は 65,535 バイトまで。アプリごとに毎秒200通・毎秒4MBまで。bridge がいない部屋のアプリは 30 秒（`APP_WAIT_MS`）で切ります。
 
 ## 試験
 
 ```sh
-npm install
-npm test
+bun install
+bun run test
 ```
 
-workerd をローカルで動かして、15 件の試験を流します（`@cloudflare/vitest-plugin`）。
+workerd をローカルで動かして、26 件の試験を流します（`@cloudflare/vitest-plugin`）。
 
 ## ボタンでデプロイ（自分の Cloudflare アカウントへ）
 

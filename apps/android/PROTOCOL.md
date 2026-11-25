@@ -28,7 +28,7 @@
 | `GET /v1/app/<room>/<device>` | 登録済みのアプリ | `"app" ‖ room ‖ device の16バイト` |
 | `GET /v1/pair/<room>/<pairing>/<exp>` | ペアリング中のアプリ | `"pair" ‖ room ‖ pairing の16バイト ‖ exp（Unix 秒、8バイトのビッグエンディアン）`。exp を過ぎたら断る |
 
-`<room>`・`<device>`・`<pairing>` は base64url（パディングなし）。長さが合わないものは 400 で断る。
+`<room>`・`<device>`・`<pairing>` は正規の base64url（パディングなし）。長さが合わないものや、同じバイト列でも正規と異なる表記は 400 で断る。
 
 ### 2.2 中継と bridge の間の枠
 
@@ -39,8 +39,13 @@ bridge の WebSocket は、複数のアプリの接続を1本で運ぶ。中身�
 | `0x01` open | 中継 → bridge | 役割1バイト（`0x01` app、`0x02` pair）、続けて device または pairing の16バイト |
 | `0x02` data | 両方向 | アプリとの間の1通（Noise のメッセージ） |
 | `0x03` close | 両方向 | なし。中継はアプリの接続を切る。bridge はその接続の状態を捨てる |
+| `0x04` allow | bridge → 中継 | 接続 ID 欄は16バイトすべて0。続けて許可する端末 ID の全件（1件16バイト、0〜4095件） |
 
 アプリの WebSocket の1通は、そのまま Noise のメッセージ1つ。
+
+bridge は接続のたびに、その時点の許可一覧を全件送る。一覧を受けた部屋は、一覧にない端末の app 接続を 403 で断り、すでにつながっていれば 1008 で切る。空の一覧はすべての app を断る。まだ一覧を受けていない部屋は、接続タグが正しければ従来どおりどの端末の app も受け付ける。pair 接続には一覧を適用しない。一覧は部屋に保存され、bridge が切れても残る。
+
+中継は置き換えられた古い bridge の枠を無視する。close は17バイトの枠だけ処理し、18バイト以上は無視する。中継は不正な allow を受けると、保存済み一覧を保持して bridge を 1002 で切る。
 
 ### 2.3 中継の上限
 
@@ -123,4 +128,4 @@ bridge は開いたら `{"type":"screen_opened","screen","cols","rows"}`、閉�
 
 ## 5. 取り消しと入れ替え
 
-`node apps/android/bridge/main.mjs devices` で登録済みの端末を出し、`… revoke <device>` で外す。外した端末の接続は、bridge の再起動なしにすぐ切る。端末を無くして PC に触れないときは、Cloudflare で `RELAY_KEY` を入れ替える。すべての端末がつながらなくなる。bridge の鍵を入れ替えたら、すべての端末をペアリングし直す。
+`node apps/android/bridge/main.mjs devices` で登録済みの端末を出し、`… revoke <device>` で外す。反映されると、bridge の再起動なしに外した端末の接続を切り、中継でも新しい app 接続を断る。手動登録と revoke は bridge のファイル監視または定期確認で反映されるため、定期確認の間隔（最大 `pollMs`、既定1秒）だけ時間差がある。端末を無くして PC に触れないときは、Cloudflare で `RELAY_KEY` を入れ替える。すべての端末がつながらなくなる。bridge の鍵を入れ替えたら、すべての端末をペアリングし直す。
