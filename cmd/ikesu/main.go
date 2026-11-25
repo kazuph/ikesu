@@ -21,7 +21,7 @@ import (
 	"github.com/kazuph/ikesu/internal/tui"
 )
 
-const version = "0.4.193"
+const version = "0.4.194"
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "__job-runner" {
