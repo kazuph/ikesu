@@ -263,7 +263,13 @@ async function pair() {
     prompt.on('SIGINT', interrupt);
     for (;;) {
       const code = await prompt.question('6桁: ');
-      const result = await session.confirm(code);
+      let result;
+      try { result = await session.confirm(code); }
+      catch (error) {
+        process.stderr.write(`登録に失敗しました: ${error.message}\n`);
+        process.exitCode = 1;
+        return;
+      }
       if (result.device) { process.stdout.write(`登録しました（端末 ID ${result.device}）\n`); return; }
       if (!result.active) { process.stdout.write('この QR は無効になりました。もう一度 pair を実行してください\n'); process.exitCode = 1; return; }
       process.stdout.write('一致しません\n');

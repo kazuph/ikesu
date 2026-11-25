@@ -368,6 +368,9 @@ export class MobileHub {
     await addDevice(this.configDir, device);
     await this.reloadDevices();
     const session = candidate.session;
+    if (session.closed || !this.devices.some(current => current.device === device.device)) {
+      throw Error('登録を反映できませんでした');
+    }
     session.send({ type: 'paired', device: device.device, tag: this.appTag(Buffer.from(device.device, 'base64url')), name: pairing.name, permissions: pairing.permissions });
     session.paired = true;
     if (this.pairing === pairing) this.closePairing(session);

@@ -38,9 +38,9 @@ async function fixture(t) {
   await saveRelay(configDir, { url: relay.url, room, relayKey });
   return {
     configDir, lockPath, relay,
-    async startDaemon() {
+    async startDaemon(decisions = {}) {
       daemon = await startMobile({ configDir, stateDir, log: () => {}, decisions: {
-        snapshot: async () => [], answer: async () => ({}), later: async () => {},
+        snapshot: async () => [], answer: async () => ({}), later: async () => {}, ...decisions,
       } });
       await relay.bridgeUp();
       return daemon.hub;
@@ -148,5 +148,38 @@ test('サイズ変更待ちの Esc はロックを解放する', async t => {
   await until(() => term.output.includes('中止: Esc / Ctrl-C'));
   term.terminal.write('\x1b');
   assert.equal((await term.result).exitCode, 130);
+  await assert.rejects(fs.stat(f.lockPath), { code: 'ENOENT' });
+});
+
+test('B8 確定後の devices.json 読込に失敗すると paired を送らず、PC の pair は失敗する', async t => {
+  const f = await fixture(t);
+  let failedRead = false;
+  const hub = await f.startDaemon({
+    async loadDevices(dir) {
+      const devices = await loadDevices(dir);
+      if (!devices.length) return devices;
+      // 登録が保存された後、hub が反映する前にファイルが壊れた場合の実際の読込エラーを起こす。
+      await fs.writeFile(path.join(dir, 'devices.json'), '{broken');
+      failedRead = true;
+      return loadDevices(dir);
+    },
+  });
+  const term = f.open();
+  await until(() => term.output.includes('6桁:'));
+  const pairing = hub.pairing;
+  const app = new FakeApp(f.relay, 'pair', pairing.id, hub.noiseKey.publicKey);
+  assert.ok(await app.handshake());
+  app.sendJson(app.pairMessage(pairing.secret));
+  await until(() => pairing.candidates.length === 1);
+  f.relay.frames = [];
+
+  term.terminal.write(`${app.sas(pairing.secret)}\r`);
+  assert.equal((await term.result).exitCode, 1);
+  assert.match(term.output, /登録に失敗しました: 登録を反映できませんでした/);
+  assert.doesNotMatch(term.output, /登録しました/);
+  assert.ok(failedRead);
+  assert.deepEqual(hub.devices, []);
+  await until(() => app.conn.closed);
+  assert.ok(!f.relay.frames.some(frame => frame[0] === 0x02 && frame.subarray(1, 17).equals(app.conn.key)));
   await assert.rejects(fs.stat(f.lockPath), { code: 'ENOENT' });
 });

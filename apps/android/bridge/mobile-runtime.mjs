@@ -103,7 +103,11 @@ export async function remotePairing(stateDir) {
   const call = value => new Promise(resolve => { waiting.push(resolve); socket.write(`${JSON.stringify(value)}\n`); });
   return {
     async start(options) { const reply = await call({ op: 'pair_start', ...options }); if (!reply.ok) throw Error(reply.error); return reply.qr; },
-    async confirm(code) { const reply = await call({ op: 'pair_confirm', code }); return reply.ok ? { device: reply.device } : { device: null, active: reply.active }; },
+    async confirm(code) {
+      const reply = await call({ op: 'pair_confirm', code });
+      if (reply.error) throw Error(reply.error);
+      return reply.ok ? { device: reply.device } : { device: null, active: reply.active };
+    },
     onCandidate(listener) { listeners.push(listener); },
     async cancel() { await call({ op: 'pair_cancel' }); },
     close() { socket.destroy(); },

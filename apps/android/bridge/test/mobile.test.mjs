@@ -6,7 +6,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { startMobile, remotePairing, connect } from '../mobile-runtime.mjs';
 import { MobileHub } from '../mobile-hub.mjs';
-import { addDeviceByHand, saveDevices, saveRelay, loadDevices, loadRelay, revokeDevice, b64u, writeJson } from '../devices.mjs';
+import { addDevice, addDeviceByHand, saveDevices, saveRelay, loadDevices, loadRelay, revokeDevice, b64u, writeJson } from '../devices.mjs';
 import { pairTag, appTag } from '../relay-client.mjs';
 import { sasCode, pairProof, proofMatches, verifyOperate, PAIR_TTL_SECONDS } from '../pairing.mjs';
 import { FakeApp, FakeRelay, sleep, tmpDir, until } from './mobile-harness.mjs';
@@ -81,13 +81,12 @@ test('保存中に古い QR を閉じて新しい QR を開始しても、新し
   oldApp.sendJson(oldApp.pairMessage(old.secret));
   await until(() => old.candidates.length === 1);
   // confirmPairing reaches the real asynchronous devices.json write before returning.
-  const saving = env.hub.confirmPairing(oldApp.sas(old.secret));
+  const failed = assert.rejects(env.hub.confirmPairing(oldApp.sas(old.secret)), { message: '登録を反映できませんでした' });
   env.hub.closePairing();
   const current = env.hub.startPairing({ name: 'new', permissions: ['notify'] });
   const newApp = new FakeApp(env.relay, 'pair', current.id, env.bridgePublic);
   assert.ok(await newApp.handshake());
-  const saved = await saving;
-  assert.ok(saved);
+  await failed;
   assert.ok(env.hub.pairing === current, 'new QR remains current');
   assert.equal(current.active, true);
   newApp.sendJson(newApp.pairMessage(current.secret));
@@ -891,4 +890,29 @@ test('B7 初回読込後に devices.json が消えると、最初の定期確認
   assert.equal(reads, 2);
   assert.deepEqual(relay.frames, [allowFor(device), allowHeader]);
   assert.deepEqual(mobile.hub.devices, []);
+});
+
+test('B9 登録は4094台から4095台まで成功し、満杯で失敗してもファイルは変わらない', async t => {
+  const configDir = await tmpDir();
+  t.after(() => fs.rm(configDir, { recursive: true, force: true }));
+  const file = path.join(configDir, 'devices.json');
+  const deviceAt = index => {
+    const id = Buffer.alloc(16);
+    id.writeUInt32BE(index);
+    return {
+      device: b64u(id), noise_pub: b64u(Buffer.alloc(32)), operate_pub: b64u(Buffer.of(1)),
+      name: String(index), permissions: ['notify'], created: '2026-11-25T00:00:00.000Z',
+    };
+  };
+  await saveDevices(configDir, Array.from({ length: 4094 }, (_, index) => deviceAt(index)));
+
+  const last = deviceAt(4094);
+  assert.deepEqual(await addDevice(configDir, last), last);
+  const devices = await loadDevices(configDir);
+  assert.equal(devices.length, 4095);
+  assert.deepEqual(devices.at(-1), last);
+
+  const before = await fs.readFile(file);
+  await assert.rejects(addDevice(configDir, deviceAt(4095)), { message: '登録できる端末は 4095 台までです' });
+  assert.deepEqual(await fs.readFile(file), before);
 });

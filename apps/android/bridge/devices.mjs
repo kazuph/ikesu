@@ -6,7 +6,7 @@ import { constants } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import dh from 'noise-handshake/dh.js';
-import { appTag } from './relay-client.mjs';
+import { appTag, MAX_ALLOW } from './relay-client.mjs';
 
 export const b64u = bytes => Buffer.from(bytes).toString('base64url');
 // 鍵の指紋: SHA-256 の先頭8バイト（アプリの RelayMath.fingerprint と同じ形）。
@@ -96,6 +96,7 @@ export async function saveDevices(configDir, devices) { await writeJson(path.joi
 
 export async function addDevice(configDir, device) {
   const devices = await loadDevices(configDir);
+  if (devices.length >= MAX_ALLOW) throw Error(`登録できる端末は ${MAX_ALLOW} 台までです`);
   devices.push(device);
   await saveDevices(configDir, devices);
   return device;
