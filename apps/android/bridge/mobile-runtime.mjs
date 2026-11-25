@@ -16,14 +16,21 @@ export async function startMobile({ configDir, stateDir, decisions, log, control
   hub.transport = client;
   hub.onDevices = devices => client.setAllow(devices.map(device => Buffer.from(device.device, 'base64url')));
   const reload = () => hub.reloadDevices();
-  await reload();
   let watcher = null;
   try { watcher = fs.watch(configDir, (_event, name) => { if (name === 'devices.json') void reload(); }); } catch { /* 下の定期確認で補う */ }
-  let lastMtime = 0;
+  await reload();
+  const devicesFile = path.join(configDir, 'devices.json');
+  let lastVersion;
   const poll = setInterval(() => {
-    let mtime = 0;
-    try { mtime = fs.statSync(path.join(configDir, 'devices.json')).mtimeMs; } catch { /* 無ければ 0 */ }
-    if (mtime !== lastMtime) { lastMtime = mtime; void reload(); }
+    let version = 'missing';
+    try {
+      const { mtimeMs, ino, size } = fs.statSync(devicesFile);
+      version = `${mtimeMs}:${ino}:${size}`;
+    } catch { /* 読めない場合も reload で確認する */ }
+    if (version !== lastVersion) {
+      lastVersion = version;
+      void reload();
+    }
   }, pollMs);
   poll.unref?.();
   client.start();

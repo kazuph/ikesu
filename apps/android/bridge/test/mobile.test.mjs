@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes, generateKeyPairSync, sign } from 'node:crypto';
+import { renameSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { startMobile, remotePairing, connect } from '../mobile-runtime.mjs';
@@ -858,4 +859,36 @@ test('B6 confirmPairing は新端末を含む ALLOW を paired の DATA より�
   const allowAt = env.relay.frames.findIndex(frame => frame.equals(allowFor(device)));
   const dataAt = env.relay.frames.findIndex(frame => frame[0] === 0x02 && frame.subarray(1, 17).equals(app.conn.key));
   assert.ok(allowAt >= 0 && dataAt > allowAt);
+});
+
+test('B7 初回読込後に devices.json が消えると、最初の定期確認で空の ALLOW を送る', async t => {
+  const root = await tmpDir();
+  const configDir = path.join(root, 'config');
+  const relayKey = randomBytes(32), room = b64u(randomBytes(32));
+  const relay = await FakeRelay.start(relayKey, room);
+  let mobile;
+  t.after(async () => {
+    await mobile?.stop();
+    await relay.stop();
+    await fs.rm(root, { recursive: true, force: true });
+  });
+  relay.frames = [];
+  await saveRelay(configDir, { url: relay.url, room, relayKey });
+  const device = {
+    device: b64u(randomBytes(16)), noise_pub: b64u(randomBytes(32)), operate_pub: b64u(randomBytes(32)),
+    name: 'A', permissions: ['notify'], created: new Date().toISOString(),
+  };
+  await saveDevices(configDir, [device]);
+  let reads = 0;
+  mobile = await startMobile({ configDir, stateDir: root, control: false, pollMs: 250, log: () => {}, decisions: {
+    loadDevices(dir) { reads++; return loadDevices(dir); },
+  } });
+  assert.deepEqual(mobile.hub.devices, [device]);
+  assert.equal(reads, 1);
+  // 親ディレクトリの rename は devices.json 名の監視イベントを発生させず、元のパスからファイルを消す。
+  renameSync(configDir, path.join(root, 'moved'));
+  await until(() => relay.frames.length >= 2);
+  assert.equal(reads, 2);
+  assert.deepEqual(relay.frames, [allowFor(device), allowHeader]);
+  assert.deepEqual(mobile.hub.devices, []);
 });
