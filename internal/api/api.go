@@ -50,6 +50,7 @@ const (
 	MethodPaneSplit               = "pane.split"
 	MethodPaneClose               = "pane.close"
 	MethodPaneRead                = "pane.read"
+	MethodPaneSnapshot            = "pane.snapshot"
 	MethodPaneSendText            = "pane.send_text"
 	MethodPaneSendKeys            = "pane.send_keys"
 	MethodPaneSendInput           = "pane.send_input"

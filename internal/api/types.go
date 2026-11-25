@@ -81,6 +81,23 @@ type PaneReadParams struct {
 	StripANSI bool    `json:"strip_ansi"`
 }
 
+type PaneSnapshotParams struct {
+	CallerProcessID *uint32 `json:"caller_process_id,omitempty"`
+	PaneID          string  `json:"pane_id"`
+	CallerPaneID    *string `json:"caller_pane_id,omitempty"`
+	Mode            string  `json:"mode"`
+	Lines           *uint32 `json:"lines,omitempty"`
+	MaxChars        *uint32 `json:"max_chars,omitempty"`
+	SaveLog         bool    `json:"save_log,omitempty"`
+}
+
+// PaneSnapshotResult wraps the snapshot without making the wire API depend on
+// the snapshot package, which redacts secrets through guard.
+type PaneSnapshotResult[T any] struct {
+	Type     string `json:"type"`
+	Snapshot T      `json:"snapshot"`
+}
+
 type PaneSplitParams struct {
 	TargetPaneID *string           `json:"target_pane_id,omitempty"`
 	WorkspaceID  *string           `json:"workspace_id,omitempty"`

@@ -708,6 +708,7 @@ func runEndpointWithClock(session, version string, peer endpoint.Peer, clock gra
 	s.app.SetExitedHook(s.onPaneExited)
 	s.app.SetOutputHook(s.onPaneOutput)
 	s.app.SetClipboardHook(s.deliverPaneClipboard)
+	s.app.SetSnapshotHook(s.handoffSnapshotMarkdown)
 	if r, ok := config.ParseNavKey(s.cfg.NavKey()); ok {
 		s.app.SetNavKey(r)
 	} else {

@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -272,6 +273,10 @@ func (r *runner) paneCwd(paneID string) string {
 // --- response printing ---
 
 func (r *runner) printMsgSend(p api.MsgSendParams) int {
+	return r.printMsgSendTo(r.out(), p)
+}
+
+func (r *runner) printMsgSendTo(out io.Writer, p api.MsgSendParams) int {
 	raw, err := r.request("cli:msg:send", api.MethodMsgSend, p)
 	if err != nil {
 		raw = r.serverNotRunning("cli:msg:send")
@@ -286,12 +291,12 @@ func (r *runner) printMsgSend(p api.MsgSendParams) int {
 		fmt.Fprintf(r.errOut(), "ikesu: invalid server response: %v\n", err)
 		return 1
 	}
-	fmt.Fprintf(r.out(), "sent %d message(s)\n", len(res.Messages))
+	fmt.Fprintf(out, "sent %d message(s)\n", len(res.Messages))
 	for _, m := range res.Messages {
-		printMsgMessage(r.out(), m)
+		printMsgMessage(out, m)
 	}
 	if len(res.Nudged) > 0 {
-		fmt.Fprintf(r.out(), "nudged: %s\n", strings.Join(res.Nudged, ", "))
+		fmt.Fprintf(out, "nudged: %s\n", strings.Join(res.Nudged, ", "))
 	}
 	return 0
 }

@@ -54,30 +54,32 @@ func (s *Server) paneGet(id, ref string) api.Response {
 // paneCurrent resolves the calling pane: explicit caller_pane_id wins;
 // otherwise we walk the caller process's ancestry looking for a pane shell.
 func (s *Server) paneCurrent(id string, p api.PaneCurrentParams) api.Response {
-	if p.CallerPaneID != nil && *p.CallerPaneID != "" {
-		pid, _, _, ok := s.findPane(*p.CallerPaneID)
+	pid, err := s.resolveCallerPane(p.CallerPaneID, p.CallerProcessID)
+	if err != nil {
+		return api.Failure(id, err.Code, err.Message)
+	}
+	info, _ := s.paneInfo(pid)
+	return api.Success(id, api.PaneCurrentResult{Type: "pane_current", Pane: info})
+}
+
+func (s *Server) resolveCallerPane(callerPaneID *string, callerProcessID *uint32) (int, *api.Error) {
+	if callerPaneID != nil && *callerPaneID != "" {
+		pid, _, _, ok := s.findPane(*callerPaneID)
 		if !ok {
-			return s.paneNotFound(id, *p.CallerPaneID)
+			return 0, &api.Error{Code: api.ErrPaneNotFound, Message: fmt.Sprintf("pane not found: %s", *callerPaneID)}
 		}
-		// When the caller process is known, the asserted pane must be
-		// provable from its ancestry — a leaked IKESU_PANE_ID in a process
-		// outside the pane fails closed (SPEC G5).
-		if p.CallerProcessID != nil {
-			if proven := s.paneForProcess(int(*p.CallerProcessID)); proven != pid {
-				return api.Failure(id, api.ErrPaneNotFound,
-					fmt.Sprintf("caller pane %s could not be proven from process ancestry", *p.CallerPaneID))
-			}
+		// An asserted pane must match the process ancestry when provided.
+		if callerProcessID != nil && s.paneForProcess(int(*callerProcessID)) != pid {
+			return 0, &api.Error{Code: api.ErrPaneNotFound, Message: fmt.Sprintf("caller pane %s could not be proven from process ancestry", *callerPaneID)}
 		}
-		info, _ := s.paneInfo(pid)
-		return api.Success(id, api.PaneCurrentResult{Type: "pane_current", Pane: info})
+		return pid, nil
 	}
-	if p.CallerProcessID != nil {
-		if pid := s.paneForProcess(int(*p.CallerProcessID)); pid > 0 {
-			info, _ := s.paneInfo(pid)
-			return api.Success(id, api.PaneCurrentResult{Type: "pane_current", Pane: info})
+	if callerProcessID != nil {
+		if pid := s.paneForProcess(int(*callerProcessID)); pid > 0 {
+			return pid, nil
 		}
 	}
-	return api.Failure(id, api.ErrPaneNotFound, "caller is not inside an ikesu pane")
+	return 0, &api.Error{Code: api.ErrPaneNotFound, Message: "caller is not inside an ikesu pane"}
 }
 
 // paneForProcess walks the ancestry of pid looking for a pane shell.

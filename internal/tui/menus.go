@@ -32,7 +32,10 @@ func (a *App) openPaneMenu(x, y, pid int) {
 	if link != "" {
 		items = append(items, render.MenuItem{Label: "Copy Link"}, render.MenuItem{Label: "Open Link", Disabled: a.openLink == nil}, render.MenuItem{Separator: true})
 	}
-	items = append(items, render.MenuItem{Label: "Rename pane"})
+	items = append(items,
+		render.MenuItem{Label: "Copy handoff snapshot", Disabled: a.snapshotHook == nil},
+		render.MenuItem{Label: "Rename pane"},
+	)
 	if a.st.PaneLabels[model.PaneID(pid)] != "" {
 		items = append(items, render.MenuItem{Label: "Clear pane name"})
 	}
@@ -362,6 +365,8 @@ func (a *App) activateMenu(i int) {
 			if err := a.openLink(m.link); err != nil {
 				a.ShowToast("open link", err.Error(), "error", -1)
 			}
+		case "Copy handoff snapshot":
+			a.copyHandoffSnapshot(pid)
 		case "Rename pane":
 			a.openRenamePaneDialog(pid)
 		case "Clear pane name":
@@ -767,4 +772,30 @@ func (a *App) dialogMouse(ev input.Event) {
 		}
 		a.cancelDialog()
 	}
+}
+
+// SetSnapshotHook registers the server-side builder before the app loop starts.
+func (a *App) SetSnapshotHook(hook func(int) (string, error)) { a.snapshotHook = hook }
+
+func (a *App) copyHandoffSnapshot(pid int) {
+	hook := a.snapshotHook
+	// The hook briefly re-enters the app loop for the pane copy and does
+	// the remaining work off-loop. A synchronous call here would deadlock.
+	go func() {
+		text, err := hook(pid)
+		a.Do(func() {
+			if viewer := a.viewerContext; viewer != nil && viewer.hidden {
+				viewer.snapshotCopyCanceled = true
+				return
+			}
+			if err == nil {
+				err = a.writeLinkClipboard(text)
+			}
+			if err != nil {
+				a.ShowToast("copy handoff snapshot", err.Error(), "error", -1)
+			} else {
+				a.copiedText(text)
+			}
+		})
+	}()
 }

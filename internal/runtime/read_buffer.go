@@ -541,3 +541,87 @@ func renderReadRow(row uv.Line, strip, full bool, width int) string {
 	}
 	return b.String()
 }
+
+// ReadTailLines renders only the last maxLines rows, counting automatic
+// wraps as one row for the unwrapped sources.
+func (p *Pane) ReadTailLines(source string, strip bool, maxLines int) ([]string, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	logical := source == "recent_unwrapped" || source == "recent-unwrapped"
+	if source != "visible" && source != "recent" && !logical {
+		return nil, fmt.Errorf("read source %q is not supported in this stage", source)
+	}
+	history := 0
+	if source != "visible" && !p.altScreen {
+		history = p.emu.ScrollbackLen()
+	}
+	end := history + p.emu.Height()
+	refAt := func(y int) rowRef {
+		if y < history {
+			if p.read != nil {
+				return p.read.historyRef(y)
+			}
+			return rowRef{}
+		}
+		ref := rowRef{width: p.emu.Width()}
+		if p.read != nil {
+			recorded := p.read.rows(p.altScreen)[y-history]
+			ref.continued = recorded.continued
+			if recorded.width > 0 {
+				ref.width = recorded.width
+			}
+		}
+		return ref
+	}
+
+	count := min(max(0, maxLines), end)
+	if count == 0 {
+		return []string{}, nil
+	}
+	start := end - count
+	if logical {
+		start = end
+		for range count {
+			if start == 0 {
+				break
+			}
+			start--
+			for start > 0 && refAt(start).continued {
+				start--
+			}
+		}
+	}
+
+	lines := make([]string, 0, count)
+	var combined strings.Builder
+	var screenRow uv.Line
+	for y := start; y < end; y++ {
+		var row uv.Line
+		if y < history {
+			row = p.emu.Scrollback().Line(y)
+		} else {
+			if screenRow == nil {
+				screenRow = make(uv.Line, p.emu.Width())
+			}
+			clear(screenRow)
+			for x := range screenRow {
+				if cell := p.emu.CellAt(x, y-history); cell != nil {
+					screenRow[x] = *cell
+				}
+			}
+			row = screenRow
+		}
+		nextContinues := logical && y+1 < end && refAt(y+1).continued
+		part := renderReadRow(row, strip, nextContinues, refAt(y).width)
+		if !nextContinues && combined.Len() == 0 {
+			lines = append(lines, part)
+			continue
+		}
+		combined.WriteString(part)
+		if !nextContinues {
+			lines = append(lines, combined.String())
+			combined.Reset()
+		}
+	}
+	return lines, nil
+}

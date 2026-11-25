@@ -231,6 +231,7 @@ type App struct {
 	availHook           func(pid int)       // pane status changed; server flushes mail
 	changeHook          func()              // persistent state changed; server coalesces saves
 	restartHook         func()              // main menu "Restart server…" (server mode only)
+	snapshotHook        func(int) (string, error)
 	standaloneRestart   bool
 	sessionCwds         map[int]string // derived once from the pane snapshots of a session read
 	jobsPanel           bool

@@ -19,6 +19,9 @@ var secretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`[A-Za-z][A-Za-z0-9+.-]*://([^/\s@]+:[^/\s@]+)@`),
 }
 
+// RedactSecrets masks recognized secrets without parsing shell syntax.
+func RedactSecrets(text string) string { return maskSpans(text, secretSpans(text)) }
+
 type secretSpan struct{ start, end int }
 
 func secretSpans(text string) []secretSpan {

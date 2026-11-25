@@ -66,14 +66,14 @@ func TestPaneMenuLinkUsesClickedCellAndWrappedURL(t *testing.T) {
 	rightClick(secondRect.X+1, secondRect.Y+1)
 	assertLink(long)
 	var labels []string
-	for _, item := range v.app.menu.m.Items[:7] {
+	for _, item := range v.app.menu.m.Items[:8] {
 		label := item.Label
 		if item.Separator {
 			label = "--"
 		}
 		labels = append(labels, label)
 	}
-	want := []string{"Split vertical", "Split horizontal", "--", "Copy Link", "Open Link", "--", "Rename pane"}
+	want := []string{"Split vertical", "Split horizontal", "--", "Copy Link", "Open Link", "--", "Copy handoff snapshot", "Rename pane"}
 	if !reflect.DeepEqual(labels, want) {
 		t.Fatal(labels)
 	}

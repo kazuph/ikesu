@@ -7,9 +7,11 @@ import (
 	"github.com/kazuph/ikesu/internal/api"
 )
 
+const paneUsage = "usage: ikesu pane <list|current|get|layout|neighbor|edges|focus|resize|zoom|rename|read|snapshot|split|swap|move|close|send-text|send-keys|report-agent|report-metadata|run> ..."
+
 func (r *runner) pane(args []string) int {
 	if len(args) == 0 {
-		return usageErr(r, "usage: ikesu pane <list|current|get|layout|neighbor|edges|focus|resize|zoom|rename|read|split|swap|move|close|send-text|send-keys|report-agent|report-metadata|run> ...")
+		return usageErr(r, paneUsage)
 	}
 	switch args[0] {
 	case "report-metadata":
@@ -36,6 +38,12 @@ func (r *runner) pane(args []string) int {
 		return r.paneRename(args[1:])
 	case "read":
 		return r.paneRead(args[1:])
+	case "snapshot":
+		return r.paneSnapshot(args[1:])
+	case "help", "--help", "-h":
+		fmt.Fprintln(r.out(), paneUsage)
+		fmt.Fprintln(r.out(), paneSnapshotUsage)
+		return 0
 	case "split":
 		return r.paneSplit(args[1:])
 	case "swap":

@@ -237,6 +237,8 @@ func (s *Server) dispatchContext(ctx context.Context, req *api.Request) (respons
 		return resp
 	}
 	switch req.Method {
+	case api.MethodPaneSnapshot:
+		return s.paneSnapshot(ctx, req)
 	case api.MethodClientViewList:
 		return api.Success(req.ID, s.clientViewList())
 	case api.MethodAgentStart:

@@ -34,7 +34,7 @@ func TestSPECExactPaneMenuOrder(t *testing.T) {
 						got = append(got, item.Label)
 					}
 				}
-				want := []string{"Split vertical", "Split horizontal", "--", "Rename pane"}
+				want := []string{"Split vertical", "Split horizontal", "--", "Copy handoff snapshot", "Rename pane"}
 				if named {
 					want = append(want, "Clear pane name")
 				}

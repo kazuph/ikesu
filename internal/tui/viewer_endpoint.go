@@ -14,6 +14,7 @@ func (v *Viewer) SetLegacySidebarControls(legacy, menuRight bool) {
 // Hidden machine endpoints still supply sidebar snapshots, but cannot mark
 // panes seen or receive clipboard writes until this terminal displays them.
 func (v *Viewer) SetVisible(a *App, visible bool) {
+	v.hidden = !visible
 	if !visible {
 		v.app.windowBlurred = true
 		return
@@ -23,6 +24,12 @@ func (v *Viewer) SetVisible(a *App, visible bool) {
 		v.with(a, func(ui *App) { ui.queryHostMouse() })
 	}
 	v.Input(a, []byte("\x1b[I"))
+	if v.snapshotCopyCanceled {
+		v.snapshotCopyCanceled = false
+		v.with(a, func(ui *App) {
+			ui.ShowToast("Copy handoff snapshot", "画面が切り替わったためコピーを取り消しました。もう一度選んでください", "error", -1)
+		})
+	}
 }
 
 // SelectWorkspace uses the remote workspace's original ID and changes only
