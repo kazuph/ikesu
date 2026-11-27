@@ -51,7 +51,7 @@ func TestSyncPlanNoDeleteAndIgnoredPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(steps[0][len(steps[0])-1], "/..") || steps[0][0] != "ssh" || steps[1][0] != "rsync" {
+	if !strings.Contains(steps[0][len(steps[0])-1], "/..") || steps[0][0] != "ssh" || steps[1][2] != "rsync" {
 		t.Fatal(steps)
 	}
 	args := strings.Join(steps[1], "\n")
@@ -67,7 +67,7 @@ func TestSyncPlanNoDeleteAndIgnoredPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(unmanaged[1][:2], []string{"rsync", "-a"}) {
+	if !reflect.DeepEqual(unmanaged[1][2:4], []string{"rsync", "-a"}) {
 		t.Fatal(unmanaged)
 	}
 }

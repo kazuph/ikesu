@@ -2,10 +2,11 @@ package machine
 
 import (
 	"fmt"
-	"github.com/kazuph/ikesu/internal/childenv"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/kazuph/ikesu/internal/childenv"
 )
 
 // RemoteDirectory expresses a path using the remote user's HOME, never the local HOME.
@@ -37,14 +38,31 @@ func RunPrefix(p Profile, pane bool) []string {
 	if pane {
 		mode = "-t"
 	}
-	return []string{"ssh", mode, "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "--", p.Target}
+	return append([]string{"ssh", mode}, sshTarget(p.Target)...)
 }
 
 func RunArgs(p Profile, directory string, argv []string, pane bool) []string {
-	command := "cd -- " + directory + " && exec " + Command(argv)
-	remote := `exec "${SHELL:-/bin/sh}" -lic ` + Quote(command)
+	words := make([]string, len(argv))
+	for i, word := range argv {
+		words[i] = Quote(word)
+	}
+	command := "cd -- " + directory + " && exec " + strings.Join(words, " ")
+	remote := remoteScript(`exec "${SHELL:-/bin/sh}" -lic "$1"`) + " ikesu-run " + Quote(command)
 	return append(RunPrefix(p, pane)[1:], remote)
 }
+
+// rsync supplies the host and server arguments to this local shell. The server
+// program name becomes $0 for the remote sh, leaving its arguments in "$@".
+const syncRemoteShell = `/bin/sh -c '
+if [ "$1" = -l ]; then
+    host=$2@$3
+    shift 3
+else
+    host=$1
+    shift
+fi
+exec ssh -o BatchMode=yes -o ConnectTimeout=15 -- "$host" "$IKESU_RSYNC_COMMAND" "$@"
+' rsync-ssh`
 
 // SyncPlan computes argv, without modifying the local checkout or any remote files.
 // Every transfer omits --delete: remote ignored build products survive.
@@ -65,8 +83,11 @@ func SyncPlan(p Profile, localCwd, directory string) ([][]string, error) {
 			remoteRoot += "/.."
 		}
 	}
-	mkdir := []string{"ssh", "-n", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "--", p.Target, "mkdir -p -- " + remoteRoot}
-	rsync := []string{"rsync", "-a", "-e", "ssh -o BatchMode=yes -o ConnectTimeout=15", "--exclude=/.git"}
+	mkdir := append(RunPrefix(p, false), remoteScript("mkdir -p -- "+remoteRoot))
+	// openrsync splits and unquotes --rsync-path. Pass the script to the local
+	// transport instead, and send a literal relative destination through rsync.
+	rsyncCommand := remoteScript("cd -P -- " + remoteRoot + ` && exec rsync "$@"`)
+	rsync := []string{"env", "IKESU_RSYNC_COMMAND=" + rsyncCommand, "rsync", "-a", "-e", syncRemoteShell, "--exclude=/.git"}
 	if gitManaged {
 		ignored, err := childenv.Command("git", "-C", root, "ls-files", "--others", "--ignored", "--exclude-standard", "-z").Output()
 		if err != nil {
@@ -105,8 +126,7 @@ func SyncPlan(p Profile, localCwd, directory string) ([][]string, error) {
 			rsync = append(rsync, "--exclude="+line)
 		}
 	}
-	// rsync's remote operand is interpreted by its remote shell too.
-	rsync = append(rsync, "--", root+"/", p.Target+":"+remoteRoot+"/")
+	rsync = append(rsync, "--", root+"/", p.Target+":./")
 	return [][]string{mkdir, rsync}, nil
 }
 

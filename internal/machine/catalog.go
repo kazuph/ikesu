@@ -100,7 +100,7 @@ func ValidateAdd(profiles []Profile, target, label, session string) error {
 }
 
 func ProbeArgs(target string) []string {
-	return []string{"-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "--", target, "true"}
+	return append(sshTarget(target), "true")
 }
 
 func Probe(ctx context.Context, target string) error {
