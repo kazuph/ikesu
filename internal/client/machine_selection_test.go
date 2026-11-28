@@ -106,8 +106,8 @@ func TestPaintedSelectionCatalogIdentity(t *testing.T) {
 			if err := m.refreshMachineCatalog(); err != nil {
 				t.Fatal(err)
 			}
-			if e.snapshot == nil {
-				t.Fatal("active endpoint lost retained display")
+			if m.active != "local" || e.snapshot != nil {
+				t.Fatal("disconnect did not switch to Local and clear the remote display")
 			}
 			got := m.reconnectSelection("remote")
 			if changed == "label" {

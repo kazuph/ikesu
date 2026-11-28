@@ -83,11 +83,14 @@ func KoiSceneFor(f *Frame, in Input, machines *MachineSidebar) KoiScene {
 			last = max(last, p.Y+1)
 		}
 	}
+	buttonStarts := map[int]int{}
 	if machines != nil && len(machines.Groups) > 1 {
 		last = 2
 		for _, hit := range machines.Hits {
 			if hit.Right {
 				last = max(last, hit.Rect.Y+hit.Rect.H)
+			} else if hit.IsHeaderButton() {
+				buttonStarts[hit.Rect.Y] = hit.Rect.X
 			}
 		}
 	}
@@ -145,7 +148,7 @@ func KoiSceneFor(f *Frame, in Input, machines *MachineSidebar) KoiScene {
 		}
 		if machines != nil && len(machines.Groups) > 1 {
 			for _, hit := range machines.Hits {
-				if hit.Right || hit.New {
+				if hit.Right || hit.IsHeaderButton() {
 					continue
 				}
 				for _, g := range machines.Groups {
@@ -172,7 +175,16 @@ func KoiSceneFor(f *Frame, in Input, machines *MachineSidebar) KoiScene {
 			seen[m.Group] = true
 		}
 	}
-	for _, band := range scene.Bands {
+	for i := range scene.Bands {
+		band := &scene.Bands[i]
+		// Leave room for the current button even when fish are leaving an old band.
+		if end, ok := buttonStarts[band.Lane.Y]; ok && end < band.Lane.X+band.Lane.W {
+			band.Lane.W = max(0, end-band.Lane.X)
+			band.Capacity = min(band.Capacity, band.Lane.W/8)
+			if band.Capacity == 0 {
+				band.Agents = nil
+			}
+		}
 		scene.Mini = append(scene.Mini, koiResidentsFor(band.Agents, band.Capacity, band.Lane, in, band.ID, 6, 1)...)
 	}
 	return scene

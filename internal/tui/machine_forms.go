@@ -76,7 +76,19 @@ func (f *MachineForms) Input(event input.Event, state *model.AppState) bool {
 func (f *MachineForms) OpenMachine(profile machine.Profile, state *model.AppState, x, y int) {
 	f.CloseDialog()
 	f.app.st = state
-	f.app.menu = &uiMenu{kind: menuMachineManage, machines: []machine.Profile{profile}, justOpened: true, m: render.Menu{X: x, Y: y, Global: true, Hover: -1, Sel: 0, Items: []render.MenuItem{{Label: "add machine..."}, {Label: "remove machine..."}}}}
+	items := make([]render.MenuItem, 0, 4)
+	if profile.ID != "local" {
+		label := "connect"
+		if profile.Enabled {
+			label = "disconnect"
+		}
+		items = append(items, render.MenuItem{Label: label}, render.MenuItem{Separator: true})
+	}
+	items = append(items, render.MenuItem{Label: "add machine..."}, render.MenuItem{Label: "remove machine..."})
+	f.app.menu = &uiMenu{
+		kind: menuMachineManage, machines: []machine.Profile{profile}, justOpened: true,
+		m: render.Menu{X: x, Y: y, Global: true, PaneSeparators: true, Hover: -1, Sel: 0, Items: items},
+	}
 }
 
 func (f *MachineForms) OpenOyagoiUnset(state *model.AppState, x, y int, unset func()) {

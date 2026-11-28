@@ -68,6 +68,7 @@ type endpointEvent struct {
 	oyagoiChanged  bool
 	formUpdate     func()
 	configRevision uint64
+	hidden         bool
 	upgrade        *upgradeCheckResult
 }
 

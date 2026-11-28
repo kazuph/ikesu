@@ -7,6 +7,8 @@ import (
 	"github.com/kazuph/ikesu/internal/endpoint"
 )
 
+const machineSidebarUnsupported = "endpoint_action_unsupported: machine sidebar requires a Local server with client rendering; Local input remains available"
+
 func (m *machineClient) legacyLocal() bool {
 	e := m.endpoints["local"]
 	return m.active == "local" && e.connection != nil && !endpoint.Allows(e.connection.writer.available, 1, e.connection.writer.methods, "rendered")
@@ -24,8 +26,7 @@ func (m *machineClient) configureMachineDisplay() {
 	if !hasEnabledMachine(savedMachines(m.session)) {
 		return
 	}
-	const reason = "endpoint_action_unsupported: machine sidebar requires a Local server with client rendering; Local input remains available"
-	fmt.Fprintln(os.Stderr, "ikesu:", reason)
+	fmt.Fprintln(os.Stderr, "ikesu:", machineSidebarUnsupported)
 	for _, id := range m.order[1:] {
 		e := m.endpoints[id]
 		if !e.profile.Enabled {
@@ -39,7 +40,7 @@ func (m *machineClient) configureMachineDisplay() {
 		e.attempt++
 		e.connection = nil
 		e.retry = retryPolicy{}
-		e.status, e.reason = "unsupported", reason
+		e.status, e.reason = "unsupported", machineSidebarUnsupported
 	}
 	held := m.held
 	m.held = nil

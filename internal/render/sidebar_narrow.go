@@ -27,7 +27,7 @@ func sidebarReferenceInput(in Input) Input {
 	return in
 }
 
-func copyNarrowSidebar(dst, src *Frame, actual, reference Input, right bool, rows map[int]SidebarRow) {
+func copyNarrowSidebar(dst, src *Frame, actual, reference Input, right bool, rows map[int]SidebarRow, keepRows map[int]bool) {
 	area, ref := actual.State.SidebarArea(), reference.State.SidebarArea()
 	if right {
 		area, ref = actual.State.RightSidebarArea(), reference.State.RightSidebarArea()
@@ -40,7 +40,15 @@ func copyNarrowSidebar(dst, src *Frame, actual, reference Input, right bool, row
 		x++
 		sx++
 	}
+	border, refBorder := area.X+area.W-1, ref.X+ref.W-1
+	if right {
+		border, refBorder = area.X, ref.X
+	}
 	for y := area.Y; y < area.Y+area.H; y++ {
+		*dst.Cell(border, y) = *src.Cell(refBorder, y)
+		if keepRows[y] {
+			continue
+		}
 		start := sx
 		if area.W == 2 {
 			row, ok := rows[y]
@@ -65,11 +73,6 @@ func copyNarrowSidebar(dst, src *Frame, actual, reference Input, right bool, row
 				dst.Cell(x+dx, y).Style.Bg = src.Palette.PanelBG
 			}
 		}
-		border, refBorder := area.X+area.W-1, ref.X+ref.W-1
-		if right {
-			border, refBorder = area.X, ref.X
-		}
-		*dst.Cell(border, y) = *src.Cell(refBorder, y)
 	}
 }
 
@@ -89,7 +92,7 @@ func drawNarrowSidebar(f *Frame, s *model.AppState, in Input, right bool) {
 			rows[pos.Y] = pos.Row
 		}
 	}
-	copyNarrowSidebar(f, ref, in, reference, right, rows)
+	copyNarrowSidebar(f, ref, in, reference, right, rows, nil)
 	if !right {
 		drawCollapsedExpandMark(f, s, in)
 	}
@@ -124,11 +127,21 @@ func (m *MachineSidebar) draw(f *Frame, in Input) {
 		}
 		rows := map[int]SidebarRow{}
 		for _, hit := range vm.Hits {
-			if hit.Right == right && !hit.Header && !hit.New && !hit.Rule {
+			if hit.Right == right && !hit.Header && !hit.IsHeaderButton() && !hit.Rule {
 				rows[hit.Rect.Y] = hit.Row
 			}
 		}
-		copyNarrowSidebar(f, ref, in, reference, right, rows)
+		var keepRows map[int]bool
+		if !right && in.State.SidebarArea().W < model.SidebarMinDefault {
+			// Machine header buttons and their hit targets use the actual width.
+			keepRows = map[int]bool{}
+			for _, hit := range m.Hits {
+				if !hit.Right && hit.Header {
+					keepRows[hit.Rect.Y] = true
+				}
+			}
+		}
+		copyNarrowSidebar(f, ref, in, reference, right, rows, keepRows)
 		if !right {
 			drawCollapsedExpandMark(f, in.State, in)
 		}

@@ -56,7 +56,7 @@ func (m *machineClient) dragInput(event input.Event) error {
 		return nil
 	}
 	for _, hit := range m.sidebar.Hits {
-		if hit.Machine == d.id && !hit.Header && !hit.New && !hit.Rule && contains(hit.Rect.X, hit.Rect.Y, hit.Rect.W, hit.Rect.H, event.Mouse.X, event.Mouse.Y) {
+		if hit.Machine == d.id && !hit.Header && !hit.IsHeaderButton() && !hit.Rule && contains(hit.Rect.X, hit.Rect.Y, hit.Rect.W, hit.Rect.H, event.Mouse.X, event.Mouse.Y) {
 			d.drop = -1
 			d.targetSection = ""
 			if (hit.Row.Kind == render.RowSection || hit.Row.Kind == render.RowBlank) && hit.Row.Section != d.section {

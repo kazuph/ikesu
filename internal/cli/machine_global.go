@@ -93,7 +93,7 @@ func resolveForwardMachine(profiles []machine.Profile, ref string) (machine.Prof
 		return machine.Profile{}, fmt.Errorf("machine label %q is ambiguous; use the profile id", ref)
 	}
 	if !result.Enabled {
-		return machine.Profile{}, fmt.Errorf("machine %q is disabled; enable it before use", ref)
+		return machine.Profile{}, fmt.Errorf("machine %q is disconnected; connect it before use", ref)
 	}
 	return result, nil
 }

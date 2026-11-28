@@ -120,7 +120,7 @@ func (m *machineClient) start(id string, supplied io.ReadWriteCloser) {
 			}
 		}()
 		defer func() { cancel(); stream.Close(); <-writing }()
-		if !m.post(ctx, endpointEvent{id: id, attempt: attempt, connection: connection, configRevision: configRevision}) {
+		if !m.post(ctx, endpointEvent{id: id, attempt: attempt, connection: connection, configRevision: configRevision, hidden: hidden}) {
 			return
 		}
 		for {
@@ -276,8 +276,15 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		if err := m.syncOyagoi(event.id); err != nil {
 			m.notify(err.Error())
 		}
-		if event.id != "local" && event.id == m.active {
+		// Local may have started hidden before a remote disconnect made it active.
+		if event.id == m.active && (event.id != "local" || event.hidden) {
 			visible := !m.blurred
+			if event.id == "local" {
+				if err := e.connection.enqueue(resizeMessage(m.size)); err != nil {
+					m.fail(event.id, err)
+					return 0, false
+				}
+			}
 			if err := e.connection.enqueue(msg{Type: "visibility", Visible: &visible}); err != nil {
 				m.fail(event.id, err)
 				return 0, false
