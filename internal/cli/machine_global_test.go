@@ -53,7 +53,7 @@ func TestForwardMachineObservedErrors(t *testing.T) {
 		{"a", []string{"machine", "list"}, 2, "error: --machine can only route agent, pane, workspace, or worktree\nrun 'ikesu --help' for usage\n"},
 		{"a", nil, 2, "error: --machine requires a subcommand\nrun 'ikesu --help' for usage\n"},
 		{"nosuch", []string{"pane", "list"}, 1, "error: machine \"nosuch\" was not found\n"},
-		{"disabled", []string{"pane", "list"}, 1, "error: machine \"disabled\" is disabled; enable it before use\n"},
+		{"disabled", []string{"pane", "list"}, 1, "error: machine \"disabled\" is disconnected; connect it before use\n"},
 	} {
 		out.Reset()
 		errOut.Reset()

@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -255,6 +256,9 @@ func decodeItem(raw any, dst reflect.Value, key string, warnings *[]string) bool
 func expectedType(t reflect.Type) string {
 	if t.Kind() == reflect.Pointer {
 		return expectedType(t.Elem())
+	}
+	if t == reflect.TypeFor[time.Duration]() {
+		return "a duration such as \"10m\" or 0"
 	}
 	switch t.Kind() {
 	case reflect.Bool:

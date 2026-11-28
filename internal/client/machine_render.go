@@ -1,20 +1,45 @@
 package client
 
-import "github.com/kazuph/ikesu/internal/benchstage"
-
 import (
+	"cmp"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
 	"unicode/utf8"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/kazuph/ikesu/internal/benchstage"
 	"github.com/kazuph/ikesu/internal/cellwidth"
 	"github.com/kazuph/ikesu/internal/render"
 	"github.com/kazuph/ikesu/internal/tui"
 )
+
+func (m *machineClient) displayMachineOrder() []string {
+	if len(m.order) < 2 {
+		return m.order
+	}
+	// Start from the catalog order on every call to preserve it within each tier.
+	order := slices.Clone(m.order)
+	rank := func(id string) int {
+		if id == "local" {
+			return 0
+		}
+		if e := m.endpoints[id]; e != nil {
+			switch {
+			case e.status == "online" && e.connection != nil:
+				return 1
+			case e.status == "disconnected":
+				return 3
+			}
+		}
+		return 2
+	}
+	slices.SortStableFunc(order, func(a, b string) int { return cmp.Compare(rank(a), rank(b)) })
+	return order
+}
 
 func (m *machineClient) paint() error {
 	defer benchstage.Span("client.paint")()
@@ -65,6 +90,9 @@ func (m *machineClient) paint() error {
 	if m.idleToast != "" {
 		in.Toast = &render.Toast{Title: m.idleToast}
 	}
+	if m.failureToast != nil {
+		in.Toast = m.failureToast
+	}
 	if m.approvalCanOpen(e) {
 		e.guardApproval.focus(fmt.Sprintf("p%d", e.snapshot.State.FocusedPane()))
 	} else {
@@ -93,7 +121,7 @@ func (m *machineClient) paint() error {
 			m.sidebar.DropIndex = &m.drag.drop
 		}
 	}
-	for _, id := range m.order {
+	for _, id := range m.displayMachineOrder() {
 		group := m.endpoints[id]
 		input := group.snapshot
 		if !group.profile.Enabled {

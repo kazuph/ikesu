@@ -56,7 +56,7 @@ func (m *machineClient) dragInput(event input.Event) error {
 		return nil
 	}
 	for _, hit := range m.sidebar.Hits {
-		if hit.Machine == d.id && !hit.Header && !hit.New && !hit.Rule && contains(hit.Rect.X, hit.Rect.Y, hit.Rect.W, hit.Rect.H, event.Mouse.X, event.Mouse.Y) {
+		if hit.Machine == d.id && !hit.Header && !hit.IsHeaderButton() && !hit.Rule && contains(hit.Rect.X, hit.Rect.Y, hit.Rect.W, hit.Rect.H, event.Mouse.X, event.Mouse.Y) {
 			d.drop = -1
 			d.targetSection = ""
 			if (hit.Row.Kind == render.RowSection || hit.Row.Kind == render.RowBlank) && hit.Row.Section != d.section {
@@ -66,7 +66,9 @@ func (m *machineClient) dragInput(event input.Event) error {
 				state := m.endpoints[d.id].snapshot.State
 				if state.Workspaces[hit.Row.Ws].SidebarSection() == d.section {
 					d.drop = hit.Row.Ws
-					if event.Mouse.Y > d.y {
+					// A reconnect can move the entire machine section during the drag.
+					// HQ is always drawn above the machine sections.
+					if !hit.Oyagoi && hit.Row.Ws > d.source {
 						d.drop++
 					}
 				} else {

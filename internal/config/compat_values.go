@@ -6,6 +6,10 @@ import (
 )
 
 func (c *Config) validateValues() {
+	if c.Remote.AutoDisconnectAfter < 0 {
+		c.warn("remote.auto_disconnect_after", "out of range; using default")
+		c.Remote.AutoDisconnectAfter = 0
+	}
 	if c.ConfigVersion != nil && (*c.ConfigVersion < ConfigVersionV1 || *c.ConfigVersion > CurrentConfigVersion) {
 		c.warn("config_version", "unsupported value; using default")
 		c.ConfigVersion = nil

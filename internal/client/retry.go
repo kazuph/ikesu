@@ -16,18 +16,28 @@ const (
 )
 
 type retryPolicy struct {
-	next, connectedAt time.Time
-	delay             time.Duration
-	attention, manual bool
+	next, connectedAt, offlineSince time.Time
+	disconnectSaveAfter             time.Time
+	delay                           time.Duration
+	attention, manual               bool
+}
+
+func (p *retryPolicy) started(now time.Time) {
+	if p.offlineSince.IsZero() {
+		p.offlineSince = now
+	}
 }
 
 func (p *retryPolicy) connected(now time.Time) {
 	p.connectedAt = now
+	p.offlineSince = time.Time{}
+	p.disconnectSaveAfter = time.Time{}
 	p.next = time.Time{}
 	p.attention, p.manual = false, false
 }
 
 func (p *retryPolicy) failed(now time.Time, local, attention bool) {
+	p.started(now)
 	if !p.connectedAt.IsZero() && now.Sub(p.connectedAt) >= stableConnection {
 		p.delay = 0
 	}

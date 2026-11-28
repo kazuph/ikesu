@@ -162,6 +162,8 @@ workspace_search = "cmd+f"
 
 `workspace_search` はスペース検索を開くキーです。`prefix /` と、サイドバーの一番上の🔍でも開けるので、⌘の無い端末（Linux、Windows、スマホの SSH アプリ）では設定は要りません。`workspace_search = ["cmd+f", "alt+f"]` のように並べると、複数のキーを割り当てられます。
 
+`[remote] auto_disconnect_after` には、保存済みの SSH マシンに接続できなくなってから自動切断するまでの期間を設定できます（例 `"10m"`）。既定の `0` では従来どおり再試行します。期限に達すると、切断状態を保存し、直近の接続エラーがあれば通知に表示します。サイドバーの `[connect]` または `ikesu machine connect <label-or-id>` で再び接続できます。
+
 ## 端末アプリの設定: ⌘のキーを ikesu へ届ける
 
 ikesu は kitty キー符号（kitty keyboard protocol）を有効にするので、端末アプリは⌘の組み合わせを ikesu へ送れます。ただし端末アプリは、自分で使っている⌘のキーを ikesu へ送りません。`[keys]` に書いた⌘のキーは、端末アプリ側の割り当てを外してください。

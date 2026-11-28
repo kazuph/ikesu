@@ -199,12 +199,12 @@ func TestWorkspaceCycleOrderSkipsUnavailableAndHidden(t *testing.T) {
 	s.Apply(model.CmdSetSection{Index: 0, Section: model.SectionFavorite})
 	s.Apply(model.CmdSetSection{Index: 1, Section: model.SectionPersonal})
 	s.Apply(model.CmdToggleSection{Section: model.SectionPersonal})
-	m.order = []string{"mini", "disabled", "offline", "missing", "empty", "local"}
+	m.order = []string{"local", "mini", "disabled", "offline", "missing", "empty"}
 	m.endpoints["disabled"] = &managedEndpoint{profile: machine.Profile{Enabled: false}, snapshot: m.endpoints["mini"].snapshot, connection: m.endpoints["mini"].connection}
 	m.endpoints["offline"] = &managedEndpoint{profile: machine.Profile{Enabled: true}, snapshot: m.endpoints["mini"].snapshot}
 	m.endpoints["missing"] = &managedEndpoint{profile: machine.Profile{Enabled: true}, connection: m.endpoints["mini"].connection}
 	m.endpoints["empty"] = &managedEndpoint{profile: machine.Profile{Enabled: true}, snapshot: &render.Input{State: &model.AppState{}}, connection: m.endpoints["mini"].connection}
-	want := []workspaceCycleTarget{{machine: "mini", workspace: m.endpoints["mini"].snapshot.State.Workspaces[0].ID}, {machine: "mini", workspace: m.endpoints["mini"].snapshot.State.Workspaces[1].ID}, {machine: "local", workspace: s.Workspaces[0].ID}, {machine: "local", workspace: s.Workspaces[2].ID}}
+	want := []workspaceCycleTarget{{machine: "local", workspace: s.Workspaces[0].ID}, {machine: "local", workspace: s.Workspaces[2].ID}, {machine: "mini", workspace: m.endpoints["mini"].snapshot.State.Workspaces[0].ID}, {machine: "mini", workspace: m.endpoints["mini"].snapshot.State.Workspaces[1].ID}}
 	if got := m.workspaceCycleTargets(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("%+v want %+v", got, want)
 	}

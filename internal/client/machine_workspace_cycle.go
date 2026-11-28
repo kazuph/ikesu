@@ -49,7 +49,7 @@ func (m *machineClient) workspaceCycleTargets() []workspaceCycleTarget {
 	if hq.Machine != "" && !hq.Offline && hq.HideOriginal && !hq.Collapsed {
 		targets = append(targets, workspaceCycleTarget{machine: hq.Machine, workspace: hq.Workspace, generation: m.oyagoi.Generation})
 	}
-	for _, id := range m.order {
+	for _, id := range m.displayMachineOrder() {
 		e := m.endpoints[id]
 		if e == nil || !e.profile.Enabled || e.connection == nil || e.snapshot == nil || e.snapshot.State == nil {
 			continue

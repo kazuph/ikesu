@@ -306,9 +306,22 @@ func TestKoiFinalMachineOutputAndAllThemes(t *testing.T) {
 				in.State.Workspaces[0].Section = model.SectionWork
 				in.Panes[1].Status.Key = "working"
 				other := in
-				machines := &MachineSidebar{Groups: []MachineGroup{{ID: "local", Input: &in}, {ID: "remote", Input: &other}}, Active: "local"}
+				machines := &MachineSidebar{Active: "local", Groups: []MachineGroup{
+					{ID: "local", Input: &in},
+					{ID: "remote", Status: "reconnecting", Input: &other},
+				}}
 				in.Koi = false
 				plain := ComposeMachines(in, machines)
+				var button layout.Rect
+				for _, hit := range machines.Hits {
+					if hit.Machine == "remote" && hit.Disconnect {
+						button = hit.Rect
+						break
+					}
+				}
+				if button.W == 0 {
+					t.Fatal("missing disconnect button")
+				}
 				in.Koi = true
 				scene := KoiSceneFor(plain.Frame, in, machines)
 				if len(scene.Fish) != 4 || len(scene.Mini) != 3 {
@@ -324,6 +337,9 @@ func TestKoiFinalMachineOutputAndAllThemes(t *testing.T) {
 					}
 					if changed == 0 {
 						t.Fatal("machine mini erased", theme, server, transparent)
+					}
+					if mini.Lane.Y == button.Y && mini.Lane.X+mini.Lane.W > button.X {
+						t.Fatal("machine mini lane overlaps disconnect button", mini.Lane, button)
 					}
 				}
 				pondChanged := 0

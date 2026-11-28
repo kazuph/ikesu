@@ -3,10 +3,57 @@ package client
 import (
 	"encoding/base64"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/kazuph/ikesu/internal/endpoint"
 )
+
+func TestOnlineMachineNewButtonRequestsWorkspace(t *testing.T) {
+	t.Parallel()
+	m := searchFixture(t)
+	out, err := os.CreateTemp(t.TempDir(), "viewer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer out.Close()
+	m.out = out
+	remote := m.endpoints["mini"]
+	remote.status = "online"
+	if err := m.paint(); err != nil {
+		t.Fatal(err)
+	}
+	for _, hit := range m.sidebar.Hits {
+		if hit.Machine != "mini" || !hit.IsHeaderButton() {
+			continue
+		}
+		if !hit.New {
+			t.Fatalf("online machine has wrong button: %+v", hit)
+		}
+		click := fmt.Sprintf("\x1b[<0;%d;%dM", hit.Rect.X+hit.Rect.W, hit.Rect.Y+1)
+		if err := m.input(mouseEvent(t, click)); err != nil {
+			t.Fatal(err)
+		}
+		q := remote.connection.queue
+		if len(q) != 2 || q[0].Type != "resize" || q[1].Type != "workspace_new" {
+			t.Fatalf("new button did not request a remote workspace: %+v", q)
+		}
+		// A queued click can still see the old hit before the next paint.
+		m.pending = nil
+		remote.connection = nil
+		remote.status = "reconnecting"
+		if err := m.input(mouseEvent(t, click)); err != nil {
+			t.Fatal(err)
+		}
+		for _, updated := range m.sidebar.Hits {
+			if updated.Machine == "mini" && updated.Disconnect {
+				return
+			}
+		}
+		t.Fatal("connection loss did not redraw the machine's disconnect button")
+	}
+	t.Fatal("online machine did not draw its new workspace button")
+}
 
 func TestMachineWorkspaceNewRealEndpoints(t *testing.T) {
 	h := newRightMachineHarness(t)

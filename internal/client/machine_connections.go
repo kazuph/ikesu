@@ -42,6 +42,7 @@ func (m *machineClient) start(id string, supplied io.ReadWriteCloser) {
 	e.attempt++
 	attempt := e.attempt
 	e.connection = nil
+	e.retry.started(time.Now())
 	if e.reason == "" {
 		e.status = "connecting"
 	} else {
@@ -120,7 +121,7 @@ func (m *machineClient) start(id string, supplied io.ReadWriteCloser) {
 			}
 		}()
 		defer func() { cancel(); stream.Close(); <-writing }()
-		if !m.post(ctx, endpointEvent{id: id, attempt: attempt, connection: connection, configRevision: configRevision}) {
+		if !m.post(ctx, endpointEvent{id: id, attempt: attempt, connection: connection, configRevision: configRevision, hidden: hidden}) {
 			return
 		}
 		for {
@@ -249,6 +250,7 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		}
 		e.reason = event.err.Error()
 		if strings.HasPrefix(e.reason, "SSH approval expired:") {
+			e.retry.started(time.Now())
 			e.status = machine.ApprovalStopped
 			e.retry.approvalExpired()
 		} else {
@@ -276,8 +278,15 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		if err := m.syncOyagoi(event.id); err != nil {
 			m.notify(err.Error())
 		}
-		if event.id != "local" && event.id == m.active {
+		// Local may have started hidden before a remote disconnect made it active.
+		if event.id == m.active && (event.id != "local" || event.hidden) {
 			visible := !m.blurred
+			if event.id == "local" {
+				if err := e.connection.enqueue(resizeMessage(m.size)); err != nil {
+					m.fail(event.id, err)
+					return 0, false
+				}
+			}
 			if err := e.connection.enqueue(msg{Type: "visibility", Visible: &visible}); err != nil {
 				m.fail(event.id, err)
 				return 0, false
@@ -572,6 +581,10 @@ func (m *machineClient) configureOtherEndpoints(source string) {
 }
 
 func (m *machineClient) fail(id string, err error) {
+	m.failAt(id, err, time.Now())
+}
+
+func (m *machineClient) failAt(id string, err error, now time.Time) {
 	m.idleDisconnect(id, err)
 	m.pruneDisconnect(id)
 	m.runawayDisconnect(id)
@@ -592,5 +605,5 @@ func (m *machineClient) fail(id string, err error) {
 	}
 	e.status = "reconnecting"
 	e.reason = err.Error()
-	e.retry.failed(time.Now(), id == "local", needsAttention(e.reason))
+	e.retry.failed(now, id == "local", needsAttention(e.reason))
 }

@@ -18,13 +18,16 @@ const machineHelp = `Usage:
   ikesu machine add <ssh-target> --label <label> [--remote-session <name>]
   ikesu machine rename <label-or-id> --label <label>
   ikesu machine remove <label-or-id>
+  ikesu machine connect <label-or-id>
+  ikesu machine disconnect <label-or-id>
   ikesu machine enable <label-or-id>
   ikesu machine disable <label-or-id>
 
 Saved machines contain only a label, SSH target, explicit ikesu session, and enabled state.
 SSH credentials and key material remain owned by OpenSSH.
 Adding probes SSH reachability first; unreachable machines are not saved.
-Removing or disabling a machine leaves its remote sessions running.
+Enable and disable are aliases for connect and disconnect.
+Removing or disconnecting a machine leaves its remote sessions running.
 `
 
 func (r *runner) catalog() machine.Catalog {
@@ -58,7 +61,7 @@ func (r *runner) machineCLI(args []string) int {
 			fmt.Fprintln(r.out(), "No saved SSH machines.")
 		}
 		for _, p := range profiles {
-			state := "disabled"
+			state := "disconnected"
 			if p.Enabled {
 				state = "enabled"
 			}
@@ -71,7 +74,13 @@ func (r *runner) machineCLI(args []string) int {
 		return 2
 	}
 	action, ref := args[0], args[1]
-	if action != "add" && action != "rename" && action != "remove" && action != "enable" && action != "disable" {
+	switch action {
+	case "connect":
+		action = "enable"
+	case "disconnect":
+		action = "disable"
+	case "add", "rename", "remove", "enable", "disable":
+	default:
 		fmt.Fprint(r.errOut(), machineHelp)
 		return 2
 	}

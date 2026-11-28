@@ -68,6 +68,7 @@ type endpointEvent struct {
 	oyagoiChanged  bool
 	formUpdate     func()
 	configRevision uint64
+	hidden         bool
 	upgrade        *upgradeCheckResult
 }
 
@@ -156,6 +157,7 @@ type machineClient struct {
 	blurred           bool
 	notice            string
 	noticeUntil       time.Time
+	failureToast      *render.Toast
 	forms             *tui.MachineForms
 	idle              *idleDialog
 	prune             *machinePrune
@@ -163,6 +165,8 @@ type machineClient struct {
 	idleRequest       uint64
 	idleToast         string
 	readClipboard     func(context.Context) (clipboardContent, error)
+
+	autoDisconnectNotices []render.Toast
 
 	focusKnown           bool
 	lastClientView       *api.ClientView
@@ -461,9 +465,13 @@ func (m *machineClient) nextDeadline() time.Time {
 			include(m.pending.inputDeadline())
 		}
 	}
-	for _, e := range m.endpoints {
+	autoDisconnectAfter := m.autoDisconnectAfter()
+	for id, e := range m.endpoints {
 		include(e.retry.next)
 		include(e.upgradeRetryAt)
+		if id != "local" {
+			include(e.autoDisconnectDeadline(autoDisconnectAfter))
+		}
 	}
 	return next
 }
@@ -485,6 +493,7 @@ func (m *machineClient) advance(now time.Time) {
 	m.traceProbeTimeout(now)
 	if !m.noticeUntil.IsZero() && !now.Before(m.noticeUntil) {
 		m.notice = ""
+		m.failureToast = nil
 		m.idleToast = ""
 		m.noticeUntil = time.Time{}
 	}
@@ -499,12 +508,25 @@ func (m *machineClient) advance(now time.Time) {
 		m.drag = nil
 		m.pending = nil
 	}
+	autoDisconnectAfter := m.autoDisconnectAfter()
 	for id, e := range m.endpoints {
+		if deadline := e.autoDisconnectDeadline(autoDisconnectAfter); id != "local" && !deadline.IsZero() && !now.Before(deadline) {
+			if m.autoDisconnect(e, autoDisconnectAfter, now) {
+				continue
+			}
+		}
 		if retry, notify := e.retry.due(now); retry {
 			if notify {
 				m.notify(e.profile.Label + ": " + e.reason)
 			}
 			m.start(id, nil)
 		}
+	}
+	if m.failureToast == nil && len(m.autoDisconnectNotices) != 0 {
+		toast := m.autoDisconnectNotices[0]
+		m.autoDisconnectNotices[0] = render.Toast{}
+		m.autoDisconnectNotices = m.autoDisconnectNotices[1:]
+		m.failureToast = &toast
+		m.noticeUntil = now.Add(connectionNotice)
 	}
 }
