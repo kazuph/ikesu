@@ -212,9 +212,8 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 	if event.approval != "" {
 		e.status = "awaiting approval"
 		e.approval = event.approval
-		e.reason = event.approval
 		if err := machine.OpenApproval(e.profile.ID, event.approval); err != nil {
-			e.reason = event.approval + "; browser: " + err.Error()
+			e.approval += "; browser: " + err.Error()
 		}
 		_ = m.paint()
 		return 0, false

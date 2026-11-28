@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/input"
 	"github.com/kazuph/ikesu/internal/machine"
@@ -15,6 +18,95 @@ import (
 	"github.com/kazuph/ikesu/internal/render"
 	"github.com/kazuph/ikesu/internal/tui"
 )
+
+func TestOfflineMachineSpaceClickKeepsLocalInputFlowing(t *testing.T) {
+	t.Parallel()
+	const sshReason = "ssh: exit status 255: ssh: connect to host mini port 22: Connection refused"
+	for _, status := range []string{"connecting", "reconnecting", "needs attention", "awaiting approval", machine.ApprovalStopped} {
+		t.Run(status, func(t *testing.T) {
+			t.Parallel()
+			out, err := os.CreateTemp(t.TempDir(), "viewer")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer out.Close()
+			peer := endpoint.Current()
+			local := &endpointConnection{writer: &writer{available: peer.Generation, methods: peer.Methods}, wake: make(chan struct{}, 1)}
+			snapshot := &render.Input{State: model.New(t.TempDir(), 120, 45)}
+			remote := &managedEndpoint{profile: machine.Profile{ID: "remote", Label: "Mini", Enabled: true}, snapshot: snapshot, status: status, reason: sshReason}
+			if status == "connecting" {
+				remote.reason = ""
+			}
+			if status == "awaiting approval" {
+				remote.approval = "https://example.invalid/approval"
+			}
+			m := &machineClient{active: "local", order: []string{"local", "remote"}, out: out, size: tui.Winsize{Cols: 120, Rows: 45}, settings: &localSettings{}, endpoints: map[string]*managedEndpoint{
+				"local":  {profile: machine.Profile{ID: "local", Enabled: true}, connection: local, snapshot: snapshot},
+				"remote": remote,
+			}}
+			if err := m.paint(); err != nil {
+				t.Fatal(err)
+			}
+			var click string
+			for _, hit := range m.sidebar.Hits {
+				if hit.Machine == "remote" && hit.Workspace != 0 {
+					click = fmt.Sprintf("\x1b[<0;%d;%dM", hit.Rect.X+1, hit.Rect.Y+1)
+					break
+				}
+			}
+			if click == "" {
+				t.Fatal("offline space was not drawn")
+			}
+			if err := m.input(mouseEvent(t, click)); err != nil {
+				t.Fatal(err)
+			}
+			if m.pending != nil || m.drag != nil || m.active != "local" {
+				t.Fatal("offline click started a switch or drag")
+			}
+			rendered, err := os.ReadFile(out.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantReason := remote.reason
+			if wantReason == "" {
+				wantReason = status
+			}
+			if m.regions.ToastRect.W == 0 || !strings.Contains(ansi.Strip(string(rendered)), wantReason) {
+				t.Fatalf("connection reason %q missing from terminal output", wantReason)
+			}
+			for _, event := range []input.Event{{Kind: input.KindKey, Raw: []byte("a")}, {Kind: input.KindPaste, Text: "pasted"}} {
+				if err := m.input(event); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var received []byte
+			for _, message := range local.queue {
+				if message.Type == "input" {
+					data, err := base64.StdEncoding.DecodeString(message.Data)
+					if err != nil {
+						t.Fatal(err)
+					}
+					received = append(received, data...)
+				}
+			}
+			if string(received) != "a\x1b[200~pasted\x1b[201~" {
+				t.Fatalf("input did not reach the visible endpoint immediately: %q", received)
+			}
+		})
+	}
+}
+
+func TestMachineSwitchTimeoutKeepsConnectionReason(t *testing.T) {
+	t.Parallel()
+	const reason = "ssh: exit status 255: Permission denied (publickey)."
+	deadline := time.Unix(100, 0)
+	remote := &managedEndpoint{status: "needs attention", reason: reason}
+	m := &machineClient{active: "local", pending: &pendingMachine{id: "remote", deadline: deadline}, endpoints: map[string]*managedEndpoint{"remote": remote}}
+	m.advance(deadline)
+	if m.pending != nil || m.active != "local" || remote.reason != reason || m.switchToast == nil || m.switchToast.Body != reason {
+		t.Fatalf("timeout replaced the connection reason or left the switch pending: reason=%q toast=%+v pending=%+v", remote.reason, m.switchToast, m.pending)
+	}
+}
 
 func TestPendingMachineKeysFollowDestinationRenderedAck(t *testing.T) {
 	reader, writerFile, err := os.Pipe()

@@ -156,6 +156,7 @@ type machineClient struct {
 	blurred           bool
 	notice            string
 	noticeUntil       time.Time
+	switchToast       *render.Toast
 	forms             *tui.MachineForms
 	idle              *idleDialog
 	prune             *machinePrune
@@ -485,6 +486,7 @@ func (m *machineClient) advance(now time.Time) {
 	m.traceProbeTimeout(now)
 	if !m.noticeUntil.IsZero() && !now.Before(m.noticeUntil) {
 		m.notice = ""
+		m.switchToast = nil
 		m.idleToast = ""
 		m.noticeUntil = time.Time{}
 	}
@@ -492,9 +494,11 @@ func (m *machineClient) advance(now time.Time) {
 		m.pending.keys = nil
 	}
 	if m.pending != nil && !now.Before(m.pending.deadline) {
-		m.endpoints[m.pending.id].reason = "machine switch timed out"
-		if m.drag != nil && m.drag.started {
+		e := m.endpoints[m.pending.id]
+		if e.reason == "" && m.drag != nil && m.drag.started {
 			m.notify("the space could not be moved: its machine is not ready")
+		} else {
+			m.notifySwitchFailure(e, "machine switch timed out")
 		}
 		m.drag = nil
 		m.pending = nil

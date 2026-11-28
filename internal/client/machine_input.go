@@ -333,6 +333,9 @@ func (m *machineClient) input(event input.Event) error {
 						})
 						return m.paint()
 					}
+					if e := m.endpoints[hit.Machine]; e != nil && e.connection == nil && event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseLeft {
+						return m.rejectOfflineSwitch(e)
+					}
 					return nil
 				}
 				if hit.Rule {
@@ -423,9 +426,14 @@ func (m *machineClient) input(event input.Event) error {
 						}
 					}
 				}
+				if hit.Workspace != 0 && event.Kind == input.KindMouseClick && (event.Mouse.Button == uv.MouseLeft || event.Mouse.Button == uv.MouseRight) {
+					if e := m.endpoints[hit.Machine]; e.connection == nil {
+						return m.rejectOfflineSwitch(e)
+					}
+				}
 				if hit.Workspace != 0 && hit.Machine != m.active && event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseRight {
 					e := m.endpoints[hit.Machine]
-					if e.connection == nil || e.snapshot == nil {
+					if e.snapshot == nil {
 						return fmt.Errorf("endpoint_action_unsupported: workspace sidebar target unavailable")
 					}
 					m.suppressRelease = true
@@ -446,9 +454,6 @@ func (m *machineClient) input(event input.Event) error {
 					m.drag = &machineDrag{id: hit.Machine, workspace: hit.Workspace, source: hit.Row.Ws, pressHit: hit, pressEvent: event, selected: selected, x: event.Mouse.X, y: event.Mouse.Y, drop: -1, section: e.snapshot.State.Workspaces[hit.Row.Ws].SidebarSection()}
 					if !selected {
 						m.pending = &pendingMachine{id: hit.Machine, workspace: hit.Workspace, deadline: time.Now().Add(machineSwitchWait)}
-						if e.connection == nil && hit.Machine == "local" {
-							m.start(hit.Machine, nil)
-						}
 						m.requestPending()
 					}
 					return nil

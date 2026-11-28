@@ -1,11 +1,29 @@
 package client
 
 import (
+	"cmp"
 	"fmt"
+	"strings"
+	"time"
+
+	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/render"
-	"time"
 )
+
+func (m *machineClient) rejectOfflineSwitch(e *managedEndpoint) error {
+	m.suppressRelease = true
+	m.pending = nil
+	m.drag = nil
+	m.notifySwitchFailure(e, cmp.Or(e.approval, e.status, "machine is not connected"))
+	return m.paint()
+}
+
+func (m *machineClient) notifySwitchFailure(e *managedEndpoint, fallback string) {
+	reason := ansi.Strip(cmp.Or(e.reason, fallback))
+	m.switchToast = &render.Toast{Title: e.profile.Label, Body: strings.Join(strings.Fields(reason), " ")}
+	m.noticeUntil = time.Now().Add(connectionNotice)
+}
 
 func (m *machineClient) requestPending() {
 	if m.pending == nil {
