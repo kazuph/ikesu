@@ -8,10 +8,12 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/input"
@@ -156,6 +158,7 @@ type machineClient struct {
 	blurred           bool
 	notice            string
 	noticeUntil       time.Time
+	remoteProbeToast  *render.Toast
 	forms             *tui.MachineForms
 	idle              *idleDialog
 	prune             *machinePrune
@@ -462,6 +465,9 @@ func (m *machineClient) nextDeadline() time.Time {
 		}
 	}
 	for _, e := range m.endpoints {
+		if e.connection != nil {
+			include(e.connection.remoteProbeAt)
+		}
 		include(e.retry.next)
 		include(e.upgradeRetryAt)
 	}
@@ -485,6 +491,7 @@ func (m *machineClient) advance(now time.Time) {
 	m.traceProbeTimeout(now)
 	if !m.noticeUntil.IsZero() && !now.Before(m.noticeUntil) {
 		m.notice = ""
+		m.remoteProbeToast = nil
 		m.idleToast = ""
 		m.noticeUntil = time.Time{}
 	}
@@ -506,5 +513,31 @@ func (m *machineClient) advance(now time.Time) {
 			}
 			m.start(id, nil)
 		}
+		if c := e.connection; c != nil && !c.remoteProbeAt.IsZero() && !now.Before(c.remoteProbeAt) {
+			m.advanceRemoteProbe(id, c, now)
+		}
 	}
+}
+
+func (m *machineClient) advanceRemoteProbe(id string, c *endpointConnection, now time.Time) {
+	var err error
+	if c.remoteProbePending {
+		err = fmt.Errorf("remote ikesu not responding for %s", remoteProbeTimeout)
+	} else {
+		// The read-only query returns a reply even for workspace 0 and when
+		// there is no pane output or user input on this connection.
+		err = c.enqueue(msg{Type: "oyagoi_check"})
+		if err == nil {
+			c.remoteProbePending = true
+			c.remoteProbeAt = now.Add(remoteProbeTimeout)
+			return
+		}
+	}
+	m.failAt(id, err, now)
+	e := m.endpoints[id]
+	// The retired transport may still have events queued, including its EOF.
+	e.attempt++
+	reason := ansi.Strip(e.reason)
+	m.remoteProbeToast = &render.Toast{Title: e.profile.Label, Body: strings.Join(strings.Fields(reason), " ")}
+	m.noticeUntil = time.Now().Add(connectionNotice)
 }

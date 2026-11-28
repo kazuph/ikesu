@@ -15,6 +15,13 @@ const (
 	sshApprovalWait   = 30 * time.Minute
 )
 
+// Probe often enough to detect a stalled remote in about 30 seconds, leaving
+// most of that window for a busy server or a slow SSH link to reply.
+const (
+	remoteProbeInterval = 10 * time.Second
+	remoteProbeTimeout  = 20 * time.Second
+)
+
 type retryPolicy struct {
 	next, connectedAt time.Time
 	delay             time.Duration

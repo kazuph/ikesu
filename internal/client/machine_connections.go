@@ -106,6 +106,9 @@ func (m *machineClient) start(id string, supplied io.ReadWriteCloser) {
 				return
 			}
 		}
+		if id != "local" && endpoint.Allows(connection.writer.available, endpoint.MachineGeneration, connection.writer.methods, "oyagoi_check") {
+			connection.remoteProbeAt = time.Now().Add(remoteProbeInterval)
+		}
 		writing := make(chan struct{})
 		go func() {
 			defer close(writing)
@@ -331,6 +334,14 @@ func (m *machineClient) event(event endpointEvent) (pumpResult, bool) {
 		}
 		_ = m.paint()
 	case "oyagoi_check_result":
+		// Workspace 0 with an empty generation is reserved here for the probe.
+		if message.Workspace == 0 && message.WorkspaceGeneration == "" && message.OyagoiExists != nil {
+			if c := e.connection; c != nil && c.remoteProbePending {
+				c.remoteProbePending = false
+				c.remoteProbeAt = time.Now().Add(remoteProbeInterval)
+			}
+			break
+		}
 		if err := m.confirmOyagoiSnapshot(event.id, message); err != nil {
 			m.notify(err.Error())
 		}
@@ -572,6 +583,10 @@ func (m *machineClient) configureOtherEndpoints(source string) {
 }
 
 func (m *machineClient) fail(id string, err error) {
+	m.failAt(id, err, time.Now())
+}
+
+func (m *machineClient) failAt(id string, err error, now time.Time) {
 	m.idleDisconnect(id, err)
 	m.pruneDisconnect(id)
 	m.runawayDisconnect(id)
@@ -592,5 +607,5 @@ func (m *machineClient) fail(id string, err error) {
 	}
 	e.status = "reconnecting"
 	e.reason = err.Error()
-	e.retry.failed(time.Now(), id == "local", needsAttention(e.reason))
+	e.retry.failed(now, id == "local", needsAttention(e.reason))
 }

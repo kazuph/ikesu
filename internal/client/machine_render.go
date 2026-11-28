@@ -65,6 +65,9 @@ func (m *machineClient) paint() error {
 	if m.idleToast != "" {
 		in.Toast = &render.Toast{Title: m.idleToast}
 	}
+	if m.remoteProbeToast != nil {
+		in.Toast = m.remoteProbeToast
+	}
 	if m.approvalCanOpen(e) {
 		e.guardApproval.focus(fmt.Sprintf("p%d", e.snapshot.State.FocusedPane()))
 	} else {
@@ -99,7 +102,11 @@ func (m *machineClient) paint() error {
 		if !group.profile.Enabled {
 			input = nil
 		}
-		m.sidebar.Groups = append(m.sidebar.Groups, render.MachineGroup{ID: id, Label: group.profile.Label, Status: group.status, Reason: group.reason, Input: input})
+		reason := group.reason
+		if group.status == "awaiting approval" {
+			reason = group.approval
+		}
+		m.sidebar.Groups = append(m.sidebar.Groups, render.MachineGroup{ID: id, Label: group.profile.Label, Status: group.status, Reason: reason, Input: input})
 	}
 	m.koiClock.ApplyFrame(&in, m.koiInput, &m.sidebar, time.Now(), tui.FossilExpiry())
 

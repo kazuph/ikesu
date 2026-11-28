@@ -9,6 +9,7 @@ import (
 	"io"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/latency"
@@ -37,6 +38,10 @@ type endpointConnection struct {
 	wake      chan struct{}
 	changed   chan struct{}
 	boot      string
+
+	// Owned by the machine supervisor after the connection is published.
+	remoteProbeAt      time.Time
+	remoteProbePending bool
 }
 
 func connectEndpoint(stream io.ReadWriteCloser, remote bool, size tui.Winsize, settings *localSettings, fileTransport string, selection *endpoint.ViewSelection) (*endpointConnection, error) {
