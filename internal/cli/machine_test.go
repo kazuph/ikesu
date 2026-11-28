@@ -73,6 +73,49 @@ func TestMachineForwardRejectsBeforeLocalDispatch(t *testing.T) {
 	}
 }
 
+func TestMachineConnectAndDisconnect(t *testing.T) {
+	t.Setenv("IKESU_STATE_DIR", t.TempDir())
+	var out, errOut bytes.Buffer
+	o := Options{Stdout: &out, Stderr: &errOut}
+	catalog := (&runner{o: o}).catalog()
+	profile, err := catalog.AddVerified("host", "Remote", "work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := func(args ...string) string {
+		t.Helper()
+		out.Reset()
+		errOut.Reset()
+		if Run(append([]string{"machine"}, args...), o) != 0 {
+			t.Fatalf("%v: %s", args, errOut.String())
+		}
+		return out.String()
+	}
+	check := func(enabled bool, state string) {
+		t.Helper()
+		want := profile
+		want.Enabled = enabled
+		got := catalog.Load()
+		if len(got) != 1 || got[0] != want {
+			t.Fatalf("saved machine = %+v, want %+v", got, want)
+		}
+		if output := run("list"); !strings.HasSuffix(output, "\t"+state+"\n") {
+			t.Fatalf("list = %q, want state %q", output, state)
+		}
+	}
+	run("disconnect", profile.Label)
+	check(false, "disconnected")
+	run("connect", profile.ID)
+	check(true, "enabled")
+	run("disable", profile.ID)
+	check(false, "disconnected")
+	run("enable", profile.Label)
+	check(true, "enabled")
+	if help := run("help"); !strings.Contains(help, "machine connect <label-or-id>") || !strings.Contains(help, "machine disconnect <label-or-id>") {
+		t.Fatal(help)
+	}
+}
+
 func TestMachineRemoteConflict(t *testing.T) {
 	for _, args := range [][]string{{"--remote", "host", "--machine", "saved", "pane", "list"}, {"--machine=saved", "--remote=host"}} {
 		if !MachineRemoteConflict(args) {

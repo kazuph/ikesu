@@ -2,10 +2,17 @@ package client
 
 import (
 	"fmt"
+	"strings"
+	"time"
+
+	"github.com/charmbracelet/x/ansi"
 	"github.com/kazuph/ikesu/internal/endpoint"
 	"github.com/kazuph/ikesu/internal/render"
-	"time"
 )
+
+func machineFailureToast(title, reason string) render.Toast {
+	return render.Toast{Title: title, Body: strings.Join(strings.Fields(ansi.Strip(reason)), " ")}
+}
 
 func (m *machineClient) requestPending() {
 	if m.pending == nil {
@@ -97,12 +104,7 @@ func (m *machineClient) finishSwitch() {
 	p.keys = nil
 	m.pending = nil
 	m.regions = nil
-	selectedVisible := !m.blurred
-	if endpoint.Allows(e.connection.writer.available, endpoint.MachineGeneration, e.connection.writer.methods, "visibility") {
-		_ = e.connection.enqueue(msg{Type: "visibility", Visible: &selectedVisible})
-	} else if selectedVisible {
-		_ = m.sendInput(m.active, []byte("\x1b[I"))
-	}
+	m.showMachineViewer(e)
 	if p.sidebar != nil {
 		if err := m.sidebarInput(p.sidebar.hit, p.sidebar.event); err != nil {
 			m.notify(err.Error())
@@ -110,5 +112,14 @@ func (m *machineClient) finishSwitch() {
 	}
 	if err := m.flushDrag(); err != nil {
 		m.fail(m.active, err)
+	}
+}
+
+func (m *machineClient) showMachineViewer(e *managedEndpoint) {
+	visible := !m.blurred
+	if endpoint.Allows(e.connection.writer.available, endpoint.MachineGeneration, e.connection.writer.methods, "visibility") {
+		_ = e.connection.enqueue(msg{Type: "visibility", Visible: &visible})
+	} else if visible {
+		_ = m.sendInput(m.active, []byte("\x1b[I"))
 	}
 }

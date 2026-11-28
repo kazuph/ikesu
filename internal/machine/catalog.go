@@ -73,7 +73,7 @@ func Resolve(profiles []Profile, ref string, enabled bool) (Profile, error) {
 		return Profile{}, fmt.Errorf("machine %q is ambiguous", ref)
 	}
 	if enabled && !result.Enabled {
-		return Profile{}, fmt.Errorf("machine %q is disabled", ref)
+		return Profile{}, fmt.Errorf("machine %q is disconnected", ref)
 	}
 	return result, nil
 }

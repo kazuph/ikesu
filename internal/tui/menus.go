@@ -337,10 +337,20 @@ func (a *App) activateMenu(i int) {
 	case menuOyagoiUnset:
 		m.unsetOyagoi()
 	case menuMachineManage:
-		if m.m.Items[i].Label == "add machine..." {
+		profile := m.machines[0]
+		switch label := m.m.Items[i].Label; label {
+		case "add machine...":
 			a.addMachineDialog()
-		} else {
-			a.removeMachineDialog(m.machines[0])
+		case "remove machine...":
+			a.removeMachineDialog(profile)
+		case "connect", "disconnect":
+			action := "enable"
+			if label == "disconnect" {
+				action = "disable"
+			}
+			if _, err := a.machines().Change(profile.ID, action, "", &profile); err != nil {
+				a.machineError(err)
+			}
 		}
 	case menuMachineRemove:
 		if i < len(m.machines) {

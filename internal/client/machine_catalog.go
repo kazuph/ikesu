@@ -2,6 +2,7 @@ package client
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +16,13 @@ func (m *machineClient) catalogPath() string {
 }
 
 func (m *machineClient) refreshMachineCatalog() error {
+	if err := m.syncMachineCatalog(); err != nil {
+		return err
+	}
+	return m.paint()
+}
+
+func (m *machineClient) syncMachineCatalog() error {
 	data, err := os.ReadFile(m.catalogPath())
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("machine catalog: %w", err)
@@ -42,10 +50,11 @@ func (m *machineClient) refreshMachineCatalog() error {
 			continue
 		}
 		profile, exists := next[id]
-		if !exists || profile.Target != e.profile.Target || profile.Session != e.profile.Session {
+		changedEndpoint := !exists || profile.Target != e.profile.Target || profile.Session != e.profile.Session
+		if changedEndpoint {
 			e.selection = nil
 		}
-		if !exists || !profile.Enabled || profile.Target != e.profile.Target || profile.Session != e.profile.Session {
+		if changedEndpoint || (!profile.Enabled && (e.profile.Enabled || id == m.active)) {
 			if m.pending != nil && m.pending.id == id {
 				m.pending = nil
 			}
@@ -61,9 +70,14 @@ func (m *machineClient) refreshMachineCatalog() error {
 			e.retry = retryPolicy{}
 			e.removed = !exists
 			if exists {
-				e.status, e.reason = "disabled", "machine is disabled"
+				e.status, e.reason = "disconnected", "machine is disconnected"
+				e.approval = ""
 			} else {
 				e.status, e.reason = "removed", "machine was removed"
+			}
+			m.idleDisconnect(id, errors.New(e.reason))
+			if exists && !profile.Enabled && id == m.active {
+				m.showLocalAfterDisconnect()
 			}
 			if id != m.active {
 				e.snapshot = nil
@@ -77,19 +91,23 @@ func (m *machineClient) refreshMachineCatalog() error {
 	for _, profile := range profiles {
 		e := m.endpoints[profile.ID]
 		if e == nil {
-			e = &managedEndpoint{profile: profile, status: "disabled"}
+			e = &managedEndpoint{profile: profile, status: "disconnected", reason: "machine is disconnected"}
 			m.endpoints[profile.ID] = e
 		}
 		wasEnabled := e.profile.Enabled
 		e.profile = profile
 		e.removed = false
-		if profile.Enabled && (!wasEnabled || e.status == "disabled") {
-			if !m.legacyLocal() {
-				m.start(profile.ID, nil)
+		if profile.Enabled && (!wasEnabled || e.status == "disconnected") {
+			if m.legacyLocal() {
+				e.status, e.reason = "unsupported", machineSidebarUnsupported
+				continue
 			}
+			e.reason = ""
+			e.retry = retryPolicy{}
+			m.start(profile.ID, nil)
 		}
 		if !profile.Enabled {
-			e.status = "disabled"
+			e.status = "disconnected"
 		}
 	}
 	for id := range m.endpoints {
@@ -97,5 +115,20 @@ func (m *machineClient) refreshMachineCatalog() error {
 			m.notify(err.Error())
 		}
 	}
-	return m.paint()
+	return nil
+}
+
+func (m *machineClient) showLocalAfterDisconnect() {
+	m.active = "local"
+	m.pending = nil
+	m.drag = nil
+	m.tabFeedback = nil
+	m.held = nil
+	m.regions = nil
+	local := m.endpoints["local"]
+	if local.connection == nil {
+		return
+	}
+	_ = local.connection.enqueue(resizeMessage(m.size))
+	m.showMachineViewer(local)
 }

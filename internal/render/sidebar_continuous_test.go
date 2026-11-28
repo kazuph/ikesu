@@ -46,21 +46,25 @@ func TestSidebarContinuousRowsAndStatusAtEveryWidth(t *testing.T) {
 						in.SidebarConfig.UI.Sidebar.Spaces.Rows = [][]config.SidebarToken{{{Token: "workspace"}}}
 						in.SidebarConfig.UI.Sidebar.Agents.Rows = [][]config.SidebarToken{{{Token: "workspace"}}}
 					}
-					draw := func() (*Frame, []MachineHit) {
+					draw := func() (*Frame, *MachineSidebar) {
 						if machine {
 							m := MachineSidebar{Active: "local", Groups: []MachineGroup{{ID: "local", Label: "LOCAL", Input: &in}, {ID: "remote", Label: "REMOTE", Input: &in}}}
 							f := ComposeMachines(in, &m).Frame
-							return f, m.Hits
+							return f, &m
 						}
 						return Compose(in).Frame, nil
 					}
 					continuousWidth(in, 18)
-					reference, hits := draw()
+					reference, machines := draw()
 					expected := SidebarViewForInput(in).Rows
 					statusRows := map[bool]map[int]bool{false: {}, true: {}}
+					leftMachineHeaders := map[int]bool{}
 					if machine {
-						for _, hit := range hits {
-							if !hit.Header && !hit.New {
+						for _, hit := range machines.Hits {
+							if hit.Header && !hit.Right {
+								leftMachineHeaders[hit.Rect.Y] = true
+							}
+							if !hit.Header && !hit.IsHeaderButton() {
 								statusRows[hit.Right][hit.Rect.Y] = hit.Row.Kind == RowWorkspace || hit.Row.Kind == RowAgent && hit.Row.Line == 0 || hit.Row.Kind == RowJob
 							}
 						}
@@ -71,7 +75,15 @@ func TestSidebarContinuousRowsAndStatusAtEveryWidth(t *testing.T) {
 					}
 					for width := 17; width >= 2; width-- {
 						continuousWidth(in, width)
-						f, _ := draw()
+						f, actual := draw()
+						var actualWidth *Frame
+						if machine {
+							// Machine buttons occupy the right edge at the actual width.
+							actualWidth = NewFrame(f.W, f.H)
+							actualWidth.Palette = f.Palette
+							actual.drawExpanded(actualWidth, in)
+							applyPersistentBackground(actualWidth, in, nil)
+						}
 						if !reflect.DeepEqual(SidebarViewForInput(in).Rows, expected) {
 							t.Fatal("narrow width changed row target/Y/order", width)
 						}
@@ -104,8 +116,12 @@ func TestSidebarContinuousRowsAndStatusAtEveryWidth(t *testing.T) {
 										}
 										continue
 									}
-									if !reflect.DeepEqual(f.Cell(x+col, y), reference.Cell(rx+skip+col, y)) {
-										t.Fatalf("width=%d server=%t jobs=%t custom=%t machine=%t right=%t x=%d y=%d got=%+v want=%+v", width, server, jobs, custom, machine, right, col, y, f.Cell(x+col, y), reference.Cell(rx+skip+col, y))
+									want := reference.Cell(rx+skip+col, y)
+									if !right && leftMachineHeaders[y] {
+										want = actualWidth.Cell(x+col, y)
+									}
+									if !reflect.DeepEqual(f.Cell(x+col, y), want) {
+										t.Fatalf("width=%d server=%t jobs=%t custom=%t machine=%t right=%t x=%d y=%d got=%+v want=%+v", width, server, jobs, custom, machine, right, col, y, f.Cell(x+col, y), want)
 									}
 								}
 							}
@@ -122,10 +138,10 @@ func TestMachineSidebarContinuousRowsAtEveryWidth(t *testing.T) {
 		in := continuousInput(t, true, jobs)
 		m := MachineSidebar{Groups: []MachineGroup{{ID: "local", Label: "LOCAL", Input: &in}, {ID: "remote", Label: "REMOTE", Input: &in}}, Active: "local"}
 		type row struct {
-			Machine            string
-			Row                SidebarRow
-			Y                  int
-			Right, Header, New bool
+			Machine       string
+			Row           SidebarRow
+			Y             int
+			Right, Header bool
 		}
 		var expected []row
 		for _, w := range []int{26, 18, 17, 10, 5, 3, 2} {
@@ -133,10 +149,10 @@ func TestMachineSidebarContinuousRowsAtEveryWidth(t *testing.T) {
 			ComposeMachines(in, &m)
 			var got []row
 			for _, hit := range m.Hits {
-				if hit.New {
+				if hit.IsHeaderButton() {
 					continue
 				}
-				got = append(got, row{hit.Machine, hit.Row, hit.Rect.Y, hit.Right, hit.Header, hit.New})
+				got = append(got, row{hit.Machine, hit.Row, hit.Rect.Y, hit.Right, hit.Header})
 			}
 			if w == 26 {
 				expected = got

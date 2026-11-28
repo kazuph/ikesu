@@ -65,6 +65,9 @@ func (m *machineClient) paint() error {
 	if m.idleToast != "" {
 		in.Toast = &render.Toast{Title: m.idleToast}
 	}
+	if m.failureToast != nil {
+		in.Toast = m.failureToast
+	}
 	if m.approvalCanOpen(e) {
 		e.guardApproval.focus(fmt.Sprintf("p%d", e.snapshot.State.FocusedPane()))
 	} else {

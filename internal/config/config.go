@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/kazuph/ikesu/internal/api"
 	"github.com/kazuph/ikesu/internal/guard"
@@ -62,7 +63,8 @@ type Config struct {
 	Terminal   TerminalConfig `toml:"terminal"`
 	Update     UpdateConfig   `toml:"update"`
 	Remote     struct {
-		ManageSSHConfig *bool `toml:"manage_ssh_config"`
+		ManageSSHConfig     *bool         `toml:"manage_ssh_config"`
+		AutoDisconnectAfter time.Duration `toml:"auto_disconnect_after"`
 	} `toml:"remote"`
 	Advanced struct {
 		ScrollbackLimitBytes *int `toml:"scrollback_limit_bytes"`

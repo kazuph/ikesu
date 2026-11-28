@@ -21,6 +21,9 @@ screen_prompts = false # opt in with true
 [session]
 resume_agents_on_restore = false # opt in with true
 
+[remote]
+auto_disconnect_after = 0 # set a duration, e.g. "10m", to stop retrying unreachable machines
+
 [integrations]
 claude_teams = false # opt in with true
 

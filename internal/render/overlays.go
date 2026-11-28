@@ -96,7 +96,7 @@ func drawMenu(f *Frame, m *Menu, out *Output) {
 		row := layout.Rect{X: ix, Y: y, W: iw, H: 1}
 		out.MenuItemRows[i] = row
 		if it.Separator {
-			if m.Global {
+			if m.Global && !m.PaneSeparators {
 				f.Fill(ix, y, iw, 1, "─", uv.Style{Fg: f.Palette.PanelBG, Bg: f.Palette.PopupBG})
 			} else {
 				f.Text(ix+1, y, " --", uv.Style{Fg: f.Palette.Dim, Bg: f.Palette.PopupBG}, ix+iw)

@@ -351,12 +351,28 @@ func (m *machineClient) input(event input.Event) error {
 				if event.Kind == input.KindMouseWheel {
 					return nil
 				}
-				if (hit.Header || hit.New) && hit.Machine != "local" && event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseRight {
+				if (hit.Header || hit.IsHeaderButton()) && hit.Machine != "local" && event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseRight {
 					m.forms.OpenMachine(m.endpoints[hit.Machine].profile, active.snapshot.State, event.Mouse.X, event.Mouse.Y)
 					return m.paint()
 				}
+				if (hit.Connect || hit.Disconnect) && event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseLeft {
+					m.suppressRelease = true
+					profile := m.endpoints[hit.Machine].profile
+					catalog := machine.Catalog{Path: m.catalogPath()}
+					action := "enable"
+					if hit.Disconnect {
+						action = "disable"
+					}
+					if _, err := catalog.Change(profile.ID, action, "", &profile); err != nil {
+						return err
+					}
+					return m.refreshMachineCatalog()
+				}
 				if hit.New && event.Kind == input.KindMouseClick && event.Mouse.Button == uv.MouseLeft {
 					m.suppressRelease = true
+					if hit.Machine != "local" && m.endpoints[hit.Machine].connection == nil {
+						return m.paint()
+					}
 					return m.createWorkspace(hit.Machine)
 				}
 				if hit.Header && event.Kind == input.KindMouseClick {

@@ -111,6 +111,8 @@ type Menu struct {
 	Scroll    int
 	Hover     int // index under the pointer; -1 = none
 	Sel       int // keyboard-selected item; -1 = none
+
+	PaneSeparators bool // Use pane-style separators in a global menu.
 }
 
 // MenuItem is one menu row; Separator rows draw a rule.

@@ -143,10 +143,13 @@ func TestWorkspaceStatusForInactiveAndRemoteSpaces(t *testing.T) {
 	if got := wsGlyph(local.State, 0, local); got.Key != "done" {
 		t.Fatalf("inactive=%+v", got)
 	}
-	machines := MachineSidebar{Active: "local", Groups: []MachineGroup{{ID: "local", Input: &local}, {ID: "remote", Input: &remote}}}
+	machines := MachineSidebar{Active: "local", Groups: []MachineGroup{
+		{ID: "local", Input: &local},
+		{ID: "remote", Status: "reconnecting", Input: &remote},
+	}}
 	out := ComposeMachines(local, &machines)
 	for _, hit := range machines.Hits {
-		if hit.Machine == "remote" && !hit.Header && !hit.New && hit.Row.Kind == RowWorkspace {
+		if hit.Machine == "remote" && !hit.Right && !hit.Header && !hit.IsHeaderButton() && hit.Row.Kind == RowWorkspace {
 			cell := out.Frame.Cell(hit.Rect.X+1, hit.Rect.Y)
 			if cell.Content != "●" || !reflect.DeepEqual(cell.Style.Fg, out.Frame.ThemeColor(Peach)) {
 				t.Fatalf("remote=%+v", cell)

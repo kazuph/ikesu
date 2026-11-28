@@ -160,6 +160,8 @@ workspace_search = "cmd+f"
 
 `workspace_search` opens the space search. `prefix /` and the 🔍 at the top of the sidebar also open it, so terminals without ⌘ (Linux, Windows, SSH apps on phones) need no setup. A list such as `workspace_search = ["cmd+f", "alt+f"]` binds several keys.
 
+`[remote] auto_disconnect_after` controls how long a saved SSH machine may stay unreachable before ikesu disconnects it. Set it to a duration such as `"10m"`. The default `0` keeps the usual retries. After the deadline, ikesu saves the machine as disconnected and shows the last connection error, when available. Use `[connect]` in the sidebar or `ikesu machine connect <label-or-id>` to try again.
+
 ## Terminal setup: let ⌘ keys reach ikesu
 
 ikesu turns on the kitty keyboard protocol, so the terminal can pass ⌘ combinations to it. A terminal app sends a ⌘ key only when it does not use the key itself. Remove the terminal's own binding for every ⌘ key you put in `[keys]`.
